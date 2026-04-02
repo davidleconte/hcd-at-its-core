@@ -9,6 +9,9 @@ partitioner: org.apache.cassandra.dht.Murmur3Partitioner
 data_file_directories:
     - /var/lib/cassandra/data
 commitlog_directory: /var/lib/cassandra/commitlog
+commitlog_sync: periodic
+commitlog_sync_period_in_ms: 10000
+commitlog_segment_size_in_mb: 32
 cdc_raw_directory: /var/lib/cassandra/cdc_raw
 saved_caches_directory: /var/lib/cassandra/saved_caches
 seed_provider:
@@ -29,24 +32,59 @@ broadcast_address: ${CASSANDRA_BROADCAST_ADDRESS}
 start_native_transport: true
 native_transport_port: 9042
 rpc_address: ${CASSANDRA_RPC_ADDRESS}
-endpoint_snitch: SimpleSnitch
+broadcast_rpc_address: ${CASSANDRA_BROADCAST_ADDRESS}
+endpoint_snitch: ${CASSANDRA_ENDPOINT_SNITCH}
 dynamic_snitch_update_interval_in_ms: 100
 dynamic_snitch_reset_interval_in_ms: 600000
 dynamic_snitch_badness_threshold: 0.1
-request_scheduler: org.apache.cassandra.scheduler.NoScheduler
 phi_convict_threshold: 8
 incremental_backups: false
 snapshot_before_compaction: false
 auto_snapshot: true
 column_index_size_in_kb: 64
 column_index_cache_size_in_kb: 2
-compaction_throughput_outbound_megabits_per_sec: 64
 sstable_preemptive_open_interval_in_mb: 50
 read_request_timeout_in_ms: 5000
 range_request_timeout_in_ms: 10000
 write_request_timeout_in_ms: 2000
 counter_write_request_timeout_in_ms: 5000
 cas_contention_timeout_in_ms: 1000
-truncate_timeout_in_ms: 60000
 request_timeout_in_ms: 10000
-cross_node_timeout: false
+cross_node_timeout: true
+
+# CDC (Change Data Capture) - Module 25
+cdc_enabled: true
+
+# Audit Logging - Module 26
+# Enabled/disabled at runtime via nodetool enableauditlog / disableauditlog
+# Default logger writes to /var/lib/cassandra/audit/
+audit_logging_options:
+    enabled: false
+    logger:
+      - class_name: FileAuditLogger
+    audit_logs_dir: /var/lib/cassandra/audit
+    roll_cycle: HOURLY
+    block: true
+    max_queue_weight: 268435456
+    max_log_size: 17179869184
+
+# Guardrails - Module 27
+# Protect the database from common anti-patterns
+tables_warn_threshold: 150
+tables_fail_threshold: -1
+columns_per_table_warn_threshold: 100
+columns_per_table_fail_threshold: -1
+partition_keys_in_select_warn_threshold: 20
+partition_keys_in_select_fail_threshold: -1
+in_select_cartesian_product_warn_threshold: 25
+in_select_cartesian_product_fail_threshold: -1
+batch_size_warn_threshold_in_kb: 5
+batch_size_fail_threshold_in_kb: 50
+collection_size_warn_threshold_in_kb: 100
+unlogged_batch_across_partitions_warn_threshold: 10
+page_size_warn_threshold: 5000
+page_size_fail_threshold: -1
+read_before_write_list_operations_enabled: true
+
+# Snitch configuration for GossipingPropertyFileSnitch
+# Values are managed via /opt/hcd/resources/cassandra/conf/cassandra-rackdc.properties

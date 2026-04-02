@@ -1,5 +1,44 @@
+# Git
 .git
 .gitignore
+.gitattributes
+
+# Documentation (not needed in image)
 README.md
-*.tar.gz
+AGENTS.md
+CLAUDE.md
+DEMO_ENTROPY.md
+IMPLEMENTATION_PLAN.md
+LICENSE
+CONTRIBUTING.md
+docs/
+
+# Environment and secrets
 .env
+.env.*
+*.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs and temp files
+*.log
+*.tmp
+logs/
+
+# Tests (not needed in image)
+tests/
+.pytest_cache/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Brokk
+.brokk/

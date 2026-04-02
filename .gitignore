@@ -1,0 +1,48 @@
+# Brokk
+.brokk/
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+*.bak
+*.tmp
+
+# HCD binary (large, not distributable)
+*.tar.gz
+
+# HCD node directories (created by local runs)
+[hcd-node*]
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+.pytest_cache/
