@@ -90,25 +90,7 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 
 ---
 
-## Automated Demo Script
-
-The `demo-entropy.sh` script walks through educational modules. You can run it interactively, non-interactively, or jump to a specific module.
-
-```bash
-# Full interactive demo
-./scripts/demo-entropy.sh
-
-# Non-interactive mode (no pauses)
-./scripts/demo-entropy.sh --no-pause
-
-# Run a specific module (e.g., Module 3)
-./scripts/demo-entropy.sh 3
-
-# Dry-run mode (prints commands without executing)
-./scripts/demo-entropy.sh --dry-run
-```
-
-### Demo Modules Overview
+## Demo Modules Overview
 
 #### Part 1 — Foundations (Modules 0-13)
 | Module | Title | Key Proof |
@@ -267,10 +249,13 @@ CL defines how many replicas must acknowledge a read or write for it to be consi
 
 ## Module 3: Simulating Node Failures
 
+The demo poses an interactive question before revealing the result: **"Will LOCAL_QUORUM reads succeed with one node down?"** — pause — then proves the answer with a live query.
+
 ### Scenario A: Single Node Failure
 ```bash
 docker-compose stop hcd-node3
 docker exec hcd-node1 nodetool status | grep "DN"
+# LOCAL_QUORUM still works: 2 of 3 replicas available
 ```
 
 ### Scenario B: Rack Failure
@@ -281,9 +266,9 @@ docker-compose stop hcd-node1 hcd-node4
 
 ---
 
-## Module 4: Entropy Resolution Mechanisms
+## Module 4: Hinted Handoff — Short-term Entropy Resolution
 
-### 4.1 Hinted Handoff (Short-term)
+### Writing While a Node is Down
 1. Stop `hcd-node2`.
 2. Write data using `CONSISTENCY ONE`.
 3. Node 1 sees Node 2 is down and saves a "Hint".
@@ -291,17 +276,6 @@ docker-compose stop hcd-node1 hcd-node4
 5. Start `hcd-node2`. Node 1 will replay hints automatically.
 
 **What to look for:** Row count before = row count after. The hints directory empties once replay completes. Hints expire after 3 hours (`max_hint_window_in_ms`).
-
-### 4.2 Read Repair (On-the-fly)
-If a write missed a node and hints expired:
-1. Perform a `SELECT` with `CONSISTENCY QUORUM`.
-2. HCD compares data from all replicas and updates stale ones.
-
-### 4.3 Anti-Entropy Repair (Manual)
-```bash
-# Run a full repair on a keyspace
-docker exec hcd-node1 nodetool repair -pr rf_prod
-```
 
 ---
 
@@ -515,6 +489,8 @@ docker exec hcd-node1 nodetool describecluster
 
 ## Module 14: The "Ghost Rack" (Double Rack Failure)
 
+Interactive question: **"Can the cluster still serve reads with 2 of 6 nodes dead?"** — pause — then proves it.
+
 Simulates simultaneous failure of Rack 1 in both DCs — a scenario where 2 of 6 nodes go down at once. With RF=3 and `NetworkTopologyStrategy`, data remains available because each DC still has 2 replicas in Racks 2 and 3.
 
 ```text
@@ -573,6 +549,8 @@ docker exec hcd-node1 nodetool gossipinfo
 ---
 
 ## Module 17: The "Zombie Node" (Network Partition)
+
+Interactive question: **"Can the cluster write while a node is partitioned?"** — pause — then proves it.
 
 Simulates a network partition by disconnecting a node from the Docker network. The node is still running but unreachable — a "zombie" from the cluster's perspective. Gossip will mark it as DOWN.
 
@@ -986,7 +964,7 @@ INSERT INTO rf_prod.health (id, status) VALUES (202, 'cl-eq');
 TRACING OFF;
 ```
 
-**What to look for:** Compare trace durations. ONE completes in microseconds, LOCAL_QUORUM in low milliseconds, EACH_QUORUM adds WAN round-trip time.
+**What to look for:** The demo extracts `Request complete` timing from each trace and displays a side-by-side comparison box showing the latency progression from CL=ONE to EACH_QUORUM. ONE completes in microseconds, LOCAL_QUORUM in low milliseconds, EACH_QUORUM adds WAN round-trip time.
 
 ---
 
@@ -1052,6 +1030,8 @@ CREATE TABLE rf_prod.comp_none   (...) WITH compression = {'enabled': 'false'};
 ```
 
 **What to look for:** After inserting identical data into all four tables and flushing, compare `Space used (live)` from `nodetool tablestats`. Zstd typically achieves the best compression ratio; uncompressed is largest.
+
+> **Production context:** A 1TB dataset typically compresses to 400-600GB with Zstd, significantly reducing storage costs and I/O amplification during compaction.
 
 ---
 
@@ -1386,7 +1366,7 @@ cluster = Cluster(
 
 ## Module 45: Live DC Failover with Driver
 
-Module 23 proved zero-downtime failover using `cqlsh` pointed at a dc2 node. In production, **the application never switches nodes manually** — the DataStax driver does it automatically.
+Module 23 proved zero-downtime failover using `cqlsh` pointed at a dc2 node. In production, **the application never switches nodes manually** — the DataStax driver does it automatically (~3-5 minutes including DC restart).
 
 ### Failover Timeline
 

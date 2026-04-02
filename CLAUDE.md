@@ -50,7 +50,7 @@ pytest tests/test_scripts.py             # script syntax + helper tests
 - **Makefile** - Developer shortcuts with auto-detection of `docker compose` (v2) vs `docker-compose` (v1).
 - **scripts/generate-topology.py** - Generates `docker-compose.yml` and `.env` files for arbitrary cluster sizes and multi-DC configurations.
 - **scripts/demo-entropy.sh** - Interactive 54-module demo (modules 0-53) covering entropy, consistency, SAI indexing, vector search, CDC, audit logging, guardrails, data modeling, compaction strategies, compression, live DC expansion, backup/restore, rolling restart, repair strategies, stress testing, security, geographic visualization, DataStax driver policies, ACID vs Cassandra model, LOGGED/UNLOGGED batches, lost update problem, banking instant payments (LWT+CDC saga), supplier/customer order flow (saga pattern with compensating transactions), and a consistency decision framework. Supports `--dry-run` and `--no-pause` flags. Single-module execution (`./demo-entropy.sh 23`) auto-creates prerequisites via `ensure_rf_prod()`.
-- **scripts/driver-demo.py** - Python helper script using the DataStax cassandra-driver for modules 43-46. Subcommands: `token-aware`, `speculative`, `dc-failover`, `retry-policies`.
+- **scripts/driver-demo.py** - Python helper script using the DataStax cassandra-driver for modules 43-46. Subcommands: `token-aware`, `speculative`, `dc-failover`, `retry-policies`. Use `--local-dc` to override the default datacenter (default: `dc1`).
 
 ## Code Style
 
