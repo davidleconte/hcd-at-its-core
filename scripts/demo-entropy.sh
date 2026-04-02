@@ -18,13 +18,19 @@ C_WHITE="\033[1;37m"
 C_DIM="\033[2m"
 
 # ─── Helper Functions ─────────────────────────────────────────────
+resolve_network_name() {
+    docker network ls --filter "name=hcd-cluster" --format '{{.Name}}' 2>/dev/null | head -1
+}
+HCD_NETWORK=$(resolve_network_name)
+
 cleanup() {
     if [ "$DRY_RUN" = true ]; then
         return 0
     fi
     log_info "Emergency cleanup: ensuring all nodes are started and connected..."
+    docker unpause hcd-node3 >/dev/null 2>&1 || true
     docker-compose start hcd-node1 hcd-node2 hcd-node3 hcd-node4 hcd-node5 hcd-node6 >/dev/null 2>&1 || true
-    docker network connect brokk_hcd-cluster hcd-node2 >/dev/null 2>&1 || true
+    docker network connect "${HCD_NETWORK}" hcd-node2 >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -34,7 +40,7 @@ log_cmd() {
         echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} $1"
     else
         echo -e "${C_GREEN}[EXEC]${C_RESET} $1"
-        eval "$1"
+        bash -c "$1"
     fi
 }
 
@@ -429,36 +435,49 @@ run_module() {
             echo ""
 
             separator
-            echo -e "${C_WHITE}--- Step 1: Create divergence (write at CL=ONE to only 1 replica) ---${C_RESET}"
-            echo "Writing at CL=ONE means only 1 replica is guaranteed to have the data."
-            echo "The other 2 replicas MAY be stale until read repair or anti-entropy repair."
+            echo -e "${C_WHITE}--- Step 1: Create guaranteed divergence (stop node, write, restart) ---${C_RESET}"
+            echo "To reliably trigger read repair, we FORCE divergence:"
+            echo "  1. Stop node3 (it will miss the write)"
+            echo "  2. Write at CL=ONE (only 1-2 of the remaining replicas get it)"
+            echo "  3. Restart node3 (it still has stale data)"
+            echo "  4. Read at CL=ALL (coordinator detects the mismatch and repairs)"
             echo ""
             log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.rr_test (id int PRIMARY KEY, val text);\""
-            log_cmd "docker exec hcd-node1 cqlsh -e \"CONSISTENCY ONE; INSERT INTO rf_prod.rr_test (id, val) VALUES (1, 'written-at-cl-one');\""
+            log_cmd "docker-compose stop hcd-node3"
+            if [ "$DRY_RUN" = false ]; then sleep 5; fi
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CONSISTENCY ONE; INSERT INTO rf_prod.rr_test (id, val) VALUES (1, 'written-while-node3-down');\""
 
             separator
-            echo -e "${C_WHITE}--- Step 2: Read at CL=ONE (may return stale/empty) ---${C_RESET}"
-            log_cmd "docker exec hcd-node2 cqlsh -e \"CONSISTENCY ONE; SELECT * FROM rf_prod.rr_test WHERE id = 1;\""
-            lookfor "If node2 wasn't the CL=ONE replica, this read may return empty or stale data."
+            echo -e "${C_WHITE}--- Step 2: Restart node3 (it missed the write) ---${C_RESET}"
+            log_cmd "docker-compose start hcd-node3"
+            log_info "Waiting for node3 to reach UN..."
+            wait_for_node_un "172.28.0.4" "node3"
+            if [ "$DRY_RUN" = false ]; then sleep 3; fi
 
             separator
-            echo -e "${C_WHITE}--- Step 3: Trigger Read Repair via CL=ALL ---${C_RESET}"
+            echo -e "${C_WHITE}--- Step 3: Read at CL=ONE from node3 (may return stale/empty) ---${C_RESET}"
+            log_cmd "docker exec hcd-node3 cqlsh -e \"CONSISTENCY ONE; SELECT * FROM rf_prod.rr_test WHERE id = 1;\""
+            lookfor "node3 missed the write — it may return empty or stale data."
+
+            separator
+            echo -e "${C_WHITE}--- Step 4: Trigger Read Repair via CL=ALL ---${C_RESET}"
             echo "CL=ALL contacts ALL replicas. The coordinator compares digests and"
             echo "sends the correct data to any stale replica."
             echo ""
-            log_cmd "docker exec hcd-node1 cqlsh -e \"CONSISTENCY ALL; TRACING ON; SELECT * FROM rf_prod.rr_test WHERE id = 1; TRACING OFF;\" 2>&1 | grep -iE 'READ_REPAIR|read.repair|Sending.*repair|repair mutation|Digest mismatch' | head -n 10 || echo '(No READ_REPAIR in trace -- data may already be consistent across all replicas)'"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CONSISTENCY ALL; TRACING ON; SELECT * FROM rf_prod.rr_test WHERE id = 1; TRACING OFF;\" 2>&1 | grep -iE 'READ_REPAIR|read.repair|Sending.*repair|repair mutation|Digest mismatch' | head -n 10 || echo '(No READ_REPAIR in trace -- read repair in Cassandra 4.0+ is background/probabilistic)'"
 
             lookfor "Look for 'READ_REPAIR', 'read repair', or 'Digest mismatch' in the trace."
             lookfor "This means the coordinator detected a stale replica and fixed it."
             echo ""
-            echo -e "${C_BLUE}Note: If no READ_REPAIR appears, all replicas already had the data.${C_RESET}"
-            echo -e "${C_BLUE}This happens when CL=ONE happened to write to multiple replicas (best-effort).${C_RESET}"
-            echo -e "${C_BLUE}To force divergence: stop a node, write, restart it, then read at CL=ALL.${C_RESET}"
+            echo -e "${C_BLUE}Note: In Cassandra 4.0+, read repair is background and probabilistic.${C_RESET}"
+            echo -e "${C_BLUE}The CL=ALL read itself returns the correct result (coordinator merges responses),${C_RESET}"
+            echo -e "${C_BLUE}but the repair mutation to node3 happens asynchronously.${C_RESET}"
 
             separator
-            echo -e "${C_WHITE}--- Step 4: Read again at CL=ONE (now consistent) ---${C_RESET}"
-            log_cmd "docker exec hcd-node2 cqlsh -e \"CONSISTENCY ONE; SELECT * FROM rf_prod.rr_test WHERE id = 1;\""
-            lookfor "Now ALL replicas have the data. CL=ONE returns correct results."
+            echo -e "${C_WHITE}--- Step 5: Verify repair (read from node3 again) ---${C_RESET}"
+            if [ "$DRY_RUN" = false ]; then sleep 3; fi
+            log_cmd "docker exec hcd-node3 cqlsh -e \"CONSISTENCY ONE; SELECT * FROM rf_prod.rr_test WHERE id = 1;\""
+            lookfor "node3 should now return 'written-while-node3-down' — read repair fixed it."
 
             separator
             echo -e "${C_WHITE}--- Read Repair Metrics ---${C_RESET}"
@@ -636,6 +655,12 @@ run_module() {
             header 10 "Node Recovery"
             echo "When a node restarts after being down, it automatically receives"
             echo "any hints stored by other nodes, and gossip announces its return."
+            echo ""
+            echo -e "${C_YELLOW}QUESTION: After a node restarts, how does it know what data it missed?${C_RESET}"
+            echo -e "${C_YELLOW}Think: who stored the missed writes, and what triggers their delivery?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Other coordinators stored 'hints' during the outage.${C_RESET}"
+            echo -e "${C_GREEN}When gossip announces the node is back, hints are replayed automatically.${C_RESET}"
             echo ""
 
             log_info "Ensuring nodes 2 and 3 are running..."
@@ -829,10 +854,22 @@ run_module() {
             echo "change, it may temporarily disagree with the rest of the cluster."
             echo ""
 
-            log_info "Checking for schema convergence across the cluster..."
-            log_cmd "docker exec hcd-node1 nodetool describecluster | grep -A 3 'Schema versions' || echo '(Schema info unavailable)'"
+            echo -e "${C_YELLOW}QUESTION: If a node was down during a CREATE TABLE, what happens${C_RESET}"
+            echo -e "${C_YELLOW}when it comes back? Does it know about the new table?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Gossip propagates schema changes. The returning node learns${C_RESET}"
+            echo -e "${C_GREEN}about the new schema within seconds of rejoining.${C_RESET}"
+            echo ""
 
-            lookfor "You should see ONE schema version shared by all 6 nodes."
+            log_info "Checking schema versions via nodetool describecluster..."
+            log_cmd "docker exec hcd-node1 nodetool describecluster | grep -A 5 'Schema versions' || echo '(Schema info unavailable)'"
+
+            separator
+            log_info "Cross-checking via system.peers table..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT peer, schema_version FROM system.peers;\" 2>/dev/null || echo '(system.peers query)'"
+
+            lookfor "describecluster shows ONE schema version shared by all 6 nodes."
+            lookfor "system.peers confirms the same UUID across all peers."
             lookfor "Multiple schema versions = schema disagreement (nodes need to sync)."
 
             takeaway "Schema disagreement is usually transient and resolves within seconds." \
@@ -891,7 +928,7 @@ run_module() {
             echo ""
 
             log_info "Disconnecting hcd-node2 from the cluster network..."
-            log_cmd "docker network disconnect brokk_hcd-cluster hcd-node2"
+            log_cmd "docker network disconnect ${HCD_NETWORK} hcd-node2"
 
             log_info "Waiting for Gossip to detect the partition (~15-30 seconds)..."
             if [ "$DRY_RUN" = false ]; then
@@ -925,7 +962,7 @@ run_module() {
             pause
 
             log_info "Reconnecting hcd-node2 to the cluster network..."
-            log_cmd "docker network connect brokk_hcd-cluster hcd-node2"
+            log_cmd "docker network connect ${HCD_NETWORK} hcd-node2"
 
             log_info "Waiting for Node 2 to rejoin the ring..."
             if [ "$DRY_RUN" = false ]; then
@@ -1005,8 +1042,12 @@ run_module() {
             log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; SELECT name FROM rf_prod.assets WHERE tags['env'] = 'prod';\""
 
             log_info "Text Analyzers for case-insensitive search..."
+            echo -e "${C_BLUE}Note: SAI text analyzer options (case_sensitive, normalize) are supported${C_RESET}"
+            echo -e "${C_BLUE}in HCD 1.2+. If your version uses different syntax, check the HCD docs${C_RESET}"
+            echo -e "${C_BLUE}for 'index_analyzer' configuration.${C_RESET}"
+            echo ""
             log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; CREATE TABLE IF NOT EXISTS rf_prod.products (id uuid PRIMARY KEY, name text, description text);\""
-            log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; CREATE CUSTOM INDEX IF NOT EXISTS ON rf_prod.products (name) USING 'StorageAttachedIndex' WITH OPTIONS = {'case_sensitive': 'false', 'normalize': 'true'};\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; CREATE CUSTOM INDEX IF NOT EXISTS ON rf_prod.products (name) USING 'StorageAttachedIndex' WITH OPTIONS = {'case_sensitive': 'false', 'normalize': 'true'};\" 2>&1 || echo '(Text analyzer options may differ in your HCD version -- index still works without them)'"
             log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; INSERT INTO rf_prod.products (id, name, description) VALUES (uuid(), 'MacBook Pro', 'Apple laptop');\""
             echo "Case-insensitive query (searching 'macbook' finds 'MacBook Pro'):"
             log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; SELECT name FROM rf_prod.products WHERE name = 'macbook pro';\""
@@ -1101,8 +1142,23 @@ run_module() {
             echo "+----------------------------------------------------------------+"
             echo ""
 
+            echo -e "${C_BLUE}Note: vector<float, N> is supported in HCD 1.2+ (based on Cassandra 5.0 vector type).${C_RESET}"
+            echo -e "${C_BLUE}If your HCD version doesn't support it, this module will show a clear error.${C_RESET}"
+            echo ""
+
             log_info "Creating document store with 5-dimensional embeddings..."
-            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.documents (id uuid PRIMARY KEY, title text, content text, category text, embedding vector<float, 5>);\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.documents (id uuid PRIMARY KEY, title text, content text, category text, embedding vector<float, 5>);\" 2>&1 || { echo -e '${C_YELLOW}Vector type not supported in this HCD version. Skipping vector demo.${C_RESET}'; }"
+
+            if [ "$DRY_RUN" = false ]; then
+                if ! docker exec hcd-node1 cqlsh -e "DESCRIBE TABLE rf_prod.documents;" 2>/dev/null | grep -q 'embedding'; then
+                    echo -e "${C_YELLOW}Skipping Module 20: vector<float, N> requires HCD 1.2+ with vector support.${C_RESET}"
+                    takeaway "Vector search requires HCD 1.2+ with vector type support." \
+                             "The syntax is: vector<float, N> for N-dimensional embeddings." \
+                             "Check your HCD version with 'nodetool version'."
+                    pause
+                    return 0 2>/dev/null || true
+                fi
+            fi
 
             log_info "Creating Vector Index (SAI with cosine similarity)..."
             log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE CUSTOM INDEX IF NOT EXISTS ON rf_prod.documents (embedding) USING 'StorageAttachedIndex' WITH OPTIONS = {'similarity_function': 'cosine'};\""
@@ -1486,8 +1542,15 @@ run_module() {
             echo "+----------------------------------------------------------------+"
             echo ""
 
+            log_info "Verifying CDC is enabled in cassandra.yaml..."
+            log_cmd "docker exec hcd-node1 grep 'cdc_enabled' /opt/hcd/resources/cassandra/conf/cassandra.yaml 2>/dev/null || echo '(cdc_enabled setting not found)'"
+            echo ""
+            echo -e "${C_BLUE}CDC must be enabled in cassandra.yaml (cdc_enabled: true) BEFORE the table${C_RESET}"
+            echo -e "${C_BLUE}is created. Our cluster template has this pre-configured.${C_RESET}"
+            echo ""
+
             log_info "Creating a CDC-enabled table..."
-            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.events (id uuid PRIMARY KEY, event_type text, payload text) WITH cdc = true;\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.events (id uuid PRIMARY KEY, event_type text, payload text) WITH cdc = true;\" 2>&1 || echo '(CDC may not be enabled -- check cassandra.yaml cdc_enabled: true)'"
 
             log_info "Inserting events..."
             log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.events (id, event_type, payload) VALUES (uuid(), 'user_signup', 'user=alice');\""
@@ -1602,12 +1665,17 @@ run_module() {
             echo "+---------------------------------------------------------------+"
             echo ""
 
-            log_info "Checking current guardrail configuration..."
-            log_cmd "docker exec hcd-node1 nodetool getconfig tables_warn_threshold 2>/dev/null || echo '(getconfig not available for guardrails)'"
-            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT * FROM system_views.settings WHERE name LIKE '%guard%';\" || echo '(Guardrail settings not available in system_views)'"
+            echo -e "${C_BLUE}Note: Guardrails require cassandra.yaml configuration. Our cluster template${C_RESET}"
+            echo -e "${C_BLUE}includes: tables_warn_threshold=150, columns_per_table_warn_threshold=100.${C_RESET}"
+            echo ""
 
-            log_info "Checking cassandra.yaml for guardrail settings..."
-            log_cmd "docker exec hcd-node1 grep -i 'guardrail\|warn_threshold\|fail_threshold\|batch_size' /opt/hcd/resources/cassandra/conf/cassandra.yaml 2>/dev/null | head -n 20 || echo '(Guardrail config not found in cassandra.yaml)'"
+            log_info "Verifying guardrail settings in cassandra.yaml..."
+            log_cmd "docker exec hcd-node1 grep -iE 'guardrail|warn_threshold|fail_threshold|batch_size' /opt/hcd/resources/cassandra/conf/cassandra.yaml 2>/dev/null | head -n 20 || echo '(Guardrail config not found in cassandra.yaml)'"
+
+            separator
+            log_info "Checking via nodetool and system_views..."
+            log_cmd "docker exec hcd-node1 nodetool getconfig tables_warn_threshold 2>/dev/null || echo '(getconfig not available for guardrails -- check cassandra.yaml above)'"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT * FROM system_views.settings WHERE name LIKE '%guard%';\" 2>/dev/null || echo '(system_views.settings not available in this HCD version)'"
 
             separator
 
@@ -1740,10 +1808,25 @@ run_module() {
             separator
             echo -e "${C_WHITE}--- Side-by-Side Latency Comparison ---${C_RESET}"
             echo "Extracting 'Request complete' times from traces..."
+            echo -e "${C_DIM}(Trace format varies by Cassandra version — using multiple extraction patterns)${C_RESET}"
             if [ "$DRY_RUN" = false ]; then
-                LAT_ONE=$(docker exec hcd-node1 cqlsh -e "TRACING ON; CONSISTENCY ONE; SELECT * FROM rf_prod.latency_test WHERE id = 1; TRACING OFF;" 2>&1 | grep -i 'Request complete' | grep -oE '[0-9]+ microseconds' | head -1 || echo "N/A")
-                LAT_LQ=$(docker exec hcd-node1 cqlsh -e "TRACING ON; CONSISTENCY LOCAL_QUORUM; SELECT * FROM rf_prod.latency_test WHERE id = 2; TRACING OFF;" 2>&1 | grep -i 'Request complete' | grep -oE '[0-9]+ microseconds' | head -1 || echo "N/A")
-                LAT_EQ=$(docker exec hcd-node1 cqlsh -e "TRACING ON; CONSISTENCY EACH_QUORUM; SELECT * FROM rf_prod.latency_test WHERE id = 3; TRACING OFF;" 2>&1 | grep -i 'Request complete' | grep -oE '[0-9]+ microseconds' | head -1 || echo "N/A")
+                extract_latency() {
+                    local trace_output="$1"
+                    # Try multiple patterns: "Request complete|N microseconds", duration field, elapsed time
+                    local lat
+                    lat=$(echo "$trace_output" | grep -i 'Request complete' | grep -oE '[0-9]+ microseconds' | head -1)
+                    if [ -z "$lat" ]; then
+                        lat=$(echo "$trace_output" | grep -ioE 'duration[: ]+[0-9]+' | grep -oE '[0-9]+' | tail -1)
+                        if [ -n "$lat" ]; then lat="${lat} microseconds"; fi
+                    fi
+                    echo "${lat:-N/A (trace format not recognized)}"
+                }
+                TRACE_ONE=$(docker exec hcd-node1 cqlsh -e "TRACING ON; CONSISTENCY ONE; SELECT * FROM rf_prod.latency_test WHERE id = 1; TRACING OFF;" 2>&1)
+                TRACE_LQ=$(docker exec hcd-node1 cqlsh -e "TRACING ON; CONSISTENCY LOCAL_QUORUM; SELECT * FROM rf_prod.latency_test WHERE id = 2; TRACING OFF;" 2>&1)
+                TRACE_EQ=$(docker exec hcd-node1 cqlsh -e "TRACING ON; CONSISTENCY EACH_QUORUM; SELECT * FROM rf_prod.latency_test WHERE id = 3; TRACING OFF;" 2>&1)
+                LAT_ONE=$(extract_latency "$TRACE_ONE")
+                LAT_LQ=$(extract_latency "$TRACE_LQ")
+                LAT_EQ=$(extract_latency "$TRACE_EQ")
                 echo ""
                 echo -e "${C_GREEN}╔═════════════════════════════════════════════════════╗${C_RESET}"
                 echo -e "${C_GREEN}║  LATENCY COMPARISON (traced reads):                ║${C_RESET}"
@@ -1913,7 +1996,7 @@ run_module() {
             echo -e "${C_WHITE}--- Creating Tables with Different Compression ---${C_RESET}"
 
             log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.compress_lz4 (id int PRIMARY KEY, data text) WITH compression = {'class': 'LZ4Compressor'};\""
-            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.compress_zstd (id int PRIMARY KEY, data text) WITH compression = {'class': 'ZstdCompressor'};\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.compress_zstd (id int PRIMARY KEY, data text) WITH compression = {'class': 'ZstdCompressor'};\" 2>&1 || { echo -e '${C_YELLOW}ZstdCompressor not available in this build. Falling back to LZ4 for comparison.${C_RESET}'; docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.compress_zstd (id int PRIMARY KEY, data text) WITH compression = {'class': 'LZ4Compressor'};\" 2>/dev/null; }"
             log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.compress_snappy (id int PRIMARY KEY, data text) WITH compression = {'class': 'SnappyCompressor'};\""
             log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.compress_none (id int PRIMARY KEY, data text) WITH compression = {'enabled': false};\""
 
@@ -2152,7 +2235,8 @@ run_module() {
             echo ""
 
             log_info "Running rebuild on node4 (dc2) from dc1 (demonstrates data streaming)..."
-            log_cmd "docker exec hcd-node4 nodetool rebuild -- --source-dc dc1 2>&1 | head -n 5 || echo '(rebuild completed or source-dc flag not supported -- this is expected in some HCD versions)'"
+            echo -e "${C_DIM}(nodetool rebuild syntax: 'rebuild -- dc1' or 'rebuild --source-dc dc1' depending on version)${C_RESET}"
+            log_cmd "docker exec hcd-node4 nodetool rebuild -- dc1 2>&1 | head -n 5 || docker exec hcd-node4 nodetool rebuild --source-dc dc1 2>&1 | head -n 5 || echo '(rebuild completed or not needed -- dc2 already has the data)'"
 
             log_info "Checking streaming status..."
             log_cmd "docker exec hcd-node4 nodetool netstats 2>/dev/null | head -n 15 || echo '(netstats output -- shows active/pending streams)'"
@@ -2231,10 +2315,10 @@ run_module() {
             echo "The standard procedure for patching, upgrading, or config changes:"
             echo "restart one node at a time, waiting for UN before moving to the next."
             echo ""
-            echo "  node1: stop → start → wait for UN ✓"
+            echo "  node3: stop → start → wait for UN ✓  (non-seed first)"
             echo "  node2: stop → start → wait for UN ✓"
-            echo "  node3: stop → start → wait for UN ✓"
-            echo "  (cluster never loses quorum)"
+            echo "  node1: stop → start → wait for UN ✓  (seed node LAST)"
+            echo "  (cluster never loses quorum — one node down at a time)"
             echo ""
 
             log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.rolling_test (id int PRIMARY KEY, val text);\""
@@ -2298,6 +2382,34 @@ run_module() {
             wait_for_node_un "172.28.0.3" "node2"
 
             separator
+            echo -e "${C_WHITE}--- Rolling Restart: node1 (seed node — restarted LAST) ---${C_RESET}"
+            echo "Seed nodes should be restarted last. Other nodes use seeds for bootstrap,"
+            echo "but once running, gossip maintains the cluster without the seed."
+            echo ""
+            log_cmd "docker-compose stop hcd-node1"
+            if [ "$DRY_RUN" = false ]; then sleep 5; fi
+
+            log_info "Verifying reads AND writes work with seed node1 down..."
+            log_cmd "docker exec hcd-node2 cqlsh -e \"CONSISTENCY LOCAL_QUORUM; SELECT count(*) FROM rf_prod.rolling_test;\""
+            if [ "$DRY_RUN" = false ]; then
+                for i in $(seq 16 20); do
+                    if docker exec hcd-node2 cqlsh -e "CONSISTENCY LOCAL_QUORUM; INSERT INTO rf_prod.rolling_test (id, val) VALUES ($i, 'written-while-node1-down');" 2>/dev/null; then
+                        ROLLING_READS_OK=$((ROLLING_READS_OK + 1))
+                        echo -e "${C_GREEN}  [WRITE ${i}] ✓  (seed node1 DOWN)${C_RESET}"
+                    else
+                        ROLLING_READS_FAIL=$((ROLLING_READS_FAIL + 1))
+                        echo -e "${C_YELLOW}  [WRITE ${i}] ✗  (seed node1 DOWN)${C_RESET}"
+                    fi
+                done
+            else
+                echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} Writing 5 rows while seed node1 is down..."
+            fi
+
+            log_cmd "docker-compose start hcd-node1"
+            log_info "Waiting for node1 to rejoin..."
+            wait_for_node_un "172.28.0.2" "node1"
+
+            separator
             echo -e "${C_WHITE}--- Final Verification ---${C_RESET}"
             log_cmd "docker exec hcd-node1 cqlsh -e \"CONSISTENCY LOCAL_QUORUM; SELECT count(*) FROM rf_prod.rolling_test;\""
 
@@ -2305,18 +2417,20 @@ run_module() {
                 echo ""
                 echo -e "${C_GREEN}╔═══════════════════════════════════════════════════════════════╗${C_RESET}"
                 echo -e "${C_GREEN}║  ROLLING RESTART RESULT:                                    ║${C_RESET}"
+                echo -e "${C_GREEN}║  Nodes restarted: 3 (node3, node2, node1/seed)              ║${C_RESET}"
                 echo -e "${C_GREEN}║  Writes during maintenance: ${ROLLING_READS_OK} succeeded, ${ROLLING_READS_FAIL} failed            ║${C_RESET}"
                 echo -e "${C_GREEN}║  Cluster was NEVER unavailable. Zero downtime.              ║${C_RESET}"
                 echo -e "${C_GREEN}╚═══════════════════════════════════════════════════════════════╝${C_RESET}"
                 echo ""
             fi
 
-            lookfor "count = 15 (5 initial + 5 during node3 down + 5 during node2 down)."
-            lookfor "This is how you patch/upgrade HCD with zero downtime."
+            lookfor "count = 20 (5 initial + 5 node3 down + 5 node2 down + 5 node1 down)."
+            lookfor "Even the seed node was restarted — cluster kept serving."
 
             takeaway "Rolling restarts are the standard maintenance procedure." \
                      "With RF=3 and LOCAL_QUORUM, one node can be down at any time." \
-                     "We proved it: ${ROLLING_READS_OK:-10} writes succeeded DURING the restart." \
+                     "Restart non-seed nodes first, seed nodes last." \
+                     "We proved it: ${ROLLING_READS_OK:-15} writes succeeded across all 3 restarts." \
                      "Always wait for UN before restarting the next node."
             ;;
         38)
@@ -2509,7 +2623,7 @@ run_module() {
             echo ""
             log_cmd "docker exec hcd-node1 nodetool tablestats rf_prod.stress_test 2>/dev/null | grep -i bloom | head -n 5 || echo '(bloom filter stats)'"
 
-            takeaway "100 LOCAL_QUORUM writes prove the cluster handles sustained load." \
+            takeaway "200 LOCAL_QUORUM writes prove the cluster handles sustained load." \
                      "In production, use cassandra-stress for 100K+ ops/sec benchmarking." \
                      "Monitor: p99 latency, SSTable count, Bloom filter FP ratio per table."
             ;;
@@ -2850,16 +2964,23 @@ run_module() {
             echo ""
 
             separator
-            echo -e "${C_WHITE}--- Phase 1: Network Partition (isolate node2) ---${C_RESET}"
-            echo "We disconnect node2 from the network to create a partial failure."
+            echo -e "${C_WHITE}--- Phase 1: Create failure conditions ---${C_RESET}"
+            echo "We use TWO isolation techniques to trigger retries:"
+            echo "  1. docker pause hcd-node3 (freezes the process — simulates slow/hung node)"
+            echo "  2. docker network disconnect (isolates node2 — simulates network partition)"
+            echo "Together, these ensure the driver encounters both timeouts and unavailable errors."
             echo ""
-            log_cmd "docker network disconnect brokk_hcd-cluster hcd-node2 2>/dev/null || true"
+            log_cmd "docker pause hcd-node3 2>/dev/null || true"
+            log_cmd "docker network disconnect ${HCD_NETWORK} hcd-node2 2>/dev/null || true"
             if [ "$DRY_RUN" = false ]; then
-                log_info "Waiting 10s for gossip to detect the partition..."
-                sleep 10
+                log_info "Waiting 15s for gossip to detect failures..."
+                sleep 15
             else
-                echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} sleep 10 (gossip detection)"
+                echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} sleep 15 (gossip detection)"
             fi
+
+            log_info "Cluster state with 2 nodes degraded:"
+            log_cmd "docker exec hcd-node1 nodetool status 2>/dev/null | grep -E 'UN|DN' || echo '(status check)'"
 
             separator
             echo -e "${C_WHITE}--- Phase 2: DefaultRetryPolicy ---${C_RESET}"
@@ -2874,13 +2995,15 @@ run_module() {
             log_cmd "docker exec hcd-node1 driver-demo retry-policies --policy custom"
 
             separator
-            echo -e "${C_WHITE}--- Phase 5: Heal the Partition ---${C_RESET}"
-            log_cmd "docker network connect brokk_hcd-cluster hcd-node2 2>/dev/null || true"
+            echo -e "${C_WHITE}--- Phase 5: Heal All Failures ---${C_RESET}"
+            log_cmd "docker unpause hcd-node3 2>/dev/null || true"
+            log_cmd "docker network connect ${HCD_NETWORK} hcd-node2 2>/dev/null || true"
             if [ "$DRY_RUN" = false ]; then
-                log_info "Waiting for node2 to rejoin..."
+                log_info "Waiting for nodes to rejoin..."
                 wait_for_node_un "172.28.0.3" "hcd-node2"
+                wait_for_node_un "172.28.0.4" "hcd-node3"
             else
-                echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} wait_for_node_un 172.28.0.3 hcd-node2"
+                echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} wait_for_node_un (node2 + node3)"
             fi
 
             lookfor "Compare success/failure counts across the three policies."
@@ -2980,15 +3103,17 @@ run_module() {
             echo "|  │  C  Consistency      YES     │    │  C  Consistency   TUNABLE   │    |"
             echo "|  │     (constraints enforced)    │    │     (CL=ONE .. ALL)         │    |"
             echo "|  │                               │    │                             │    |"
-            echo "|  │  I  Isolation        YES     │    │  I  Isolation     LIMITED   │    |"
-            echo "|  │     (SERIALIZABLE level)      │    │     (row-level LWT only)    │    |"
+            echo "|  │  I  Isolation        YES     │    │  I  Isolation     NONE*    │    |"
+            echo "|  │     (SERIALIZABLE level)      │    │     (*row-level via LWT)    │    |"
             echo "|  │                               │    │                             │    |"
             echo "|  │  D  Durability       YES     │    │  D  Durability    YES       │    |"
             echo "|  │     (WAL + fsync)             │    │     (CommitLog + RF=3)      │    |"
             echo "|  └─────────────────────────────┘    └─────────────────────────────┘    |"
             echo "|                                                                         |"
             echo "|  KEY INSIGHT: HCD trades global isolation for horizontal scale.         |"
-            echo "|  You get A·D guaranteed, C is tunable, I is row-level via LWT (Paxos). |"
+            echo "|  You get A·D guaranteed, C is tunable. Isolation does NOT exist in     |"
+            echo "|  the RDBMS sense — no 'isolation levels'. LWT provides compare-and-    |"
+            echo "|  swap (CAS) semantics on a single row, NOT multi-row transactions.     |"
             echo "+-----------------------------------------------------------------------+"
             echo ""
             echo "+-----------------------------------------------------------------------+"
@@ -3026,8 +3151,8 @@ run_module() {
             log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT id, val, WRITETIME(val) as write_timestamp FROM rf_prod.acid_demo;\""
             lookfor "Every cell has a microsecond timestamp. This is how LWW resolves conflicts."
 
-            takeaway "HCD provides Atomicity (per-partition), tunable Consistency, and Durability (CommitLog + RF)." \
-                     "Isolation is row-level only, via LWT. There are NO multi-row or multi-table transactions." \
+            takeaway "HCD guarantees: Atomicity (per-partition), tunable Consistency, and Durability (CommitLog + RF)." \
+                     "There is NO isolation in the RDBMS sense. LWT provides row-level CAS, not transactions." \
                      "This is not a limitation — it is the design that enables linear horizontal scaling." \
                      "Module 12 showed LWT for race conditions. Modules 49-53 show the full pattern toolkit."
             ;;
@@ -3519,7 +3644,7 @@ run_module() {
             echo "|      │   ├── Same partition key ──► UNLOGGED BATCH                     |"
             echo "|      │   └── Different keys     ──► LOGGED BATCH                       |"
             echo "|      │                                                                  |"
-            echo "|      └── Do you need isolation (no partial reads)?                      |"
+            echo "|      └── Do you need cross-partition consistency (no partial state)?    |"
             echo "|          ├── YES ──► Saga Pattern (LWT + CDC + compensation)           |"
             echo "|          └── NO  ──► LOGGED BATCH is sufficient                        |"
             echo "+-----------------------------------------------------------------------+"
@@ -3529,13 +3654,13 @@ run_module() {
             echo "+-----------------------------------------------------------------------+"
             echo "|  PATTERN COMPARISON:                                                   |"
             echo "|                                                                         |"
-            echo "|  Pattern          │ Latency │ Throughput │ Atomicity  │ Isolation      |"
+            echo "|  Pattern          │ Latency │ Throughput │ Atomicity  │ CAS Scope      |"
             echo "|  ─────────────────┼─────────┼────────────┼────────────┼─────────────── |"
             echo "|  CL=LOCAL_QUORUM  │ ~2ms    │ Highest    │ Per-write  │ None           |"
             echo "|  UNLOGGED BATCH   │ ~2ms    │ High       │ Partition  │ None           |"
             echo "|  LOGGED BATCH     │ ~3ms    │ Medium     │ Cross-ptn  │ None           |"
-            echo "|  LWT (Paxos)      │ ~8-15ms │ Low        │ Row-level  │ Row-level      |"
-            echo "|  Saga (LWT+CDC)   │ ~50ms+  │ Lowest     │ Workflow   │ Per-step       |"
+            echo "|  LWT (Paxos)      │ ~8-15ms │ Low        │ Row-level  │ Row-level CAS  |"
+            echo "|  Saga (LWT+CDC)   │ ~50ms+  │ Lowest     │ Workflow   │ Per-step CAS   |"
             echo "+-----------------------------------------------------------------------+"
             echo ""
             pause

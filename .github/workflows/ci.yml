@@ -25,10 +25,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install test dependencies
-        run: pip install pytest pyyaml
-      - name: Run tests
-        run: pytest tests/ -v
+        run: pip install pytest pytest-cov pyyaml
+      - name: Run tests with coverage
+        run: pytest tests/ -v --cov=tests --cov-report=term-missing --cov-report=html:coverage-report
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report/
+          retention-days: 14
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: .pytest_cache/
+          retention-days: 14
 
   docker-validate:
     name: Validate Docker configuration

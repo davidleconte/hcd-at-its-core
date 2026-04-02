@@ -2,6 +2,8 @@
 **Grade: A (Reviewer: Jonathan Ellis)**
 
 > **Executive Summary:** A 54-module interactive demo proving that IBM HCD delivers zero-downtime resilience, automatic self-healing, and tunable consistency across datacenters. Designed for live stakeholder presentations and hands-on engineering onboarding.
+>
+> **Why this matters:** Unplanned database downtime costs enterprises $5,600-$9,000 per minute (Gartner). This demo proves — live, on your laptop — that HCD survives datacenter-level failures with zero data loss and zero application errors, eliminating the single largest source of availability risk in distributed data infrastructure.
 
 | | |
 |---|---|
@@ -100,12 +102,12 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 | 2 | Consistency Levels | EACH_QUORUM fails then recovers after node rejoin |
 | 3 | Node Failures | Interactive: "Will LOCAL_QUORUM succeed?" |
 | 4 | Hinted Handoff | Hints directory fills and drains |
-| 5 | Read Repair | Digest mismatch triggers repair in trace |
+| 5 | Read Repair | Forced divergence (stop/write/restart) + digest repair |
 | 6 | Anti-Entropy Repair | Three-layer defense recap (HH/RR/Repair) |
 | 7 | Token Ring | 256 vnodes per node, ~16.7% ownership |
 | 8 | Write Path Trace | LOCAL_QUORUM mutation forwarding |
 | 9 | Read Path Trace | Digest vs full-data request |
-| 10 | Node Recovery | Hint replay in logs |
+| 10 | Node Recovery | Interactive question + hint replay verification |
 | 11 | Tombstones | Delete markers survive compaction until gc_grace |
 | 12 | Lightweight Transactions | Paxos IF NOT EXISTS prevents double-booking |
 | 13 | Summary & Health Check | Schema agreement, all nodes UN |
@@ -114,12 +116,12 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 | Module | Title | Key Proof |
 |--------|-------|-----------|
 | 14 | Ghost Rack (Double Rack Failure) | Interactive: "Can the cluster serve reads?" |
-| 15 | Schema Disagreement | Gossip resolves version drift |
+| 15 | Schema Disagreement | Interactive question + describecluster + system.peers |
 | 16 | Gossip Protocol | HEARTBEAT, STATUS, DC/RACK live inspection |
-| 17 | Zombie Node (Network Partition) | Interactive: "Can the cluster write?" |
+| 17 | Zombie Node (Network Partition) | Dynamic network name + interactive partition demo |
 | 18 | SAI (Storage Attached Indexing) | Composability: multi-index AND queries in trace |
 | 19 | JSON & Data API | Document patterns with schema enforcement |
-| 20 | Vector Search & AI Readiness | ANN similarity with fallback chain |
+| 20 | Vector Search & AI Readiness | Compatibility guard + ANN similarity with fallback |
 | 21 | Mixed Real-time Operations | INSERT = UPDATE = mutation (no read-before-write) |
 | 22 | Compaction | SSTable merge resolves physical entropy |
 | 23 | Kill an Entire Datacenter (~5-8 min) | Zero data loss, LOCAL_QUORUM from dc2 |
@@ -140,7 +142,7 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 | 34 | Multi-DC Write Conflict | Two strategies: parallel + USING TIMESTAMP |
 | 35 | Adding a Datacenter Live | rebuild + ownership verification |
 | 36 | Backup & Restore | Snapshot, truncate, restore, refresh |
-| 37 | Rolling Restart (~8-10 min) | LOCAL_QUORUM reads succeed throughout |
+| 37 | Rolling Restart (~8-10 min) | All 3 nodes restarted (seed last), 20 writes succeed |
 
 #### Part 4 — Performance (Modules 38-42)
 | Module | Title | Key Proof |
@@ -157,7 +159,7 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 | 43 | Driver Policies | TokenAwarePolicy: coordinator IS the replica |
 | 44 | Speculative Execution | p99 drops to ~p50 with backup requests |
 | 45 | Live DC Failover with Driver (~3-5 min) | Zero application errors during DC kill |
-| 46 | Retry Policies Under Partition | Default vs Fallthrough vs Aggressive |
+| 46 | Retry Policies Under Partition | pause+disconnect dual failure, 3 policies compared |
 | 47 | Demo Summary Dashboard | Visual recap of all 54 modules |
 
 #### Part 6 — Transactions & Patterns (Modules 48-53)
@@ -283,6 +285,8 @@ docker-compose stop hcd-node1 hcd-node4
 
 Read repair is HCD's mechanism for detecting and fixing stale data at read time. The coordinator sends a digest request to replicas alongside the full data request. If digests don't match, a background repair is triggered.
 
+> **Note:** In Cassandra 4.0+, read repair is background and probabilistic — it is NOT guaranteed on every read. To reliably demonstrate it, the script forces divergence by stopping a node, writing, then restarting it.
+
 ```text
 Client ──► Coordinator (node1)
                │
@@ -301,22 +305,17 @@ Client ──► Coordinator (node1)
                     send corrections
 ```
 
-```sql
--- Enable tracing to see read repair in action
-TRACING ON;
-CONSISTENCY QUORUM;
-SELECT * FROM rf_prod.health WHERE id = 1;
-TRACING OFF;
-```
+**Demo steps (guaranteed divergence):**
+1. Stop node3 (`docker-compose stop hcd-node3`)
+2. Write at CL=ONE while node3 is down — node3 misses the write
+3. Restart node3 — it has stale data
+4. Read at CL=ALL — coordinator detects digest mismatch
+5. Verify node3 has the data after background repair
 
 **What to look for in the trace:**
-- "Sending read command" vs "Sending digest request" to different replicas
-- "Digest mismatch" message (if data is stale)
-- "Read-repair mutation" sent to out-of-date replicas
-- Compare `tablestats` read repair counts before and after:
-  ```bash
-  docker exec hcd-node1 nodetool tablestats rf_prod.health | grep -i repair
-  ```
+- "Digest mismatch" or "READ_REPAIR" messages
+- "Read-repair mutation" sent to the stale replica
+- After repair: reading from node3 at CL=ONE returns the correct data
 
 ---
 
@@ -415,6 +414,8 @@ TRACING OFF;
 ---
 
 ## Module 10: Node Recovery - Hint Replay
+
+Interactive question: **"After a node restarts, how does it know what data it missed?"** — pause — answer: other coordinators stored hints during the outage, and gossip triggers automatic replay.
 
 Demonstrates what happens when a downed node returns: pending hints are automatically replayed, synchronizing the node without a full repair.
 
@@ -519,11 +520,16 @@ docker-compose start hcd-node1 hcd-node4
 
 ## Module 15: Schema Disagreement
 
+Interactive question: **"If a node was down during a CREATE TABLE, what happens when it comes back?"** — pause — answer: Gossip propagates schema changes within seconds.
+
 Shows what happens when nodes have different schema versions — typically caused by a schema change that hasn't fully propagated. HCD's gossip protocol detects this and resolves it automatically.
 
 ```bash
-# Check for schema agreement
-docker exec hcd-node1 nodetool describecluster | grep "Schema versions"
+# Check for schema agreement (most precise method)
+docker exec hcd-node1 nodetool describecluster | grep -A 5 "Schema versions"
+
+# Cross-check via system.peers
+docker exec hcd-node1 cqlsh -e "SELECT peer, schema_version FROM system.peers;"
 
 # If disagreement exists, force schema pull
 docker exec hcd-node1 nodetool resetlocalschema
@@ -554,18 +560,21 @@ Interactive question: **"Can the cluster write while a node is partitioned?"** �
 
 Simulates a network partition by disconnecting a node from the Docker network. The node is still running but unreachable — a "zombie" from the cluster's perspective. Gossip will mark it as DOWN.
 
-> **Note:** The Docker network name is prefixed with the project directory name. In this project, it is `brokk_hcd-cluster`.
+> **Note:** The script dynamically resolves the Docker network name via `docker network ls --filter "name=hcd-cluster"`. This works regardless of the project directory name.
 
 ```bash
+# Resolve the network name dynamically
+HCD_NETWORK=$(docker network ls --filter "name=hcd-cluster" --format '{{.Name}}' | head -1)
+
 # Partition node2 from the network
-docker network disconnect brokk_hcd-cluster hcd-node2
+docker network disconnect "$HCD_NETWORK" hcd-node2
 
 # Watch gossip detect the failure (takes ~10-30 seconds)
 docker exec hcd-node1 nodetool status
 # node2 transitions from UN to DN
 
 # Heal the partition
-docker network connect brokk_hcd-cluster hcd-node2
+docker network connect "$HCD_NETWORK" hcd-node2
 # node2 transitions back to UN
 ```
 
@@ -654,7 +663,9 @@ APPLY BATCH;
 HCD leverages SAI to provide native Vector Search capabilities, enabling Retrieval-Augmented Generation (RAG) and semantic search directly within the database.
 
 ### The Vector Data Type
-HCD introduces the `vector<float, n>` type. Unlike standard columns, vector columns are searched using Approximate Nearest Neighbor (ANN) algorithms via SAI.
+HCD introduces the `vector<float, n>` type (requires HCD 1.2+ with vector support, based on the Cassandra 5.0 vector type). Unlike standard columns, vector columns are searched using Approximate Nearest Neighbor (ANN) algorithms via SAI.
+
+> **Compatibility:** If your HCD version doesn't support `vector<float, N>`, the script will detect this and skip the module with a clear message. Check your version with `nodetool version`.
 
 ### Code Examples
 
@@ -1128,24 +1139,31 @@ docker exec hcd-node1 nodetool refresh rf_prod health
 
 ## Module 37: Rolling Restart
 
-Demonstrates zero-downtime node-by-node restart while verifying reads succeed throughout (~8-10 minutes).
+Demonstrates zero-downtime node-by-node restart of ALL nodes (including the seed) while verifying reads and writes succeed throughout (~8-10 minutes).
+
+**Restart order:** Non-seed nodes first (node3, node2), seed node last (node1). Seed nodes should be restarted last because other nodes use seeds for initial bootstrap, but once running, gossip maintains the cluster independently.
 
 ```bash
-# Stop node3, verify reads still work
+# Restart node3 (non-seed), verify writes work
 docker-compose stop hcd-node3
-docker exec hcd-node1 cqlsh -e "CONSISTENCY LOCAL_QUORUM; SELECT count(*) FROM rf_prod.health;"
-
-# Start node3, wait for UN, then restart node2
+docker exec hcd-node1 cqlsh -e "CONSISTENCY LOCAL_QUORUM; INSERT INTO rf_prod.rolling_test ...;"
 docker-compose start hcd-node3
 # Wait for UN...
-docker-compose stop hcd-node2
-docker exec hcd-node1 cqlsh -e "CONSISTENCY LOCAL_QUORUM; SELECT count(*) FROM rf_prod.health;"
 
-# Restore node2
+# Restart node2 (non-seed), verify writes work
+docker-compose stop hcd-node2
+docker exec hcd-node1 cqlsh -e "CONSISTENCY LOCAL_QUORUM; INSERT INTO rf_prod.rolling_test ...;"
 docker-compose start hcd-node2
+# Wait for UN...
+
+# Restart node1 (SEED — last), verify writes work from node2
+docker-compose stop hcd-node1
+docker exec hcd-node2 cqlsh -e "CONSISTENCY LOCAL_QUORUM; INSERT INTO rf_prod.rolling_test ...;"
+docker-compose start hcd-node1
+# Wait for UN...
 ```
 
-**What to look for:** Reads succeed at LOCAL_QUORUM throughout the rolling restart because at least 2 of 3 dc1 replicas are always available.
+**What to look for:** 20 total rows (5 initial + 5 per restart phase). Reads and writes succeed at LOCAL_QUORUM throughout, including while the seed node is down. The cluster is NEVER unavailable.
 
 ---
 
@@ -1223,20 +1241,23 @@ docker exec hcd-node1 nodetool tablestats rf_prod.health | grep -i bloom
 
 Demonstrates role-based access control (RBAC) concepts.
 
+> **Note:** This demo cluster uses `AllowAllAuthenticator` (default). The commands below demonstrate RBAC syntax. In production, enable `PasswordAuthenticator` in `cassandra.yaml` before roles enforce real access control.
+
 ```sql
--- Create roles (requires authenticator/authorizer to be enabled)
-CREATE ROLE IF NOT EXISTS readonly_user WITH PASSWORD = 'readonly123' AND LOGIN = true;
-CREATE ROLE IF NOT EXISTS admin_user WITH PASSWORD = 'admin456' AND LOGIN = true AND SUPERUSER = true;
+-- Create non-login roles (permission groups)
+CREATE ROLE IF NOT EXISTS demo_reader WITH LOGIN = false;
+CREATE ROLE IF NOT EXISTS demo_writer WITH LOGIN = false;
 
 -- Grant permissions
-GRANT SELECT ON KEYSPACE rf_prod TO readonly_user;
-GRANT ALL ON KEYSPACE rf_prod TO admin_user;
+GRANT SELECT ON KEYSPACE rf_prod TO demo_reader;
+GRANT MODIFY ON KEYSPACE rf_prod TO demo_writer;
 
 -- View permissions
-LIST ALL PERMISSIONS OF readonly_user;
+LIST ALL PERMISSIONS OF demo_reader;
+LIST ALL PERMISSIONS OF demo_writer;
 ```
 
-**What to look for:** The readonly user can only SELECT; attempts to INSERT will fail with "Unauthorized". In production, enable `PasswordAuthenticator` and `CassandraAuthorizer` in `cassandra.yaml`, and use TLS for client-to-node and node-to-node encryption.
+**What to look for:** `demo_reader` has SELECT only; `demo_writer` has MODIFY only. In production: enable `PasswordAuthenticator` and `CassandraAuthorizer` in `cassandra.yaml`, create login roles with passwords, and enable TLS for client-to-node and node-to-node encryption.
 
 ---
 
@@ -1453,7 +1474,14 @@ class AggressiveRetryPolicy(RetryPolicy):
         return self.RETHROW, None
 ```
 
-**What to look for:** Compare success/failure counts across the three policies during a network partition. FallthroughRetryPolicy shows more failures (no retries). AggressiveRetryPolicy shows more successes (retries on next host). DefaultRetryPolicy provides a balanced middle ground.
+### Dual-Failure Setup
+The script uses TWO isolation techniques to reliably trigger retries:
+1. `docker pause hcd-node3` — freezes the process (simulates a hung/slow node, causes timeouts)
+2. `docker network disconnect` — isolates node2 (simulates network partition, causes unavailable errors)
+
+This ensures the driver encounters both timeout and unavailable exceptions, making the retry policy behavior clearly visible.
+
+**What to look for:** Compare success/failure counts across the three policies. FallthroughRetryPolicy shows more failures (no retries). AggressiveRetryPolicy shows more successes (retries on next host). DefaultRetryPolicy provides a balanced middle ground.
 
 ---
 
@@ -1475,7 +1503,7 @@ Includes a live cluster health check (`nodetool status`) when running against a 
 Compares the traditional RDBMS ACID model with HCD's consistency model:
 - **Atomicity**: Per-partition only (no multi-partition rollback)
 - **Consistency**: Tunable per query (CL=ONE through ALL)
-- **Isolation**: Row-level only via LWT (Paxos)
+- **Isolation**: None in the RDBMS sense. LWT provides row-level compare-and-swap (CAS), NOT multi-row transactions. There are no "isolation levels" in Cassandra.
 - **Durability**: Full (CommitLog + RF=3)
 
 Demonstrates the consistency spectrum with traced writes at CL=ONE, LOCAL_QUORUM, and LWT, showing increasing latency for increasing guarantees.
@@ -1546,13 +1574,13 @@ The capstone module presents four sections with pauses between each for discussi
 3. **Five golden rules** — actionable defaults
 4. **Use case mapping** — pattern per real-world scenario with module references
 
-| Pattern | Latency | Throughput | Atomicity | Isolation |
+| Pattern | Latency | Throughput | Atomicity | CAS Scope |
 |---------|---------|------------|-----------|-----------|
 | LOCAL_QUORUM | ~2ms | Highest | Per-write | None |
 | UNLOGGED BATCH | ~2ms | High | Partition | None |
 | LOGGED BATCH | ~3ms | Medium | Cross-ptn | None |
-| LWT (Paxos) | ~8-15ms | Low | Row-level | Row-level |
-| Saga (LWT+CDC) | ~50ms+ | Lowest | Workflow | Per-step |
+| LWT (Paxos) | ~8-15ms | Low | Row-level | Row-level CAS |
+| Saga (LWT+CDC) | ~50ms+ | Lowest | Workflow | Per-step CAS |
 
 **Five Golden Rules**: (1) Default to LOCAL_QUORUM, (2) LWT only for race-critical ops, (3) Batches for atomicity not performance, (4) Sagas for business workflows, (5) Design for idempotency first.
 
@@ -1572,6 +1600,19 @@ The highest-impact modules for executive presentations, ordered by audience reac
 | 6 | 2 | EACH_QUORUM fails, LOCAL_QUORUM survives, then EACH_QUORUM recovers | ~3 min |
 | 7 | 12 | Two users, two continents, one seat — LWT prevents double-booking | ~2 min |
 | 8 | 35 | Add a datacenter live and watch data stream in real-time | ~8 min |
+
+### Framing for Business Audiences
+
+Before each wow moment, anchor the demonstration with the audience's own cost of downtime:
+
+> *"What is your per-minute cost of unplanned downtime? Industry benchmarks range from $5,600 to $9,000/min (Gartner). Now multiply that by zero — that's what Module 23 proves."*
+
+| Wow Moment | Business Risk Eliminated | Ask Your Audience |
+|------------|------------------------|-------------------|
+| DC Kill (23) | Unplanned datacenter outage | "How many minutes of downtime did your last DR test show?" |
+| Driver Failover (45) | Application-level single point of failure | "Does your app code change when infrastructure fails?" |
+| Banking (51) | Double-processing in financial transactions | "What is the cost of a duplicate payment in your system?" |
+| LWT Booking (12) | Overselling / double-booking | "How do you prevent two customers from buying the last item?" |
 
 ---
 
