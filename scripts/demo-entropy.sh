@@ -1304,7 +1304,7 @@ run_module() {
                      "Supports equality, range, map key/value, and text analyzer queries."
             ;;
         19)
-            header 19 "JSON & Data API Operations - Deep Dive"
+            header 19 "Native JSON Operations - Deep Dive"
             echo "HCD provides native JSON support, enabling document-database patterns."
             echo "This allows REST APIs to interact with Cassandra using JSON objects"
             echo "while maintaining schema enforcement underneath."
@@ -1360,9 +1360,484 @@ run_module() {
             echo -e "${C_WHITE}--- Part 8: Batch JSON ---${C_RESET}"
             log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; BEGIN BATCH INSERT INTO rf_prod.assets JSON '{\\\"id\\\": \\\"990e8400-e29b-41d4-a716-446655440004\\\", \\\"name\\\": \\\"Batch-1\\\"}'; INSERT INTO rf_prod.assets JSON '{\\\"id\\\": \\\"aa0e8400-e29b-41d4-a716-446655440005\\\", \\\"name\\\": \\\"Batch-2\\\"}'; APPLY BATCH;\""
 
-            takeaway "Native JSON support makes HCD a high-scale JSON store." \
-                     "DEFAULT UNSET is the key feature: surgical partial updates without nulls." \
-                     "This is the foundation for Stargate and other Document APIs."
+            # =====================================================================
+            # ENTERPRISE PATTERNS (Parts 9-13)
+            # =====================================================================
+
+            separator
+            echo -e "${C_WHITE}--- Part 9: UDT + Nested JSON (Document Modeling) ---${C_RESET}"
+            echo "User-Defined Types (UDTs) let you model nested JSON documents with"
+            echo "full schema enforcement. Unlike schemaless document stores, Cassandra"
+            echo "validates every field against the UDT definition — preventing silent"
+            echo "data drift that causes downstream failures months later."
+            echo ""
+
+            log_info "Creating UDTs for structured address and line item types..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"
+                CREATE TYPE IF NOT EXISTS rf_prod.address (
+                    street text,
+                    city text,
+                    state text,
+                    zip text,
+                    country text
+                );\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"
+                CREATE TYPE IF NOT EXISTS rf_prod.line_item (
+                    product_name text,
+                    quantity int,
+                    unit_price decimal
+                );\""
+
+            log_info "Creating orders table with nested UDTs..."
+            echo ""
+            echo "  Table design:"
+            echo "    order_id           uuid            ← partition key"
+            echo "    customer_name      text"
+            echo "    shipping_address   frozen<address> ← nested UDT (one address)"
+            echo "    items              frozen<list<frozen<line_item>>> ← array of UDTs"
+            echo "    order_total        decimal"
+            echo "    status             text"
+            echo ""
+            echo -e "${C_BLUE}Why frozen<>? A frozen collection or UDT is serialized as a single blob.${C_RESET}"
+            echo -e "${C_BLUE}This means you cannot update a single field inside the UDT — you must${C_RESET}"
+            echo -e "${C_BLUE}rewrite the entire value. The trade-off: faster reads and simpler storage${C_RESET}"
+            echo -e "${C_BLUE}in exchange for atomic-only updates.${C_RESET}"
+            echo ""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"
+                CREATE TABLE IF NOT EXISTS rf_prod.orders (
+                    order_id uuid,
+                    customer_name text,
+                    shipping_address frozen<rf_prod.address>,
+                    items frozen<list<frozen<rf_prod.line_item>>>,
+                    order_total decimal,
+                    status text,
+                    PRIMARY KEY (order_id)
+                );\""
+
+            log_info "Inserting Order 1: multi-item order with nested address and line items..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.orders JSON '{
+                \\\"order_id\\\": \\\"bb0e8400-e29b-41d4-a716-446655440010\\\",
+                \\\"customer_name\\\": \\\"Alice Martin\\\",
+                \\\"shipping_address\\\": {
+                    \\\"street\\\": \\\"123 Main St\\\",
+                    \\\"city\\\": \\\"Austin\\\",
+                    \\\"state\\\": \\\"TX\\\",
+                    \\\"zip\\\": \\\"73301\\\",
+                    \\\"country\\\": \\\"US\\\"
+                },
+                \\\"items\\\": [
+                    {\\\"product_name\\\": \\\"SSD 1TB\\\", \\\"quantity\\\": 2, \\\"unit_price\\\": 89.99},
+                    {\\\"product_name\\\": \\\"RAM 32GB\\\", \\\"quantity\\\": 4, \\\"unit_price\\\": 54.50}
+                ],
+                \\\"order_total\\\": 397.98,
+                \\\"status\\\": \\\"confirmed\\\"
+            }';\""
+
+            log_info "Inserting Order 2: single-item shipped order..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.orders JSON '{
+                \\\"order_id\\\": \\\"bb0e8400-e29b-41d4-a716-446655440011\\\",
+                \\\"customer_name\\\": \\\"Bob Chen\\\",
+                \\\"shipping_address\\\": {
+                    \\\"street\\\": \\\"456 Oak Ave\\\",
+                    \\\"city\\\": \\\"Portland\\\",
+                    \\\"state\\\": \\\"OR\\\",
+                    \\\"zip\\\": \\\"97201\\\",
+                    \\\"country\\\": \\\"US\\\"
+                },
+                \\\"items\\\": [
+                    {\\\"product_name\\\": \\\"Monitor 27in\\\", \\\"quantity\\\": 1, \\\"unit_price\\\": 349.00}
+                ],
+                \\\"order_total\\\": 349.00,
+                \\\"status\\\": \\\"shipped\\\"
+            }';\""
+
+            log_info "Reading Order 1 back as JSON — notice the nested structure..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT JSON * FROM rf_prod.orders WHERE order_id = bb0e8400-e29b-41d4-a716-446655440010;\""
+            lookfor "The address and items come back as nested JSON objects/arrays — round-trip fidelity."
+
+            echo ""
+            echo -e "${C_YELLOW}QUESTION: What happens if your JSON includes a field that doesn't exist in the UDT?${C_RESET}"
+            echo -e "${C_YELLOW}For example, adding a 'phone' field to the address UDT?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Cassandra rejects it with an 'Unknown field' error.${C_RESET}"
+            echo -e "${C_GREEN}Unlike MongoDB or DynamoDB, the UDT schema is enforced on every JSON insert.${C_RESET}"
+            echo -e "${C_GREEN}This prevents data drift — you cannot accidentally add fields that your${C_RESET}"
+            echo -e "${C_GREEN}application code doesn't know about.${C_RESET}"
+
+            log_info "Proving schema enforcement — inserting with an invalid UDT field..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.orders JSON '{
+                \\\"order_id\\\": \\\"cc0e8400-e29b-41d4-a716-446655440012\\\",
+                \\\"shipping_address\\\": {\\\"street\\\": \\\"789 Elm\\\", \\\"phone\\\": \\\"555-0100\\\"}
+            }';\" 2>&1 || echo -e '${C_GREEN}>>> Expected error: Unknown field in UDT. Schema enforcement works.${C_RESET}'"
+
+            echo ""
+            echo "+------------------------------------------------------------------------+"
+            echo "|  UDT + JSON: When to Use                                                |"
+            echo "|                                                                          |"
+            echo "|  USE UDTs when:                                                          |"
+            echo "|    - You have well-defined nested structures (addresses, line items)      |"
+            echo "|    - You want schema enforcement on nested data                          |"
+            echo "|    - Your API layer sends/receives JSON (REST, GraphQL)                  |"
+            echo "|                                                                          |"
+            echo "|  AVOID UDTs when:                                                        |"
+            echo "|    - You need to update individual nested fields frequently               |"
+            echo "|      (frozen<> requires full rewrite)                                    |"
+            echo "|    - Your nested structure changes often (UDT ALTER is limited)           |"
+            echo "|    - You have deeply nested documents (>2 levels) — flatten instead       |"
+            echo "+------------------------------------------------------------------------+"
+
+            separator
+            echo -e "${C_WHITE}--- Part 10: JSON Document Versioning (Audit Trail Pattern) ---${C_RESET}"
+            echo "Pattern: append-only versioned documents using timeuuid clustering."
+            echo "Every edit creates a new row — nothing is overwritten, nothing is lost."
+            echo "This is the foundation for audit trails, CMS systems, and configuration"
+            echo "management in regulated industries (finance, healthcare, government)."
+            echo ""
+
+            echo "  Table design:"
+            echo "    doc_id    uuid       ← partition key (groups all versions of one doc)"
+            echo "    version   timeuuid   ← clustering key (orders versions by time)"
+            echo "    author    text       ← who made this change"
+            echo "    content   text       ← the document content at this version"
+            echo "    metadata  text       ← JSON string with change context"
+            echo ""
+            echo -e "${C_BLUE}Why timeuuid instead of timestamp? timeuuid guarantees uniqueness even if${C_RESET}"
+            echo -e "${C_BLUE}two edits happen in the same millisecond. It embeds the timestamp so you${C_RESET}"
+            echo -e "${C_BLUE}get chronological ordering for free.${C_RESET}"
+            echo ""
+
+            log_info "Creating versioned document table..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"
+                CREATE TABLE IF NOT EXISTS rf_prod.document_versions (
+                    doc_id uuid,
+                    version timeuuid,
+                    author text,
+                    content text,
+                    metadata text,
+                    PRIMARY KEY (doc_id, version)
+                ) WITH CLUSTERING ORDER BY (version DESC);\""
+
+            echo ""
+            echo -e "${C_BLUE}CLUSTERING ORDER BY (version DESC): the most recent version is stored${C_RESET}"
+            echo -e "${C_BLUE}first on disk. 'SELECT ... LIMIT 1' returns the latest without scanning${C_RESET}"
+            echo -e "${C_BLUE}past versions — this is a read-optimized pattern.${C_RESET}"
+            echo ""
+
+            log_info "Important: INSERT JSON cannot use CQL functions like now()."
+            echo "The JSON string is parsed as literal values — no function evaluation."
+            echo "For timeuuid generation, use standard INSERT with now()."
+            echo ""
+
+            log_info "Inserting Version 1 (initial draft by alice)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.document_versions (doc_id, version, author, content, metadata) VALUES (dd0e8400-e29b-41d4-a716-446655440020, now(), 'alice', 'Data retention policy: all PII must be encrypted at rest. Backup frequency: daily. Retention period: 7 years.', '{\\\"action\\\": \\\"created\\\", \\\"source\\\": \\\"web-editor\\\"}');\""
+
+            log_info "Inserting Version 2 (revision by bob — section 3 updated)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.document_versions (doc_id, version, author, content, metadata) VALUES (dd0e8400-e29b-41d4-a716-446655440020, now(), 'bob', 'Data retention policy: all PII must be encrypted at rest using AES-256. Backup frequency: daily with cross-region replication. Retention period: 7 years per GDPR Article 17.', '{\\\"action\\\": \\\"updated\\\", \\\"changes\\\": \\\"added-encryption-spec-and-gdpr-reference\\\"}');\""
+
+            log_info "Inserting Version 3 (approved by carol)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.document_versions (doc_id, version, author, content, metadata) VALUES (dd0e8400-e29b-41d4-a716-446655440020, now(), 'alice', 'Data retention policy v3.0 FINAL: all PII must be encrypted at rest using AES-256-GCM. Backup frequency: daily with cross-region replication to eu-west. Retention period: 7 years per GDPR Article 17. Approved by legal.', '{\\\"action\\\": \\\"approved\\\", \\\"approver\\\": \\\"carol\\\", \\\"compliance\\\": \\\"gdpr-art17\\\"}');\""
+
+            echo ""
+            log_info "Query 1: Get the LATEST version only (DESC ordering makes this a single-row read)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT JSON * FROM rf_prod.document_versions WHERE doc_id = dd0e8400-e29b-41d4-a716-446655440020 LIMIT 1;\""
+            lookfor "Only the most recent (approved) version is returned — no full-table scan needed."
+
+            log_info "Query 2: Full document history (all versions, newest first)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT JSON version, author, metadata FROM rf_prod.document_versions WHERE doc_id = dd0e8400-e29b-41d4-a716-446655440020;\""
+            lookfor "All 3 versions in reverse chronological order — a complete audit trail."
+
+            echo ""
+            echo -e "${C_YELLOW}QUESTION: Why use CLUSTERING ORDER BY (version DESC) instead of ASC?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Most queries want the LATEST version. With DESC ordering,${C_RESET}"
+            echo -e "${C_GREEN}'SELECT ... LIMIT 1' returns the newest row without scanning past versions.${C_RESET}"
+            echo -e "${C_GREEN}Cassandra reads sequentially from disk — DESC means the hot data (latest)${C_RESET}"
+            echo -e "${C_GREEN}is at the beginning of the partition, minimizing I/O.${C_RESET}"
+            echo ""
+            echo -e "${C_BLUE}Production tips:${C_RESET}"
+            echo -e "${C_BLUE}  - Add TTL to old versions for automatic cleanup (e.g., keep last 90 days)${C_RESET}"
+            echo -e "${C_BLUE}  - Combine with CDC (Module 25) for real-time change notifications${C_RESET}"
+            echo -e "${C_BLUE}  - Use LWT (Module 48) for optimistic concurrency: 'UPDATE ... IF version = X'${C_RESET}"
+            echo -e "${C_BLUE}  - Partition size limit: ~100MB per doc_id. If a document has thousands of${C_RESET}"
+            echo -e "${C_BLUE}    versions, consider bucketing by month: PRIMARY KEY ((doc_id, month), version)${C_RESET}"
+
+            separator
+            echo -e "${C_WHITE}--- Part 11: Event Sourcing with JSON Payloads ---${C_RESET}"
+            echo "Event sourcing stores domain events (facts) instead of mutable state."
+            echo "Each event is an immutable record of something that happened. You rebuild"
+            echo "the current state by replaying events in order."
+            echo ""
+            echo "+-----------------------------------------------------------------------+"
+            echo "|  Traditional CRUD:        Event Sourcing:                              |"
+            echo "|                                                                        |"
+            echo "|  UPDATE orders             INSERT event: OrderCreated                  |"
+            echo "|  SET status='shipped'      INSERT event: PaymentProcessed              |"
+            echo "|  WHERE id=1;               INSERT event: OrderShipped                  |"
+            echo "|                                                                        |"
+            echo "|  ❌ Previous state lost     ✓ Complete history preserved                |"
+            echo "|  ❌ No audit trail          ✓ Replay to any point in time               |"
+            echo "|  ❌ Single read model       ✓ Derive multiple read models (CQRS)        |"
+            echo "+-----------------------------------------------------------------------+"
+            echo ""
+
+            echo "  Table design:"
+            echo "    aggregate_id  uuid       ← partition key (the entity this event belongs to)"
+            echo "    event_id      timeuuid   ← clustering key (guaranteed chronological order)"
+            echo "    event_type    text       ← discriminator (OrderCreated, ItemAdded, etc.)"
+            echo "    payload       text       ← JSON string with event-specific data"
+            echo ""
+            echo -e "${C_BLUE}Why 'payload' as text (not a UDT)? Each event type has different fields.${C_RESET}"
+            echo -e "${C_BLUE}Storing as a JSON string in a text column gives flexibility — the schema${C_RESET}"
+            echo -e "${C_BLUE}is enforced by the application layer, not the database. This is the one${C_RESET}"
+            echo -e "${C_BLUE}place where schemaless JSON in Cassandra makes design sense.${C_RESET}"
+            echo ""
+
+            log_info "Creating event store table..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"
+                CREATE TABLE IF NOT EXISTS rf_prod.event_store (
+                    aggregate_id uuid,
+                    event_id timeuuid,
+                    event_type text,
+                    payload text,
+                    PRIMARY KEY (aggregate_id, event_id)
+                );\""
+
+            log_info "Writing domain events for Order ee0e8400-...0030..."
+            echo ""
+
+            echo "  Event 1: OrderCreated"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.event_store (aggregate_id, event_id, event_type, payload) VALUES (ee0e8400-e29b-41d4-a716-446655440030, now(), 'OrderCreated', '{\\\"customer\\\": \\\"alice\\\", \\\"items\\\": [{\\\"sku\\\": \\\"SSD-1TB\\\", \\\"qty\\\": 2}], \\\"total\\\": 179.98}');\""
+
+            echo "  Event 2: ItemAdded"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.event_store (aggregate_id, event_id, event_type, payload) VALUES (ee0e8400-e29b-41d4-a716-446655440030, now(), 'ItemAdded', '{\\\"sku\\\": \\\"CABLE-USB-C\\\", \\\"qty\\\": 1, \\\"new_total\\\": 189.97}');\""
+
+            echo "  Event 3: PaymentProcessed"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.event_store (aggregate_id, event_id, event_type, payload) VALUES (ee0e8400-e29b-41d4-a716-446655440030, now(), 'PaymentProcessed', '{\\\"method\\\": \\\"card\\\", \\\"last4\\\": \\\"4242\\\", \\\"amount\\\": 189.97, \\\"txn_id\\\": \\\"txn-98765\\\"}');\""
+
+            echo "  Event 4: OrderShipped"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.event_store (aggregate_id, event_id, event_type, payload) VALUES (ee0e8400-e29b-41d4-a716-446655440030, now(), 'OrderShipped', '{\\\"carrier\\\": \\\"FedEx\\\", \\\"tracking\\\": \\\"FX-7890123456\\\", \\\"estimated_delivery\\\": \\\"2025-01-20\\\"}');\""
+
+            echo ""
+            log_info "Replaying event stream to reconstruct state..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT event_type, payload FROM rf_prod.event_store WHERE aggregate_id = ee0e8400-e29b-41d4-a716-446655440030;\""
+            lookfor "Events in chronological order — replay these to rebuild current state."
+
+            log_info "Querying as full JSON (for API responses)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT JSON * FROM rf_prod.event_store WHERE aggregate_id = ee0e8400-e29b-41d4-a716-446655440030;\""
+
+            echo ""
+            echo -e "${C_YELLOW}QUESTION: In event sourcing, why store events instead of just the current state?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Events are immutable facts — they cannot be disputed or lost.${C_RESET}"
+            echo -e "${C_GREEN}  1. Complete audit trail: who did what, when, and why${C_RESET}"
+            echo -e "${C_GREEN}  2. Time travel: rebuild state at any point by replaying up to that event${C_RESET}"
+            echo -e "${C_GREEN}  3. CQRS: derive multiple read models from the same event stream${C_RESET}"
+            echo -e "${C_GREEN}  4. Debugging: reproduce bugs by replaying the exact event sequence${C_RESET}"
+            echo ""
+            echo "  Event Sourcing + CDC = Reactive Architecture:"
+            echo ""
+            echo "    +---------+     +-------+     +-------+     +-----------+"
+            echo "    |  App    | --> | HCD   | --> | CDC   | --> | Kafka     |"
+            echo "    | (write  |     | event |     | log   |     | topic     |"
+            echo "    |  event) |     | store |     |       |     |           |"
+            echo "    +---------+     +-------+     +-------+     +-----+-----+"
+            echo "                                                      |"
+            echo "                                          +-----------+-----------+"
+            echo "                                          |           |           |"
+            echo "                                    +-----+--+  +----+---+  +----+---+"
+            echo "                                    | Search  |  | Cache  |  | Alerts |"
+            echo "                                    | Index   |  | Update |  | Engine |"
+            echo "                                    +---------+  +--------+  +--------+"
+            echo ""
+            echo -e "${C_BLUE}This is the pattern behind banking ledgers (Module 51), order management,${C_RESET}"
+            echo -e "${C_BLUE}and any system where 'what happened' matters as much as 'what is'.${C_RESET}"
+            echo -e "${C_BLUE}See Module 25 (CDC) for the streaming side of this architecture.${C_RESET}"
+
+            separator
+            echo -e "${C_WHITE}--- Part 12: Bulk JSON & Performance Considerations ---${C_RESET}"
+            echo "When does JSON parsing overhead matter? Let's examine the trade-offs."
+            echo ""
+
+            echo -e "${C_YELLOW}QUESTION: INSERT JSON must parse a JSON string on the coordinator node.${C_RESET}"
+            echo -e "${C_YELLOW}When does this parsing overhead actually matter in production?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Almost never. JSON parsing adds ~0.1ms per row on the coordinator.${C_RESET}"
+            echo -e "${C_GREEN}Network latency + replication typically costs 2-5ms per write. The parsing${C_RESET}"
+            echo -e "${C_GREEN}overhead is <5% of total latency. It only matters at extreme throughput${C_RESET}"
+            echo -e "${C_GREEN}(>100K writes/sec) or with very large JSON documents (>10KB per row).${C_RESET}"
+            echo ""
+
+            log_info "Creating performance test table..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.json_perf (partition_key text, id uuid, data text, PRIMARY KEY (partition_key, id));\""
+
+            log_info "Test 1: Individual INSERT JSON with tracing (single-row latency)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; INSERT INTO rf_prod.json_perf JSON '{\\\"partition_key\\\": \\\"single\\\", \\\"id\\\": \\\"ff0e8400-e29b-41d4-a716-446655440060\\\", \\\"data\\\": \\\"payload-individual-row\\\"}';\" 2>&1 | tail -5"
+            lookfor "Note the 'Request complete' time — this is the server-side latency for one INSERT JSON."
+
+            log_info "Test 2: 5-row UNLOGGED BATCH with INSERT JSON (same partition)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; BEGIN UNLOGGED BATCH
+                INSERT INTO rf_prod.json_perf JSON '{\\\"partition_key\\\": \\\"batch\\\", \\\"id\\\": \\\"ff0e8400-e29b-41d4-a716-446655440070\\\", \\\"data\\\": \\\"batch-row-1\\\"}';
+                INSERT INTO rf_prod.json_perf JSON '{\\\"partition_key\\\": \\\"batch\\\", \\\"id\\\": \\\"ff0e8400-e29b-41d4-a716-446655440071\\\", \\\"data\\\": \\\"batch-row-2\\\"}';
+                INSERT INTO rf_prod.json_perf JSON '{\\\"partition_key\\\": \\\"batch\\\", \\\"id\\\": \\\"ff0e8400-e29b-41d4-a716-446655440072\\\", \\\"data\\\": \\\"batch-row-3\\\"}';
+                INSERT INTO rf_prod.json_perf JSON '{\\\"partition_key\\\": \\\"batch\\\", \\\"id\\\": \\\"ff0e8400-e29b-41d4-a716-446655440073\\\", \\\"data\\\": \\\"batch-row-4\\\"}';
+                INSERT INTO rf_prod.json_perf JSON '{\\\"partition_key\\\": \\\"batch\\\", \\\"id\\\": \\\"ff0e8400-e29b-41d4-a716-446655440074\\\", \\\"data\\\": \\\"batch-row-5\\\"}';
+            APPLY BATCH;\" 2>&1 | tail -5"
+            lookfor "Compare 'Request complete' times: batch has ONE coordinator round-trip for all 5 rows."
+
+            echo ""
+            echo "+------------------------------------------------------------------------+"
+            echo "|  JSON Performance Guide                                                 |"
+            echo "|                                                                          |"
+            echo "|  INSERT method         Round-trips  Use when                             |"
+            echo "|  ─────────────────────────────────────────────────────────────────────── |"
+            echo "|  INSERT JSON           1 per row    REST API, individual writes           |"
+            echo "|  UNLOGGED BATCH+JSON   1 total      Same-partition bulk (≤30 rows)       |"
+            echo "|  Prepared statements   1 per row    Max throughput (skips JSON parsing)   |"
+            echo "|  COPY FROM (CSV/JSON)  bulk         Initial data load, migration          |"
+            echo "|                                                                          |"
+            echo "|  Rule of thumb:                                                           |"
+            echo "|  - <10K writes/sec: INSERT JSON is fine — developer productivity wins    |"
+            echo "|  - >10K writes/sec: switch to prepared statements in your driver         |"
+            echo "|  - Bulk load: always use COPY or sstableloader                           |"
+            echo "+------------------------------------------------------------------------+"
+            echo ""
+            echo -e "${C_BLUE}UNLOGGED BATCH is safe only for same-partition writes. Cross-partition${C_RESET}"
+            echo -e "${C_BLUE}UNLOGGED BATCH can cause partial writes on failure — use LOGGED BATCH${C_RESET}"
+            echo -e "${C_BLUE}or individual writes instead. See Module 49 for the full batch deep dive.${C_RESET}"
+
+            separator
+            echo -e "${C_WHITE}--- Part 13: JSON + SAI Composable Queries ---${C_RESET}"
+            echo "The real power of JSON in HCD emerges when you combine INSERT JSON / SELECT JSON"
+            echo "with SAI indexes. You get document-store ergonomics (JSON in, JSON out) with"
+            echo "relational query power (multi-column filtering without ALLOW FILTERING)."
+            echo ""
+
+            log_info "Creating a product catalog table with SAI indexes..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"
+                CREATE TABLE IF NOT EXISTS rf_prod.catalog (
+                    product_id uuid PRIMARY KEY,
+                    name text,
+                    brand text,
+                    category text,
+                    price decimal,
+                    in_stock boolean,
+                    specs map<text, text>
+                );\""
+
+            log_info "Creating SAI indexes on multiple columns..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE CUSTOM INDEX IF NOT EXISTS ON rf_prod.catalog (brand) USING 'StorageAttachedIndex';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE CUSTOM INDEX IF NOT EXISTS ON rf_prod.catalog (category) USING 'StorageAttachedIndex';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE CUSTOM INDEX IF NOT EXISTS ON rf_prod.catalog (price) USING 'StorageAttachedIndex';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE CUSTOM INDEX IF NOT EXISTS ON rf_prod.catalog (in_stock) USING 'StorageAttachedIndex';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE CUSTOM INDEX IF NOT EXISTS ON rf_prod.catalog (ENTRIES(specs)) USING 'StorageAttachedIndex';\""
+            echo ""
+            echo -e "${C_BLUE}Five SAI indexes on one table — each enables a different query dimension.${C_RESET}"
+            echo -e "${C_BLUE}ENTRIES(specs) indexes every key-value pair in the map, enabling queries${C_RESET}"
+            echo -e "${C_BLUE}like 'WHERE specs[\\\"ram\\\"] = \\\"16GB\\\"' without ALLOW FILTERING.${C_RESET}"
+            echo -e "${C_BLUE}See Module 18 for the full SAI deep dive.${C_RESET}"
+            echo ""
+
+            log_info "Loading 6 products via INSERT JSON..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.catalog JSON '{
+                \\\"product_id\\\": \\\"ab0e8400-e29b-41d4-a716-446655440040\\\",
+                \\\"name\\\": \\\"ThinkPad X1 Carbon Gen 11\\\",
+                \\\"brand\\\": \\\"Lenovo\\\",
+                \\\"category\\\": \\\"laptop\\\",
+                \\\"price\\\": 1299.99,
+                \\\"in_stock\\\": true,
+                \\\"specs\\\": {\\\"cpu\\\": \\\"i7-1365U\\\", \\\"ram\\\": \\\"16GB\\\", \\\"storage\\\": \\\"512GB\\\"}
+            }';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.catalog JSON '{
+                \\\"product_id\\\": \\\"ab0e8400-e29b-41d4-a716-446655440041\\\",
+                \\\"name\\\": \\\"MacBook Air M3\\\",
+                \\\"brand\\\": \\\"Apple\\\",
+                \\\"category\\\": \\\"laptop\\\",
+                \\\"price\\\": 1099.00,
+                \\\"in_stock\\\": true,
+                \\\"specs\\\": {\\\"cpu\\\": \\\"M3\\\", \\\"ram\\\": \\\"8GB\\\", \\\"storage\\\": \\\"256GB\\\"}
+            }';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.catalog JSON '{
+                \\\"product_id\\\": \\\"ab0e8400-e29b-41d4-a716-446655440042\\\",
+                \\\"name\\\": \\\"Galaxy S24 Ultra\\\",
+                \\\"brand\\\": \\\"Samsung\\\",
+                \\\"category\\\": \\\"phone\\\",
+                \\\"price\\\": 1199.99,
+                \\\"in_stock\\\": false,
+                \\\"specs\\\": {\\\"cpu\\\": \\\"Snapdragon 8 Gen 3\\\", \\\"ram\\\": \\\"12GB\\\", \\\"storage\\\": \\\"256GB\\\"}
+            }';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.catalog JSON '{
+                \\\"product_id\\\": \\\"ab0e8400-e29b-41d4-a716-446655440043\\\",
+                \\\"name\\\": \\\"Pixel 8 Pro\\\",
+                \\\"brand\\\": \\\"Google\\\",
+                \\\"category\\\": \\\"phone\\\",
+                \\\"price\\\": 899.00,
+                \\\"in_stock\\\": true,
+                \\\"specs\\\": {\\\"cpu\\\": \\\"Tensor G3\\\", \\\"ram\\\": \\\"12GB\\\", \\\"storage\\\": \\\"128GB\\\"}
+            }';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.catalog JSON '{
+                \\\"product_id\\\": \\\"ab0e8400-e29b-41d4-a716-446655440044\\\",
+                \\\"name\\\": \\\"Dell UltraSharp 32 4K\\\",
+                \\\"brand\\\": \\\"Dell\\\",
+                \\\"category\\\": \\\"monitor\\\",
+                \\\"price\\\": 649.99,
+                \\\"in_stock\\\": true,
+                \\\"specs\\\": {\\\"resolution\\\": \\\"4K\\\", \\\"panel\\\": \\\"IPS\\\", \\\"size\\\": \\\"32in\\\"}
+            }';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.catalog JSON '{
+                \\\"product_id\\\": \\\"ab0e8400-e29b-41d4-a716-446655440045\\\",
+                \\\"name\\\": \\\"iPad Pro M4\\\",
+                \\\"brand\\\": \\\"Apple\\\",
+                \\\"category\\\": \\\"tablet\\\",
+                \\\"price\\\": 1099.00,
+                \\\"in_stock\\\": true,
+                \\\"specs\\\": {\\\"cpu\\\": \\\"M4\\\", \\\"ram\\\": \\\"8GB\\\", \\\"storage\\\": \\\"256GB\\\"}
+            }';\""
+
+            echo ""
+            log_info "Query 1: Laptops under \$1200 (composable SAI: category + price range)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT JSON * FROM rf_prod.catalog WHERE category = 'laptop' AND price < 1200;\""
+            lookfor "Only MacBook Air returned — ThinkPad is \$1299.99, above the threshold."
+
+            log_info "Query 2: All Apple products (brand filter across categories)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT JSON name, category, price FROM rf_prod.catalog WHERE brand = 'Apple';\""
+            lookfor "MacBook Air (laptop) and iPad Pro (tablet) — SAI scans across partition keys."
+
+            log_info "Query 3: In-stock phones (boolean + equality composable filter)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT JSON * FROM rf_prod.catalog WHERE in_stock = true AND category = 'phone';\""
+            lookfor "Only Pixel 8 Pro — Galaxy S24 Ultra is out of stock."
+
+            log_info "Query 4: Products with 12GB RAM (map entry SAI query)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT JSON name, brand, price FROM rf_prod.catalog WHERE specs['ram'] = '12GB';\""
+            lookfor "Galaxy S24 Ultra and Pixel 8 Pro — both have 12GB RAM in their specs map."
+
+            echo ""
+            echo -e "${C_YELLOW}QUESTION: Query 4 filters on specs['ram']. What index type makes this possible?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: The ENTRIES(specs) SAI index. It indexes every key-value pair${C_RESET}"
+            echo -e "${C_GREEN}in the map column. Without it, you'd need ALLOW FILTERING, which performs${C_RESET}"
+            echo -e "${C_GREEN}a full table scan — unacceptable in production with millions of rows.${C_RESET}"
+            echo -e "${C_GREEN}This is the same ENTRIES() index pattern from Module 18.${C_RESET}"
+            echo ""
+            echo "+------------------------------------------------------------------------+"
+            echo "|  The 'JSON API' Pattern: REST-to-Cassandra Pipeline                    |"
+            echo "|                                                                          |"
+            echo "|   Client        App Server           HCD                                |"
+            echo "|   ──────        ──────────           ───                                |"
+            echo "|   POST /products                                                        |"
+            echo "|   {JSON body}  ──> INSERT JSON ──> stored with schema validation        |"
+            echo "|                                                                          |"
+            echo "|   GET /products                                                         |"
+            echo "|   ?brand=Apple ──> SELECT JSON  ──> SAI-powered multi-column filter     |"
+            echo "|   &price<1200      WHERE ...        returns JSON directly                |"
+            echo "|                                                                          |"
+            echo "|  No ORM needed. No serialization layer. JSON in, JSON out.              |"
+            echo "+------------------------------------------------------------------------+"
+
+            takeaway "Native JSON + UDTs = document-store modeling with schema enforcement." \
+                     "Timeuuid clustering enables append-only versioning for audit trails." \
+                     "Event sourcing with JSON payloads + CDC = reactive CQRS architecture." \
+                     "JSON + SAI indexes = document-store ergonomics with relational query power." \
+                     "DEFAULT UNSET remains the key to surgical partial updates without tombstones."
             ;;
         20)
             header 20 "Vector Search & AI Readiness"
