@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     curl \
     ca-certificates \
+    iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv and setup Python environment

@@ -11,9 +11,11 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build container images
+	@test -f hcd-1.2.3-bin.tar.gz || (echo "ERROR: hcd-1.2.3-bin.tar.gz not found in project root. See README.md Prerequisites."; exit 1)
 	$(COMPOSE) build
 
 up: ## Start the 6-node cluster (build if needed)
+	@test -f hcd-1.2.3-bin.tar.gz || (echo "ERROR: hcd-1.2.3-bin.tar.gz not found in project root. See README.md Prerequisites."; exit 1)
 	$(COMPOSE) up -d --build
 
 down: ## Stop the cluster (preserve volumes)

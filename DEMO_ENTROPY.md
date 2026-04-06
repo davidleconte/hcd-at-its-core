@@ -141,7 +141,7 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 | 26 | Audit Logging | Interactive Q + cassandra.yaml pre-check, multi-dir log search |
 | 27 | Guardrails | Interactive Q + batch size warning/failure thresholds |
 | 28 | Data Modeling Anti-Patterns | Interactive Q + 200 rows: hot partition vs bucketed |
-| 29 | Latency Comparison | Side-by-side: CL=ONE vs LQ vs EQ extraction |
+| 29 | Latency Comparison | Side-by-side: CL=ONE vs LQ vs ALL extraction |
 | 30 | Time-Series Data Modeling | Compound keys, TTL, windowed queries |
 | 31 | Compaction Deep Dive | Interactive Q + 4 strategies (STCS/LCS/TWCS/UCS) |
 | 32 | Compression Strategies | Interactive Q + LZ4/Zstd/Snappy comparison |
@@ -982,7 +982,9 @@ INSERT INTO rf_prod.health (id, status) VALUES (202, 'cl-eq');
 TRACING OFF;
 ```
 
-**What to look for:** The demo extracts `Request complete` timing from each trace and displays a side-by-side comparison box showing the latency progression from CL=ONE to EACH_QUORUM. ONE completes in microseconds, LOCAL_QUORUM in low milliseconds, EACH_QUORUM adds WAN round-trip time.
+The demo also traces **reads** at CL=ONE, LOCAL_QUORUM, and ALL to show latency differences:
+
+**What to look for:** The demo extracts `Request complete` timing from each trace and displays a side-by-side comparison box. Writes use EACH_QUORUM (valid for writes, requires quorum in every DC). Reads use ALL (waits for all 6 replicas) since EACH_QUORUM is write-only in Cassandra. ONE completes in microseconds, LOCAL_QUORUM in low milliseconds, ALL/EACH_QUORUM adds WAN round-trip time.
 
 ---
 
