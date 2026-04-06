@@ -216,15 +216,17 @@ make destroy     # or: docker compose down -v
 
 ## Module 0: Introduction & Cluster Status
 
-The opening module verifies the cluster is healthy, introduces the 6-node, 2-DC topology, and presents a 6-part roadmap of the entire demo.
+The opening module verifies the cluster is healthy, introduces the 6-node, 2-DC topology, and presents an 8-part roadmap of the entire demo.
 
-### 6-Part Roadmap
+### 8-Part Roadmap
 - **Part 1 — Foundations** (Modules 0-13): Replication, consistency levels, hinted handoff, read repair, anti-entropy repair
 - **Part 2 — Advanced Failures** (Modules 14-24): Ghost rack, zombie node, network partition, SAI, vector search, DC kill
 - **Part 3 — Operations** (Modules 25-37): CDC, audit logging, guardrails, data modeling, compaction, compression, backup/restore
 - **Part 4 — Performance** (Modules 38-42): Thread pools, repair strategies, stress testing, security, geographic visualization
 - **Part 5 — Driver Policies** (Modules 43-47): Token-aware routing, speculative execution, DC failover, retry policies
 - **Part 6 — Transactions & Patterns** (Modules 48-53): ACID model, batches, LWT, saga patterns, decision framework
+- **Part 7 — Enterprise** (Modules 54-61): HCD Data API, multi-tenant isolation, node decommission, disaster recovery, silent data corruption, cross-service saga, LWT contention, repair deep-dive
+- **Part 8 — Operational Deep-Dives** (Modules 62-71): RBAC, encryption at rest, commitlog crash recovery, hint expiration, dynamic RF change, streaming, materialized views, nodetool ops, cross-DC consistency, bloom filter & cache tuning
 
 ### What You'll Learn
 - How to verify cluster health with `nodetool status`

@@ -70,7 +70,7 @@ Tests use `--dry-run` mode so they don't require a running cluster.
 
 ## Running the Demo
 
-The Entropy & Consistency demo is an interactive, didactic script (54 modules, 0-53) that explains HCD internals through hands-on scenarios.
+The Entropy & Consistency demo is an interactive, didactic script (72 modules, 0-71) that explains HCD internals through hands-on scenarios.
 
 **Review Status:** Grade A (Jonathan Ellis).
 *Focus areas: Entropy resolution, SAI composability, mutation-based write path, multi-DC failover (Module 23), CDC, audit logging, and guardrails.*
@@ -79,7 +79,7 @@ The Entropy & Consistency demo is an interactive, didactic script (54 modules, 0
 # Full interactive demo
 ./scripts/demo-entropy.sh
 
-# Run specific module (0-53)
+# Run specific module (0-71)
 ./scripts/demo-entropy.sh 3
 
 # Non-interactive mode (no pauses)

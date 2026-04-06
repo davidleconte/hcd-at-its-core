@@ -281,6 +281,75 @@ def test_module_53_decision_framework():
         "Module 53 should reference the decision framework"
 
 
+def test_module_54_data_api_content():
+    """Verify module 54 has Data API content."""
+    result = run_demo("--dry-run", "--no-pause", "54")
+    assert result.returncode == 0
+    assert "data api" in result.stdout.lower() or "rest" in result.stdout.lower() \
+        or "8181" in result.stdout, \
+        "Module 54 should reference Data API"
+
+
+def test_module_55_multi_tenant_content():
+    """Verify module 55 has multi-tenant content."""
+    result = run_demo("--dry-run", "--no-pause", "55")
+    assert result.returncode == 0
+    assert "tenant" in result.stdout.lower() or "isolation" in result.stdout.lower(), \
+        "Module 55 should reference multi-tenancy"
+
+
+def test_module_56_decommission_content():
+    """Verify module 56 has node decommission content."""
+    result = run_demo("--dry-run", "--no-pause", "56")
+    assert result.returncode == 0
+    assert "decommission" in result.stdout.lower() or "removenode" in result.stdout.lower(), \
+        "Module 56 should reference decommission"
+
+
+def test_module_57_disaster_recovery_content():
+    """Verify module 57 has disaster recovery content."""
+    result = run_demo("--dry-run", "--no-pause", "57")
+    assert result.returncode == 0
+    assert "snapshot" in result.stdout.lower() or "disaster" in result.stdout.lower() \
+        or "restore" in result.stdout.lower(), \
+        "Module 57 should reference disaster recovery"
+
+
+def test_module_58_corruption_content():
+    """Verify module 58 has silent data corruption content."""
+    result = run_demo("--dry-run", "--no-pause", "58")
+    assert result.returncode == 0
+    assert "corrupt" in result.stdout.lower() or "verify" in result.stdout.lower() \
+        or "scrub" in result.stdout.lower(), \
+        "Module 58 should reference data corruption detection"
+
+
+def test_module_59_cross_service_saga_content():
+    """Verify module 59 has cross-service saga content."""
+    result = run_demo("--dry-run", "--no-pause", "59")
+    assert result.returncode == 0
+    assert "saga" in result.stdout.lower() or "outbox" in result.stdout.lower() \
+        or "compensat" in result.stdout.lower(), \
+        "Module 59 should reference cross-service saga"
+
+
+def test_module_60_lwt_contention_content():
+    """Verify module 60 has LWT contention content."""
+    result = run_demo("--dry-run", "--no-pause", "60")
+    assert result.returncode == 0
+    assert "contention" in result.stdout.lower() or "paxos" in result.stdout.lower(), \
+        "Module 60 should reference LWT contention"
+
+
+def test_module_61_repair_deep_dive_content():
+    """Verify module 61 has repair deep-dive content."""
+    result = run_demo("--dry-run", "--no-pause", "61")
+    assert result.returncode == 0
+    assert "merkle" in result.stdout.lower() or "gc_grace" in result.stdout.lower() \
+        or "zombie" in result.stdout.lower(), \
+        "Module 61 should reference repair deep-dive concepts"
+
+
 def test_module_62_rbac_content():
     """Verify module 62 has RBAC content."""
     result = run_demo("--dry-run", "--no-pause", "62")
