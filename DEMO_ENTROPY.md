@@ -900,7 +900,19 @@ SELECT JSON * FROM rf_prod.catalog WHERE in_stock = true AND category = 'phone';
 
 ---
 
-## Module 20: Vector Search & AI Readiness (SAI Vector)
+## Module 20: JSON Enterprise Patterns
+
+Building on Module 19's JSON fundamentals, this module covers enterprise patterns: UDT-based document modeling with schema-enforced nested structures, append-only versioning using timeuuid clustering keys for audit trails, event sourcing with JSON payloads for CQRS architectures, bulk JSON performance characteristics, and SAI composable queries combining JSON columns with indexed predicates.
+
+**What to look for:** UDT creation enforces field types at the schema level — inserting malformed JSON is rejected. Versioning queries with `LIMIT 1` on timeuuid clustering return the latest version efficiently. Event sourcing inserts use `frozen<map>` payloads that preserve full event state. SAI queries on JSON-populated columns return results without ALLOW FILTERING.
+
+**Takeaway:** Native JSON + UDTs = document-store modeling with schema enforcement. Timeuuid clustering enables append-only versioning for audit trails. Event sourcing with JSON payloads + CDC = reactive CQRS architecture. DEFAULT UNSET remains the key to surgical partial updates without tombstones.
+
+**Key concepts:** User-Defined Types (UDT), frozen types, append-only versioning, event sourcing, CQRS, bulk JSON performance, SAI composable queries on JSON columns.
+
+---
+
+## Module 21: Vector Search & AI Readiness (SAI Vector)
 
 HCD leverages SAI to provide native Vector Search capabilities, enabling Retrieval-Augmented Generation (RAG) and semantic search directly within the database.
 
@@ -947,7 +959,7 @@ The demo inserts 15 documents across 3 semantic clusters (database, AI/ML, netwo
 
 ---
 
-## Module 21: Mixed Real-time Operations (The Mutation Model)
+## Module 22: Mixed Real-time Operations (The Mutation Model)
 
 In HCD, there is no fundamental difference between `INSERT` and `UPDATE` at the storage layer. Both are treated as **Mutations**. This is the key insight that distinguishes HCD from traditional RDBMS.
 
@@ -976,7 +988,7 @@ APPLY BATCH;
 
 ---
 
-## Module 22: Compaction - The Physical Resolution of Entropy
+## Module 23: Compaction - The Physical Resolution of Entropy
 
 Compaction is the background process that merges SSTables, resolves overwritten values by comparing timestamps (LWW), and physically removes data marked with Tombstones once they have exceeded `gc_grace_seconds`.
 
@@ -995,7 +1007,7 @@ docker exec hcd-node1 nodetool cfstats rf_prod.stream
 
 ---
 
-## Module 23: Kill an Entire Datacenter (Multi-DC Failover)
+## Module 24: Kill an Entire Datacenter (Multi-DC Failover)
 
 This is the "wow moment" of the demo (~5-8 minutes). We prove zero-downtime cross-DC failover through a 5-step sequence:
 
@@ -1036,7 +1048,7 @@ INSERT INTO rf_prod.dc_failover (id, msg, written_from) VALUES (21, 'during-outa
 
 ---
 
-## Module 24: Grand Finale - The Self-Healing Database
+## Module 25: Grand Finale - The Self-Healing Database
 
 Three escalating failure scenarios demonstrating HCD's resilience:
 
@@ -1048,7 +1060,7 @@ Three escalating failure scenarios demonstrating HCD's resilience:
 
 ---
 
-## Module 25: CDC (Change Data Capture)
+## Module 26: CDC (Change Data Capture)
 
 CDC captures every mutation as an event for downstream systems. When enabled on a table, every write is recorded to commitlog segments in `/var/lib/cassandra/cdc_raw/`, ready for consumption by event pipelines.
 
@@ -1099,7 +1111,7 @@ docker exec hcd-node1 ls -la /var/lib/cassandra/cdc_raw/
 
 ---
 
-## Module 26: Audit Logging
+## Module 27: Audit Logging
 
 Enterprise audit logging tracks all CQL operations for compliance. HCD can log every SELECT, INSERT, UPDATE, DELETE to a file, with filtering by category, keyspace, or user.
 
@@ -1134,7 +1146,7 @@ docker exec hcd-node1 nodetool disableauditlog
 
 ---
 
-## Module 27: Guardrails
+## Module 28: Guardrails
 
 HCD guardrails prevent common anti-patterns that cause performance degradation or outages in production. They act as safety nets configured via `cassandra.yaml`.
 
@@ -1166,7 +1178,7 @@ APPLY BATCH;
 
 ---
 
-## Module 28: Data Modeling Anti-Patterns
+## Module 29: Data Modeling Anti-Patterns
 
 The #1 mistake in Cassandra/HCD is poor partition key design. A bad key creates "hot partitions" — a single node drowning in traffic while others sit idle.
 
@@ -1197,7 +1209,7 @@ CREATE TABLE rf_prod.good_model (
 
 ---
 
-## Module 29: Latency Comparison
+## Module 30: Latency Comparison
 
 Traces the same write at three consistency levels to show the latency/availability trade-off.
 
@@ -1223,7 +1235,7 @@ The demo also traces **reads** at CL=ONE, LOCAL_QUORUM, and ALL to show latency 
 
 ---
 
-## Module 30: Time-Series Data Modeling
+## Module 31: Time-Series Data Modeling
 
 Demonstrates proper time-series design with compound partition keys, TTL, and windowed queries.
 
@@ -1242,7 +1254,7 @@ CREATE TABLE rf_prod.sensor_data (
 
 ---
 
-## Module 31: Compaction Deep Dive
+## Module 32: Compaction Deep Dive
 
 Creates four tables with different compaction strategies and compares their SSTable behavior.
 
@@ -1266,7 +1278,7 @@ CREATE TABLE rf_prod.compact_ucs  (...) WITH compaction = {'class': 'UnifiedComp
 
 ---
 
-## Module 32: Compression Strategies
+## Module 33: Compression Strategies
 
 Compares on-disk compression algorithms and their trade-offs.
 
@@ -1290,7 +1302,7 @@ CREATE TABLE rf_prod.comp_none   (...) WITH compression = {'enabled': 'false'};
 
 ---
 
-## Module 33: Live Failover Under Load
+## Module 34: Live Failover Under Load
 
 Writes data continuously, kills a node mid-stream, then verifies zero data loss (~5 minutes).
 
@@ -1304,7 +1316,7 @@ Writes data continuously, kills a node mid-stream, then verifies zero data loss 
 
 ---
 
-## Module 34: Multi-DC Write Conflict
+## Module 35: Multi-DC Write Conflict
 
 Writes the same row from both datacenters simultaneously, then shows Last-Write-Wins resolution using two strategies.
 
@@ -1331,7 +1343,7 @@ SELECT val, source, WRITETIME(val) FROM rf_prod.conflict_test WHERE id = 1;
 
 ---
 
-## Module 35: Adding a Datacenter Live
+## Module 36: Adding a Datacenter Live
 
 Demonstrates the full workflow for expanding a cluster with a new datacenter without downtime.
 
@@ -1359,7 +1371,7 @@ docker exec hcd-node1 nodetool cleanup rf_low
 
 ---
 
-## Module 36: Backup & Restore
+## Module 37: Backup & Restore
 
 Demonstrates the snapshot-based backup and restore workflow.
 
@@ -1381,7 +1393,7 @@ docker exec hcd-node1 nodetool refresh rf_prod health
 
 ---
 
-## Module 37: Rolling Restart
+## Module 38: Rolling Restart
 
 Demonstrates zero-downtime node-by-node restart of ALL nodes (including the seed) while verifying reads and writes succeed throughout (~8-10 minutes).
 
@@ -1411,7 +1423,7 @@ docker compose start hcd-node1
 
 ---
 
-## Module 38: Rate Limiting & Thread Pools
+## Module 39: Rate Limiting & Thread Pools
 
 Monitors HCD's internal thread pools and latency histograms to understand resource utilization.
 
@@ -1433,7 +1445,7 @@ docker exec hcd-node1 nodetool proxyhistograms
 
 ---
 
-## Module 39: Repair Strategies
+## Module 40: Repair Strategies
 
 Compares different repair approaches and their trade-offs.
 
@@ -1458,7 +1470,7 @@ docker exec hcd-node1 cqlsh -e "SELECT * FROM system_distributed.repair_history 
 
 ---
 
-## Module 40: Stress Testing
+## Module 41: Stress Testing
 
 Rapid-fire writes (200 rows) with nanosecond timing to observe latency distribution and storage engine behavior under load.
 
@@ -1481,7 +1493,7 @@ docker exec hcd-node1 nodetool tablestats rf_prod.health | grep -i bloom
 
 ---
 
-## Module 41: Security & Access Control
+## Module 42: Security & Access Control
 
 Demonstrates role-based access control (RBAC) concepts.
 
@@ -1505,7 +1517,7 @@ LIST ALL PERMISSIONS OF demo_writer;
 
 ---
 
-## Module 42: Geographic Visualization
+## Module 43: Geographic Visualization
 
 Maps data placement to physical nodes, proving LOCAL_QUORUM avoids WAN round-trips.
 
@@ -1530,7 +1542,7 @@ TRACING OFF;
 
 ---
 
-## Module 43: Driver Policies — The Client-Side of Entropy
+## Module 44: Driver Policies — The Client-Side of Entropy
 
 Until now, every command used `cqlsh` — a single-node CLI tool. In production, applications use the DataStax Python/Java/Go driver with **smart routing policies** that are fundamental to entropy management.
 
@@ -1582,7 +1594,7 @@ print(result.response_future.coordinator_host)  # Shows the owning replica
 
 ---
 
-## Module 44: Speculative Execution — Masking Latency Spikes
+## Module 45: Speculative Execution — Masking Latency Spikes
 
 In a distributed system, any replica can become temporarily slow (compaction, GC pause, disk I/O). Speculative execution sends **backup requests** to mask these latency spikes.
 
@@ -1629,7 +1641,7 @@ cluster = Cluster(
 
 ---
 
-## Module 45: Live DC Failover with Driver
+## Module 46: Live DC Failover with Driver
 
 Module 23 proved zero-downtime failover using `cqlsh` pointed at a dc2 node. In production, **the application never switches nodes manually** — the DataStax driver does it automatically (~3-5 minutes including DC restart).
 
@@ -1672,7 +1684,7 @@ DCAwareRoundRobinPolicy(
 
 ---
 
-## Module 46: Retry Policies Under Partition
+## Module 47: Retry Policies Under Partition
 
 When a node times out or becomes unavailable, the driver's **retry policy** decides what happens next: retry on same host, retry on next host, or throw to the application.
 
@@ -1729,7 +1741,7 @@ This ensures the driver encounters both timeout and unavailable exceptions, maki
 
 ---
 
-## Module 47: Parts 1-5 Checkpoint
+## Module 48: Parts 1-5 Checkpoint
 
 A visual recap of everything covered in the demo, presented as an ASCII dashboard showing:
 
@@ -1742,7 +1754,7 @@ Includes a live cluster health check (`nodetool status`) when running against a 
 
 ---
 
-## Module 48: ACID vs HCD — What 'Transactions' Really Mean Here
+## Module 49: ACID vs HCD — What 'Transactions' Really Mean Here
 
 Compares the traditional RDBMS ACID model with HCD's consistency model:
 - **Atomicity**: Per-partition only (no multi-partition rollback)
@@ -1756,7 +1768,7 @@ Demonstrates the consistency spectrum with traced writes at CL=ONE, LOCAL_QUORUM
 
 ---
 
-## Module 49: LOGGED vs UNLOGGED BATCH — Atomicity Without Isolation
+## Module 50: LOGGED vs UNLOGGED BATCH — Atomicity Without Isolation
 
 Explains the batchlog mechanism for crash-safe cross-partition atomicity:
 - **UNLOGGED BATCH**: For same-partition mutations (atomic at storage layer, no overhead)
@@ -1769,7 +1781,7 @@ Uses tracing to show the "Storing batchlog" and "Removing batchlog" steps in LOG
 
 ---
 
-## Module 50: The Lost Update Problem — Why Read-Modify-Write Needs LWT
+## Module 51: The Lost Update Problem — Why Read-Modify-Write Needs LWT
 
 The most dangerous consistency bug demonstrated live:
 1. **Lost update**: Two concurrent updates to the same account balance — expected 180, actual 130 or 150
@@ -1780,7 +1792,7 @@ The most dangerous consistency bug demonstrated live:
 
 ---
 
-## Module 51: Banking — Instant Payment Between Two Banks
+## Module 52: Banking — Instant Payment Between Two Banks
 
 Real-world cross-partition payment pattern: Alice (Bank A, dc1) pays Bob (Bank B, dc2) $100.
 
@@ -1795,7 +1807,7 @@ Real-world cross-partition payment pattern: Alice (Bank A, dc1) pays Bob (Bank B
 
 ---
 
-## Module 52: Saga Pattern — Supplier/Customer Order Flow
+## Module 53: Saga Pattern — Supplier/Customer Order Flow
 
 Multi-step business workflow with compensating transactions:
 
@@ -1809,7 +1821,7 @@ Each saga step uses LWT with version guards for idempotency. CDC on the orders t
 
 ---
 
-## Module 53: Consistency Decision Framework
+## Module 54: Consistency Decision Framework
 
 The capstone module presents four sections with pauses between each for discussion:
 
@@ -1830,7 +1842,7 @@ The capstone module presents four sections with pauses between each for discussi
 
 ---
 
-## Module 54: HCD Data API (REST/JSON Document Access)
+## Module 55: HCD Data API (REST/JSON Document Access)
 
 Demonstrates the HCD Data API, an HTTP/JSON service running on `http://localhost:8181` that provides document-style CRUD access without CQL. Walks through a 6-step workflow: create namespace, create collection, `insertOne`/`insertMany`, `find` with MongoDB-style filter operators (`$lt`, `$gt`, `$in`), `findOneAndUpdate` with `$set`, and `deleteOne`. A comparison table contrasts the Data API against native CQL across 8 criteria.
 
@@ -1842,7 +1854,7 @@ Demonstrates the HCD Data API, an HTTP/JSON service running on `http://localhost
 
 ---
 
-## Module 55: Multi-Tenant Isolation (End-to-End)
+## Module 56: Multi-Tenant Isolation (End-to-End)
 
 Shows three isolation patterns and implements the recommended approach — `tenant_id` as partition key prefix — with a live 3-tenant demo (`acme-corp`, `globex-inc`, `initech`). Covers SAI index on `status`, partition-level isolation, RBAC syntax for per-tenant roles, guardrail thresholds for noisy-neighbor protection, GDPR Article 17 erasure via `DELETE WHERE tenant_id = X`, and DC-affinity patterns for premium tiers.
 
@@ -1854,7 +1866,7 @@ Shows three isolation patterns and implements the recommended approach — `tena
 
 ---
 
-## Module 56: Node Decommission (Controlled Cluster Shrink)
+## Module 57: Node Decommission (Controlled Cluster Shrink)
 
 Demonstrates graceful node removal: pre-decommission checklist, `nodetool drain` (flushes memtables, stops writes), simulated node stop, and verification that all 20 test rows remain readable at LOCAL_QUORUM. Compares three removal methods: `decommission` (node alive, streams data out), `removenode` (node dead, others re-stream), and `assassinate` (force-remove from gossip, data loss possible). Restarts node6 after the demo.
 
@@ -1866,7 +1878,7 @@ Demonstrates graceful node removal: pre-decommission checklist, `nodetool drain`
 
 ---
 
-## Module 57: Disaster Recovery Runbook
+## Module 58: Disaster Recovery Runbook
 
 Builds a complete 4-level DR procedure: (1) coordinated parallel snapshots across all 6 nodes, (2) TRUNCATE to simulate data loss (count drops to 0), (3) restore by copying SSTable files back + `nodetool refresh` (no restart needed), (4) post-restore validation with `nodetool verify` and `nodetool repair`. Covers DR maturity levels, RPO impact, commitlog archival for PITR, and Medusa for production automation.
 
@@ -1878,7 +1890,7 @@ Builds a complete 4-level DR procedure: (1) coordinated parallel snapshots acros
 
 ---
 
-## Module 58: Silent Data Corruption Detection
+## Module 59: Silent Data Corruption Detection
 
 Injects realistic disk corruption using `dd if=/dev/urandom` to overwrite bytes in an SSTable `Data.db` file. Demonstrates three detection methods: `nodetool verify` (CRC32 scan, non-destructive), `nodetool scrub` (row-level rebuild, discards unreadable rows), and direct read (triggers checksum mismatch). Recovers all corrupted rows via `nodetool repair` using majority-wins Merkle tree comparison across RF=3 replicas.
 
@@ -1890,7 +1902,7 @@ Injects realistic disk corruption using `dd if=/dev/urandom` to overwrite bytes 
 
 ---
 
-## Module 59: Cross-Service Saga (Simulated External Services)
+## Module 60: Cross-Service Saga (Simulated External Services)
 
 Extends the saga pattern from Modules 51-52 across three simulated services (Order, Payment, Shipping) using an HCD-backed state table and outbox table. Runs three scenarios: (1) happy path (5-step lifecycle: CREATED → COMPLETED), (2) payment timeout with compensating cancellation, (3) shipping failure after capture with automatic refund. LWT `IF NOT EXISTS` on every step guarantees idempotency.
 
@@ -1902,7 +1914,7 @@ Extends the saga pattern from Modules 51-52 across three simulated services (Ord
 
 ---
 
-## Module 60: LWT Contention Under Load
+## Module 61: LWT Contention Under Load
 
 Demonstrates Paxos contention: single-writer baseline (10 sequential LWT updates, all succeed) then 5 concurrent writers targeting the same row — only 1 wins per round. Uses `TRACING ON` to compare the 4-phase Paxos round-trip against a normal write, proving 4-10x latency overhead. Covers mitigation strategies and explains why LWT is an anti-pattern for rate limiting.
 
@@ -1914,7 +1926,7 @@ Demonstrates Paxos contention: single-writer baseline (10 sequential LWT updates
 
 ---
 
-## Module 61: Repair Deep-Dive (The Most Critical Ops Procedure)
+## Module 62: Repair Deep-Dive (The Most Critical Ops Procedure)
 
 Goes beyond Module 39's basics to explain why repair is mandatory (zombie row problem), how Merkle trees minimize I/O (O(log N) divergence detection), and demonstrates all four repair modes. Creates deliberate entropy by stopping node3, writing 20 rows it misses, restarting, proving the count mismatch, then running repair to close the gap. Covers `gc_grace_seconds` interaction and Reaper scheduling.
 
@@ -1926,7 +1938,7 @@ Goes beyond Module 39's basics to explain why repair is mandatory (zombie row pr
 
 ---
 
-## Module 62: Live RBAC Demo (Role-Based Access Control)
+## Module 63: Live RBAC Demo (Role-Based Access Control)
 
 Demonstrates HCD's full authentication and authorization stack: creates three roles (`role_read`, `role_write`, `role_admin`) with different privileges, grants granular `SELECT`, `MODIFY`, and `ALL` permissions, shows the permission matrix, and demonstrates role inheritance. Covers three authentication tiers: AllowAllAuthenticator (dev), PasswordAuthenticator (production), and AdvancedAuthenticator (LDAP/OIDC).
 
@@ -1938,7 +1950,7 @@ Demonstrates HCD's full authentication and authorization stack: creates three ro
 
 ---
 
-## Module 63: Encryption at Rest (Transparent Data Encryption)
+## Module 64: Encryption at Rest (Transparent Data Encryption)
 
 Explains TDE's protection scope (SSTables, commitlogs, hints — not in-flight or in-memory), presents the configuration for `AES/CBC/PKCS5Padding` with JKS/JCEKS keystore, and demonstrates encrypted vs unencrypted SSTables via `hexdump` and `strings`. Covers the 5-step online key rotation workflow and typical performance overhead (5-15% latency with AES-NI).
 
@@ -1950,7 +1962,7 @@ Explains TDE's protection scope (SSTables, commitlogs, hints — not in-flight o
 
 ---
 
-## Module 64: Commitlog Durability & Crash Recovery
+## Module 65: Commitlog Durability & Crash Recovery
 
 Traces the full write-path durability flow (commitlog append → memtable → ACK → async flush → segment recycled). Demonstrates crash recovery by writing 20 rows, hard-killing node3 with `docker kill` (SIGKILL), restarting, and proving the row count is identical. Contrasts `commitlog_sync: periodic` (10s window) against `batch` (fsync per write, zero loss, ~2x latency).
 
@@ -1962,7 +1974,7 @@ Traces the full write-path durability flow (commitlog append → memtable → AC
 
 ---
 
-## Module 65: Hint Expiration & Data Gaps
+## Module 66: Hint Expiration & Data Gaps
 
 Demonstrates the complete hinted handoff lifecycle: stops node3, writes 10 rows (hints stored on coordinator), checks pending hints via `nodetool tpstats`, restarts node3, and verifies all 10 rows arrive through automatic hint delivery. Explains the expiry scenario: outages exceeding `max_hint_window_in_ms` (3 hours) create a data gap only repair can fix.
 
@@ -1974,7 +1986,7 @@ Demonstrates the complete hinted handoff lifecycle: stops node3, writes 10 rows 
 
 ---
 
-## Module 66: Dynamic RF Change (ALTER KEYSPACE)
+## Module 67: Dynamic RF Change (ALTER KEYSPACE)
 
 Demonstrates that `ALTER KEYSPACE` is metadata-only — it changes RF in the schema but does NOT stream data. Creates `rf_change_demo` at RF=1, inserts 10 rows, alters to RF=3. Shows `nodetool describering` reports 3 endpoints immediately but new replicas are empty. Proves QUORUM reads can fail or return inconsistent data. Runs repair to populate new replicas.
 
@@ -1986,7 +1998,7 @@ Demonstrates that `ALTER KEYSPACE` is metadata-only — it changes RF in the sch
 
 ---
 
-## Module 67: Streaming & Bootstrap Monitoring
+## Module 68: Streaming & Bootstrap Monitoring
 
 Explains the 8-step bootstrap lifecycle and demonstrates key monitoring commands: `nodetool netstats` (active stream sessions with progress), `nodetool compactionstats` (compaction from received SSTables), `nodetool status` (UJ → UN transitions). Covers stream rate limiting via `stream_throughput_outbound_megabits_per_sec` (200 Mbps default) and dynamic adjustment with `nodetool setstreamthroughput`.
 
@@ -1998,7 +2010,7 @@ Explains the 8-step bootstrap lifecycle and demonstrates key monitoring commands
 
 ---
 
-## Module 68: Materialized Views (Write-Through Consistency)
+## Module 69: Materialized Views (Write-Through Consistency)
 
 Creates `users_base` (partitioned by `user_id`) and MV `users_by_dept` (partitioned by `dept`) to demonstrate write-through semantics. Shows write amplification (every base write triggers an MV mutation), consistency risk (MV can silently lag), and the drastic recovery path (only fix for a drifted MV is DROP + CREATE). Compares MVs against manual denormalization across 6 risk dimensions.
 
@@ -2010,7 +2022,7 @@ Creates `users_base` (partitioned by `user_id`) and MV `users_by_dept` (partitio
 
 ---
 
-## Module 69: Nodetool Ops Deep-Dive (Troubleshooting Toolkit)
+## Module 70: Nodetool Ops Deep-Dive (Troubleshooting Toolkit)
 
 Systematic walkthrough of five essential commands: `tablestats` (per-table p99, SSTable count, bloom FP ratio), `tpstats` (Active/Pending/Blocked/Dropped per stage), `proxyhistograms` (coordinator p50/p99/p999), `compactionstats` (live progress + pending count), `info` (heap, uptime, cache hit ratios). Closes with a troubleshooting decision tree mapping symptoms to diagnostic sequences.
 
@@ -2022,7 +2034,7 @@ Systematic walkthrough of five essential commands: `tablestats` (per-table p99, 
 
 ---
 
-## Module 70: Cross-DC Consistency Window
+## Module 71: Cross-DC Consistency Window
 
 Uses `docker network disconnect` to partition all three dc2 nodes, writes 10 rows in dc1 at LOCAL_QUORUM while dc2 is isolated. Shows dc1 reaches 15 rows while dc2 stays at 5 — this is the consistency window. Reconnects dc2, demonstrates CONSISTENCY ALL triggering read repair to close the gap. Compares consistency levels by DC scope and cross-DC guarantee.
 
@@ -2034,7 +2046,7 @@ Uses `docker network disconnect` to partition all three dc2 nodes, writes 10 row
 
 ---
 
-## Module 71: Bloom Filter & Cache Tuning
+## Module 72: Bloom Filter & Cache Tuning
 
 Creates three tables with different `bloom_filter_fp_chance` values (0.01, 0.1, 0.5), inserts 50 rows, flushes to SSTables, and compares bloom filter sizes via `nodetool tablestats`. Presents the FP trade-off (0.001 = ~15 bits/key, 0.01 = ~10 bits/key, 0.1 = ~5 bits/key). Covers key cache (partition key → disk position, target > 85% hit), row cache (disabled by default), and chunk cache (off-heap, automatic).
 
@@ -2093,7 +2105,7 @@ Before each wow moment, anchor the demonstration with the audience's own cost of
 
 ---
 
-## Module 72: DORA Ransomware — Kill Chain & Infrastructure Setup
+## Module 73: DORA Ransomware — Kill Chain & Infrastructure Setup
 
 Introduces the DORA (EU Regulation 2022/2554) ransomware resilience demo. Presents the ransomware kill chain (7 phases) and defense layers (6 tiers). Interactive DORA quiz (5 questions). Creates `dora_bank` keyspace (RF=3 per DC) with `accounts`, `transactions`, and `audit_log` tables. Inserts 5 sample banking accounts. Starts MinIO with Object Lock support and creates two WORM-enabled buckets (`hcd-snapshots`, `hcd-commitlogs`) with 30-day COMPLIANCE retention.
 
@@ -2103,7 +2115,7 @@ Introduces the DORA (EU Regulation 2022/2554) ransomware resilience demo. Presen
 
 **Key concepts:** DORA Art. 6 (risk framework), Art. 12 (backup policies), WORM storage, Object Lock COMPLIANCE mode, MinIO S3-compatible storage.
 
-## Module 73: Backup to WORM & Integrity Verification
+## Module 74: Backup to WORM & Integrity Verification
 
 Takes `nodetool snapshot` on all 6 nodes, uploads snapshot SSTables to MinIO WORM bucket with SHA-256 checksums. Verifies integrity by downloading and comparing checksums. Attempts to delete from WORM bucket — Object Lock blocks the deletion, proving immutability. Demonstrates that even the MinIO root admin cannot bypass COMPLIANCE retention.
 
@@ -2113,7 +2125,7 @@ Takes `nodetool snapshot` on all 6 nodes, uploads snapshot SSTables to MinIO WOR
 
 **Key concepts:** nodetool snapshot (instant hard-links), SHA-256 integrity verification, Object Lock COMPLIANCE (no override), DORA Art. 12 backup testing requirement.
 
-## Module 74: Commitlog Archiving to WORM
+## Module 75: Commitlog Archiving to WORM
 
 Explains the gap between snapshots: commitlog archiving captures every mutation written after the last snapshot. Configures `commitlog_archiving.properties` on node1. Generates transaction data, flushes commitlogs, and archives segments to MinIO WORM. Verifies Object Lock protects commitlog archives. Two-tier WORM: snapshots (bulk recovery) + commitlogs (incremental PITR).
 
@@ -2123,7 +2135,7 @@ Explains the gap between snapshots: commitlog archiving captures every mutation 
 
 **Key concepts:** Write-ahead log (WAL), commitlog segments (32MB default), Point-in-Time Recovery (PITR), `archive_command`/`restore_command`, RPO calculation.
 
-## Module 75: The Attack Simulation
+## Module 76: The Attack Simulation
 
 Simulates a full ransomware attack in 5 phases: (1) Reconnaissance — enumerate cluster topology and schema, (2) Exfiltration — read and count all data, (3) Destruction — TRUNCATE all 3 tables across all replicas, (4) Snapshot wipe — `clearsnapshot --all` on all 6 nodes, (5) Ransom note — plant message in database. Verifies total data loss (count=0 on all tables, no local snapshots). Then proves WORM backups in MinIO are untouched — Object Lock survived the attack.
 
@@ -2133,7 +2145,7 @@ Simulates a full ransomware attack in 5 phases: (1) Reconnaissance — enumerate
 
 **Key concepts:** TRUNCATE is cluster-wide (multi-DC does NOT protect), clearsnapshot wipes local backups, WORM is the ONLY defense, DORA Art. 12 separation requirement.
 
-## Module 76: Recovery from WORM Backups
+## Module 77: Recovery from WORM Backups
 
 Full recovery procedure: (1) Verify WORM backup integrity (checksums), (2) Download snapshots from MinIO, (3) Restore SSTables (simulates sstableloader), (4) Verify all 5 accounts and 4 transactions recovered, (5) Verify DC2 has consistent data. Drops the ransom note table. Shows recovery timeline aligned with DORA Art. 11 requirements (target RTO < 2 hours).
 
@@ -2143,7 +2155,7 @@ Full recovery procedure: (1) Verify WORM backup integrity (checksums), (2) Downl
 
 **Key concepts:** sstableloader, backup integrity verification, RTO/RPO measurement, cross-DC consistency after restore, DORA Art. 11(6) recovery requirements.
 
-## Module 77: DC Failover Under Attack
+## Module 78: DC Failover Under Attack
 
 Simulates a datacenter-level attack: disconnects all 3 dc1 nodes from the network. Verifies dc2 continues serving reads and writes at LOCAL_QUORUM. Writes new data during the partition. Reconnects dc1 nodes and runs `nodetool repair` to sync missed mutations. Verifies both DCs converge to identical data, including data written during the partition.
 
@@ -2153,7 +2165,7 @@ Simulates a datacenter-level attack: disconnects all 3 dc1 nodes from the networ
 
 **Key concepts:** Network partition, LOCAL_QUORUM (not QUORUM) for DC independence, hinted handoff + repair for reconvergence, RTO < 1 minute for DC failover, DORA Art. 11 business continuity.
 
-## Module 78: DORA Compliance Scorecard & K8s Auto-Healing
+## Module 79: DORA Compliance Scorecard & K8s Auto-Healing
 
 Maps all demo modules to specific DORA articles (Art. 6, 9, 10, 11, 12, 13, 19, 26). Presents Art. 19 incident reporting timeline (4h initial, 72h intermediate, 1 month final) with ransomware-specific examples. Shows 5 recovery paths with RTO/RPO matrix. Introduces K8ssandra CRD for Kubernetes auto-healing: pod killed → auto-recreated in ~5 minutes with zero manual action. Covers Medusa (backup), Reaper (repair), cass-operator (auto-healing), and Data API (REST gateway). Cleanup: drops `dora_bank` keyspace; MinIO container intentionally left running (stop with `docker rm -f minio`).
 
@@ -2163,7 +2175,7 @@ Maps all demo modules to specific DORA articles (Art. 6, 9, 10, 11, 12, 13, 19, 
 
 **Key concepts:** DORA compliance matrix, incident reporting (Art. 19), recovery path selection, K8ssandra operator, Medusa automated backups, Reaper repair scheduling.
 
-## Module 79: Counter Columns
+## Module 80: Counter Columns
 
 Demonstrates counter columns — the only non-idempotent operation in HCD. Creates a `page_views` counter table, performs increments and decrements, and explains the counter shard replication model. Covers why counters must live in dedicated tables, cannot use LWT, and require frequent repair.
 
@@ -2173,7 +2185,7 @@ Demonstrates counter columns — the only non-idempotent operation in HCD. Creat
 
 **Key concepts:** Non-idempotent writes, counter shards, dedicated counter tables, counter repair, CL recommendations for counters.
 
-## Module 80: Prepared Statements & Driver Best Practices
+## Module 81: Prepared Statements & Driver Best Practices
 
 Covers the performance difference between simple and prepared CQL statements (parse-once, execute-many pattern). Demonstrates connection pooling defaults, idempotency flags, and the prepared statement leak anti-pattern. References Modules 43-46 for driver policy details.
 
@@ -2183,7 +2195,7 @@ Covers the performance difference between simple and prepared CQL statements (pa
 
 **Key concepts:** Prepared vs simple statements, bind variables, connection multiplexing (protocol v4), idempotency flags, prepared statement cache leak.
 
-## Module 81: JVM & GC Tuning
+## Module 82: JVM & GC Tuning
 
 Inspects live JVM heap usage and GC statistics. Explains heap sizing rules (max 31 GB for CompressedOops), GC algorithm selection (G1 default, ZGC experimental), and off-heap memory components. Provides a production tuning checklist.
 
@@ -2193,7 +2205,7 @@ Inspects live JVM heap usage and GC statistics. Explains heap sizing rules (max 
 
 **Key concepts:** CompressedOops, G1GC vs ZGC, off-heap memory (bloom filters, compression metadata), page cache, heap sizing rules.
 
-## Module 82: CQL Aggregation & Analytics Functions
+## Module 83: CQL Aggregation & Analytics Functions
 
 Demonstrates COUNT, SUM, AVG, MIN, MAX within a partition (safe) and across partitions (dangerous). Creates a `daily_sales` table and shows GROUP BY with clustering columns. Explains coordinator-side aggregation and why full-table scans are problematic.
 
@@ -2203,7 +2215,7 @@ Demonstrates COUNT, SUM, AVG, MIN, MAX within a partition (safe) and across part
 
 **Key concepts:** Coordinator-side aggregation, partition-scoped queries, GROUP BY restrictions, user-defined aggregates (UDA), Spark integration.
 
-## Module 83: Collection Types Deep-Dive (Frozen vs Non-Frozen)
+## Module 84: Collection Types Deep-Dive (Frozen vs Non-Frozen)
 
 Demonstrates SET, LIST, and MAP collection types with both frozen and non-frozen semantics. Shows partial updates (non-frozen) vs full replacement (frozen), nested collections with frozen inner types, and concurrent set mutation semantics (element-level LWW).
 
