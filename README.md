@@ -228,4 +228,4 @@ The default heap is 512 MB per node within a 1024 MB container memory limit. A 6
 
 ## Review & Feedback
 
-79-module interactive demo in 9 parts covering distributed systems, Cassandra internals, enterprise operations, and DORA ransomware resilience. All modules validated: 79/79 scorecard, 184/184 tests.
+79-module interactive demo in 9 parts covering distributed systems, Cassandra internals, enterprise operations, and DORA ransomware resilience. Validate with `make demo-score` (79/79 modules) and `make test` (all tests green).

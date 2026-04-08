@@ -30,6 +30,9 @@ logs/
 *.bak
 *.tmp
 
+# Working documents (not for distribution)
+IMPLEMENTATION_PLAN.md
+
 # HCD binary (large, not distributable)
 *.tar.gz
 

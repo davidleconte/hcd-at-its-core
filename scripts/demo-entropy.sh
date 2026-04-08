@@ -477,8 +477,8 @@ run_module() {
                 pause
                 echo -e "${C_GREEN}Answers:${C_RESET}"
                 echo -e "${C_GREEN}  Q1=b  RF=3 means 3 copies of each piece of data (see Module 1).${C_RESET}"
-                echo -e "${C_GREEN}  Q2=b  The coordinator stores a hint for later replay (see Module 5).${C_RESET}"
-                echo -e "${C_GREEN}  Q3=b  A tombstone is a delete marker on disk (see Module 9).${C_RESET}"
+                echo -e "${C_GREEN}  Q2=b  The coordinator stores a hint for later replay (see Module 4).${C_RESET}"
+                echo -e "${C_GREEN}  Q3=b  A tombstone is a delete marker on disk (see Module 11).${C_RESET}"
                 echo -e "${C_GREEN}  Q4=b  LOCAL_QUORUM = majority of replicas in the local DC (see Module 2).${C_RESET}"
                 echo -e "${C_GREEN}  Q5=b  CAP: at most 2 of Consistency, Availability, Partition tolerance (see Module 17).${C_RESET}"
                 echo ""
@@ -500,20 +500,20 @@ run_module() {
             echo "  of Apache Cassandra. Everything you learn here applies to open-source"
             echo "  Cassandra, but HCD adds critical enterprise capabilities:"
             echo ""
-            echo "  ┌─────────────────────────────────────────────────────────────────────┐"
-            echo "  │  CAPABILITY              │ APACHE CASSANDRA │ IBM HCD              │"
-            echo "  ├──────────────────────────┼──────────────────┼───────────────────────┤"
-            echo "  │  Core database engine     │       ✓          │       ✓              │"
-            echo "  │  Enterprise support SLAs  │       ✗          │ 24/7 L1-L3           │"
-            echo "  │  FIPS 140-2 encryption    │       ✗          │       ✓              │"
-            echo "  │  FedRAMP / SOC 2 ready    │       ✗          │ Pre-validated        │"
-            echo "  │  LTS release cycle        │   Community      │ 3-year guaranteed    │"
-            echo "  │  CVE patch SLA            │   Best-effort    │ 72-hour critical     │"
-            echo "  │  watsonx integration      │       ✗          │ Native connectors    │"
-            echo "  │  Cloud Pak for Data       │       ✗          │ Certified operator   │"
-            echo "  │  Legal indemnification    │       ✗          │ Enterprise license   │"
-            echo "  │  Certified hardware       │       ✗          │ IBM LinuxONE / Power │"
-            echo "  └─────────────────────────────────────────────────────────────────────┘"
+            echo "  ┌─────────────────────────┬──────────────────┬──────────────────────┐"
+            echo "  │ Capability              │ Apache Cassandra │ IBM HCD              │"
+            echo "  ├─────────────────────────┼──────────────────┼──────────────────────┤"
+            echo "  │ Core database engine    │       Yes        │       Yes            │"
+            echo "  │ Enterprise support SLAs │       No         │ 24/7 L1-L3           │"
+            echo "  │ FIPS 140-2 encryption   │       No         │       Yes            │"
+            echo "  │ FedRAMP / SOC 2 ready   │       No         │ Pre-validated        │"
+            echo "  │ LTS release cycle       │   Community      │ 3-year guaranteed    │"
+            echo "  │ CVE patch SLA           │   Best-effort    │ 72-hour critical     │"
+            echo "  │ watsonx integration     │       No         │ Native connectors    │"
+            echo "  │ Cloud Pak for Data      │       No         │ Certified operator   │"
+            echo "  │ Legal indemnification   │       No         │ Enterprise license   │"
+            echo "  │ Certified hardware      │       No         │ IBM LinuxONE / Power │"
+            echo "  └─────────────────────────┴──────────────────┴──────────────────────┘"
             echo ""
             echo "  In short: HCD is Cassandra with enterprise guardrails, compliance"
             echo "  certifications, and IBM's global support organization behind it."
@@ -691,7 +691,7 @@ run_module() {
             echo "|  BEFORE:  node1 [OK]  node2 [OK]  node3 [OK]   -> 3/3 alive  |"
             echo "|  AFTER:   node1 [OK]  node2 [OK]  node3 [XX]   -> 2/3 alive  |"
             echo "|                                                               |"
-            echo "|  QUORUM = (3/2)+1 = 2 nodes needed. We have 2. Still works!  |"
+            echo "|  QUORUM = floor(3/2)+1 = 2 nodes needed. We have 2. Works!  |"
             echo "+---------------------------------------------------------------+"
             echo ""
 
@@ -1505,8 +1505,9 @@ run_module() {
             echo ""
             echo -e "${C_YELLOW}QUESTION: Why doesn't SAI need a scatter-gather read like 2i (secondary indexes)?${C_RESET}"
             pause
-            echo -e "${C_GREEN}ANSWER: SAI indexes are per-SSTable, not per-node. Each SSTable has its own${C_RESET}"
-            echo -e "${C_GREEN}index segment, so the coordinator only contacts replicas that own the partition.${C_RESET}"
+            echo -e "${C_GREEN}ANSWER: SAI indexes are stored alongside each SSTable on the owning replica,${C_RESET}"
+            echo -e "${C_GREEN}not in a separate shared index table. The coordinator routes to partition-owning${C_RESET}"
+            echo -e "${C_GREEN}replicas, which query their local SAI segments — no cross-node index lookups.${C_RESET}"
             echo ""
 
             log_info "SAI avoids scatter-gather by indexing per-SSTable..."
@@ -1792,9 +1793,9 @@ run_module() {
             echo "|  SET status='shipped'      INSERT event: PaymentProcessed              |"
             echo "|  WHERE id=1;               INSERT event: OrderShipped                  |"
             echo "|                                                                        |"
-            echo "|  ❌ Previous state lost     ✓ Complete history preserved                |"
-            echo "|  ❌ No audit trail          ✓ Replay to any point in time               |"
-            echo "|  ❌ Single read model       ✓ Derive multiple read models (CQRS)        |"
+            echo "|  [X] Previous state lost    [OK] Complete history preserved             |"
+            echo "|  [X] No audit trail         [OK] Replay to any point in time            |"
+            echo "|  [X] Single read model      [OK] Derive multiple read models (CQRS)     |"
             echo "+-----------------------------------------------------------------------+"
             echo ""
 
@@ -2311,9 +2312,9 @@ run_module() {
             lookfor "Compare the SSTable count before vs after. It should decrease."
             lookfor "Space used may also decrease as duplicate/tombstoned data is removed."
 
-            takeaway "HCD uses UnifiedCompactionStrategy (UCS) by default (when available)." \
+            takeaway "HCD 1.2+ / Cassandra 5.0+ uses UnifiedCompactionStrategy (UCS) by default." \
                      "UCS adapts to workload patterns automatically, unlike STCS/LCS/TWCS" \
-                     "which required manual tuning. Fallback: STCS is the Cassandra 4.x default."
+                     "which required manual tuning. Earlier versions (Cassandra 4.x) default to STCS."
             ;;
         23)
             header 23 "Kill an Entire Datacenter (Multi-DC Failover)"
@@ -2547,7 +2548,7 @@ run_module() {
 
             lookfor "All 6 nodes UN. Row count includes data from both acts. Zero data loss."
 
-            takeaway "Cassandra survived single-node kill, full datacenter kill, and recovered via repair." \
+            takeaway "HCD survived single-node kill, full datacenter kill, and recovered via repair." \
                      "Hinted Handoff handles short outages; anti-entropy repair guarantees eventual full consistency." \
                      "This is self-healing at scale — no manual intervention, no data loss."
             ;;
@@ -4133,7 +4134,7 @@ run_module() {
                 echo -e "${C_GREEN}║  STRESS TEST RESULTS (sequential cqlsh):                      ║${C_RESET}"
                 printf "${C_GREEN}║  %-61s ║${C_RESET}\n" "200 LOCAL_QUORUM writes in ${STRESS_DURATION_MS}ms (~${STRESS_DURATION_S}s)"
                 if [ "$STRESS_DURATION_S" -gt 0 ]; then
-                    printf "${C_GREEN}║  %-61s ║${C_RESET}\n" "Demo throughput: ~$((200 / STRESS_DURATION_S)) writes/sec"
+                    printf "${C_GREEN}║  %-61s ║${C_RESET}\n" "Demo throughput: ~$((200 / STRESS_DURATION_S)) ops/sec (docker exec overhead)"
                 fi
                 echo -e "${C_GREEN}║                                                               ║${C_RESET}"
                 echo -e "${C_GREEN}║  Production benchmarks (cassandra-stress, async driver):      ║${C_RESET}"
@@ -4833,7 +4834,7 @@ run_module() {
             echo "    → Resolved by: Saga Pattern (LWT + CDC + Compensating Transactions)"
             echo ""
             echo "  The entropy metaphor holds at every level of the stack."
-            echo "  Cassandra does not eliminate entropy — it manages it systematically."
+            echo "  HCD does not eliminate entropy — it manages it systematically."
             echo ""
 
             takeaway "Entropy is the natural state of distributed systems." \
@@ -5601,7 +5602,7 @@ run_module() {
                 echo -e "${C_GREEN}  Q1=b  1 node — LQ needs 2/3 acks; losing 2 leaves only 1 (Module 2, 33).${C_RESET}"
                 echo -e "${C_GREEN}  Q2=b  The version column in the LWT IF condition is idempotent (Module 51).${C_RESET}"
                 echo -e "${C_GREEN}  Q3=b  TWCS drops entire time windows without tombstones (Module 31).${C_RESET}"
-                echo -e "${C_GREEN}  Q4=b  Repair must run before gc_grace_seconds expires (Module 37, 61).${C_RESET}"
+                echo -e "${C_GREEN}  Q4=b  Repair must run before gc_grace_seconds expires (Module 39, 61).${C_RESET}"
                 echo -e "${C_GREEN}  Q5=b  Speculative execution masks slow-tail replicas at p99 (Module 44).${C_RESET}"
                 echo ""
                 echo -e "${C_GREEN}If you got 4-5: you're ready to operate HCD in production.${C_RESET}"
@@ -6159,23 +6160,21 @@ run_module() {
             separator
             echo -e "${C_WHITE}--- Decommission vs Removenode vs Assassinate ---${C_RESET}"
             echo ""
-            echo "  ┌──────────────────────────────────────────────────────────────────┐"
-            echo "  │  COMPARISON: Three Ways to Remove a Node                          │"
-            echo "  │                                                                   │"
-            echo "  │  Method        │ Node State │ Data Safety │ When to Use           │"
-            echo "  │  ──────────────┼────────────┼─────────────┼────────────────────── │"
-            echo "  │  decommission  │ Alive (UN) │ Safe        │ Planned removal       │"
-            echo "  │                │            │ (streams    │ Node is healthy        │"
-            echo "  │                │            │  data out)  │                        │"
-            echo "  │  ──────────────┼────────────┼─────────────┼────────────────────── │"
-            echo "  │  removenode    │ Dead (DN)  │ Safe        │ Node crashed, won't   │"
-            echo "  │                │            │ (other nodes│ come back. Others      │"
-            echo "  │                │            │  re-stream) │ rebuild among selves   │"
-            echo "  │  ──────────────┼────────────┼─────────────┼────────────────────── │"
-            echo "  │  assassinate   │ Any        │ RISKY       │ Last resort. Forcibly  │"
-            echo "  │                │            │ (no data    │ removes from gossip.   │"
-            echo "  │                │            │  streaming) │ DATA LOSS possible     │"
-            echo "  └──────────────────────────────────────────────────────────────────┘"
+            echo "  ┌───────────────┬────────────┬─────────────┬───────────────────────┐"
+            echo "  │ Method        │ Node State │ Data Safety │ When to Use           │"
+            echo "  ├───────────────┼────────────┼─────────────┼───────────────────────┤"
+            echo "  │ decommission  │ Alive (UN) │ Safe        │ Planned removal.      │"
+            echo "  │               │            │ (streams    │ Node is healthy.      │"
+            echo "  │               │            │  data out)  │                       │"
+            echo "  ├───────────────┼────────────┼─────────────┼───────────────────────┤"
+            echo "  │ removenode    │ Dead (DN)  │ Safe        │ Node crashed, won't   │"
+            echo "  │               │            │ (others     │ come back. Others     │"
+            echo "  │               │            │  re-stream) │ rebuild among selves. │"
+            echo "  ├───────────────┼────────────┼─────────────┼───────────────────────┤"
+            echo "  │ assassinate   │ Any        │ RISKY       │ Last resort. Forcibly │"
+            echo "  │               │            │ (no data    │ removes from gossip.  │"
+            echo "  │               │            │  streaming) │ DATA LOSS possible.   │"
+            echo "  └───────────────┴────────────┴─────────────┴───────────────────────┘"
             echo ""
             echo -e "${C_DIM}Rule of thumb: decommission > removenode > assassinate.${C_RESET}"
             echo -e "${C_DIM}Always use the gentlest method that applies to your situation.${C_RESET}"
@@ -7739,8 +7738,8 @@ run_module() {
             challenge "Check your hint configuration: grep max_hint_window cassandra.yaml" \
                       "Calculate: if your repair runs every 7 days, and max_hint_window is 3 hours," \
                       "any outage > 3 hours creates a gap that only the next repair fixes." \
-                      "(Recall Module 5's hinted handoff demo — hints are the FIRST line of defense.)" \
-                      "(Module 37/61 covers the repair schedule that fills the gap when hints expire.)"
+                      "(Recall Module 4's hinted handoff demo — hints are the FIRST line of defense.)" \
+                      "(Module 39/61 covers the repair schedule that fills the gap when hints expire.)"
             ;;
         66)
             header 66 "Dynamic Replication Factor Change"

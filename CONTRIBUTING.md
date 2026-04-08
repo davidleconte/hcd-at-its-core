@@ -8,11 +8,11 @@
 
 ## Development Workflow
 
-1. Create a feature branch from `main`
+1. Create a feature branch from `master`
 2. Make your changes
 3. Run validation:
    ```bash
-   make test          # 184 tests must pass
+   make test          # all tests must pass
    make demo-score    # 79/79 modules must pass
    make validate      # docker-compose.yml syntax
    make lint          # shellcheck + ruff

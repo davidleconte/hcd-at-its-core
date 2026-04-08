@@ -1786,7 +1786,7 @@ Each scenario and deep-dive section produces DORA compliance evidence. The full 
    - Module 78: DORA Compliance Scorecard & K8s Auto-Healing (article matrix, recovery paths, K8ssandra CRD)
 2. **DORA scorecard** — `--score` mode validates all 79 modules (79/79)
 3. **DEMO_ENTROPY.md** — Part 9 documentation added (overview table + module body sections)
-4. **Tests** — 184/184 tests pass (content tests for modules 72-78 included)
+4. **Tests** — all tests pass (content tests for modules 72-78 included); validate with `make test`
 5. **MinIO WORM** — docker-compose.yml service under `ransomware` profile; `ensure_minio()` helper in script
 6. **Commitlog archiving** — configured via `commitlog_archiving.properties` in module 74
 
