@@ -1,11 +1,11 @@
 # HCD Entropy & Consistency Didactic Demo
-> **Executive Summary:** A 79-module interactive demo proving that IBM HCD delivers zero-downtime resilience, automatic self-healing, and tunable consistency across datacenters — including a full DORA ransomware resilience scenario with WORM-protected backups. Designed for live stakeholder presentations and hands-on engineering onboarding.
+> **Executive Summary:** An 84-module interactive demo proving that IBM HCD delivers zero-downtime resilience, automatic self-healing, and tunable consistency across datacenters — including a full DORA ransomware resilience scenario with WORM-protected backups. Designed for live stakeholder presentations and hands-on engineering onboarding.
 >
 > **Why this matters:** Unplanned database downtime costs enterprises $5,600-$9,000 per minute (Gartner). This demo proves — live, on your laptop — that HCD survives datacenter-level failures with zero data loss and zero application errors, eliminating the single largest source of availability risk in distributed data infrastructure.
 
 | | |
 |---|---|
-| **Modules** | 79 (0-78), organized in 9 parts |
+| **Modules** | 84 (0-83), organized in 10 parts |
 | **Cluster** | 6 nodes, 2 DCs, RF=3 per DC |
 | **Time (interactive)** | ~3-4 hours (full), ~20 min per part |
 | **Time (non-interactive)** | ~60-90 minutes |
@@ -29,7 +29,7 @@
     make demo                        # full interactive demo
     ./scripts/demo-entropy.sh 23     # jump to a specific module
     ./scripts/demo-entropy.sh --dry-run --no-pause  # dry-run, no cluster needed
-    ./scripts/demo-entropy.sh --score              # validate all 79 modules (scorecard)
+    ./scripts/demo-entropy.sh --score              # validate all 84 modules (scorecard)
     ```
     > **Single-module execution:** When jumping to Module N > 1, the script auto-creates the `rf_prod` keyspace via `ensure_rf_prod()` so prerequisites are satisfied.
 
@@ -165,7 +165,7 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 | 44 | Speculative Execution | Interactive Q + p99 drops to ~p50 with backup requests |
 | 45 | Live DC Failover with Driver (~3-5 min) | Zero errors during DC kill, RPO=0/RTO=1-3s |
 | 46 | Retry Policies Under Partition | pause+disconnect dual failure, 3 policies compared |
-| 47 | Demo Summary Dashboard | Visual recap of all 79 modules |
+| 47 | Parts 1-5 Checkpoint | Visual recap of Parts 1-5, key production takeaways |
 
 #### Part 6 — Transactions & Patterns (Modules 48-53)
 | Module | Title | Key Proof |
@@ -214,6 +214,15 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 | 77 | DC Failover Under Attack | dc1 network partition (3 nodes disconnected), dc2 serves at LOCAL_QUORUM, writes during partition, repair reconvergence |
 | 78 | DORA Compliance Scorecard & K8s | DORA article mapping (Art. 6,9-13,19,26), Art. 19 incident reporting timeline, 5 recovery paths matrix, K8ssandra CRD + auto-healing |
 
+#### Part 10 — Production Essentials (Modules 79-83)
+| Module | Title | Key Proof |
+|--------|-------|-----------|
+| 79 | Counter Columns | Non-idempotent counters, dedicated counter tables, increment/decrement, counter repair |
+| 80 | Prepared Statements & Driver Best Practices | Parse-once execute-many, connection pooling, idempotency flags, driver anti-patterns |
+| 81 | JVM & GC Tuning | Heap sizing rules, GC stats, compressed oops, off-heap memory, production tuning checklist |
+| 82 | CQL Aggregation & Analytics Functions | COUNT, SUM, AVG, MIN, MAX, GROUP BY, coordinator-side aggregation, UDA, Spark integration |
+| 83 | Collection Types Deep-Dive | SET, LIST, MAP, frozen vs non-frozen, partial updates, concurrent semantics, nested collections |
+
 ## Cleanup
 
 To stop the cluster and remove data volumes:
@@ -237,6 +246,7 @@ The opening module verifies the cluster is healthy, introduces the 6-node, 2-DC 
 - **Part 7 — Enterprise** (Modules 54-61): HCD Data API, multi-tenant isolation, node decommission, disaster recovery, silent data corruption, cross-service saga, LWT contention, repair deep-dive
 - **Part 8 — Operational Deep-Dives** (Modules 62-71): RBAC, encryption at rest, commitlog crash recovery, hint expiration, dynamic RF change, streaming, materialized views, nodetool ops, cross-DC consistency, bloom filter & cache tuning
 - **Part 9 — DORA Ransomware Resilience** (Modules 72-78): Kill chain, WORM backups (MinIO Object Lock), commitlog archiving, ransomware attack simulation, recovery from WORM, DC failover under attack, DORA compliance scorecard, K8ssandra auto-healing
+- **Part 10 — Production Essentials** (Modules 79-83): Counter columns, prepared statements, JVM/GC tuning, CQL aggregations, collection types deep-dive
 
 ### What You'll Learn
 - How to verify cluster health with `nodetool status`
@@ -1632,11 +1642,11 @@ This ensures the driver encounters both timeout and unavailable exceptions, maki
 
 ---
 
-## Module 47: Demo Summary Dashboard
+## Module 47: Parts 1-5 Checkpoint
 
 A visual recap of everything covered in the demo, presented as an ASCII dashboard showing:
 
-- **Total modules**: 79 (0-78)
+- **Total modules**: 84 (0-83)
 - **What was proved**: Zero data loss during node/DC failure, automatic self-healing, LWW conflict resolution, rolling restart with zero downtime, automatic driver DC failover, p99 latency masking, safe banking transfers, saga compensation
 - **Topics covered**: Core, Indexing (SAI), Write Path, Multi-DC, Ops, Security, Data Modeling, Driver Policies, Transactions (ACID, Batches, LWT, Sagas)
 - **Key production takeaways**: LOCAL_QUORUM, TokenAwarePolicy, used_hosts_per_remote_dc, weekly repair, partition key design, monitoring, PasswordAuthenticator

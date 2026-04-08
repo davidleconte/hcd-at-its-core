@@ -1,5 +1,5 @@
 #!/bin/bash
-# demo-entropy.sh — Interactive 79-module HCD entropy & consistency demo.
+# demo-entropy.sh — Interactive 84-module HCD entropy & consistency demo.
 #
 # Usage:
 #   ./scripts/demo-entropy.sh                     # interactive (full demo)
@@ -90,7 +90,7 @@ pause() {
     fi
 }
 
-readonly TOTAL_MODULES=79
+readonly TOTAL_MODULES=84
 readonly PART_NAMES=(
     "Foundations"        # 0
     "Foundations"        # 1
@@ -171,6 +171,11 @@ readonly PART_NAMES=(
     "DORA Ransomware"    # 76
     "DORA Ransomware"    # 77
     "DORA Ransomware"    # 78
+    "Production"         # 79
+    "Production"         # 80
+    "Production"         # 81
+    "Production"         # 82
+    "Production"         # 83
 )
 
 MODULE_START_TIME=""
@@ -281,9 +286,9 @@ done
 
 # ─── Validation ───────────────────────────────────────────────────
 if [[ -n "$SELECTED_MODULE" ]]; then
-    # Matches 0-9, 10-69, 70-78 (79 total modules: 0-78 inclusive)
-    if ! [[ "$SELECTED_MODULE" =~ ^([0-9]|[1-6][0-9]|7[0-8])$ ]]; then
-        echo "Invalid module number: ${SELECTED_MODULE} (Valid: 0-78)"
+    # Matches 0-9, 10-79, 80-83 (84 total modules: 0-83 inclusive)
+    if ! [[ "$SELECTED_MODULE" =~ ^([0-9]|[1-7][0-9]|8[0-3])$ ]]; then
+        echo "Invalid module number: ${SELECTED_MODULE} (Valid: 0-83)"
         exit 1
     fi
 fi
@@ -553,17 +558,21 @@ run_module() {
             echo -e "${C_BLUE}Every command, every pattern, every failure mode scales linearly.${C_RESET}"
 
             separator
-            echo -e "${C_WHITE}--- Demo Roadmap (79 modules in 9 parts) ---${C_RESET}"
+            echo -e "${C_WHITE}--- Demo Roadmap ---${C_RESET}"
             echo ""
-            echo "  PART 1: Foundations        (Modules 0-13)  RF, CL, failures, token ring, write/read path"
-            echo "  PART 2: Advanced Failures  (Modules 14-24) Rack failures, gossip, SAI, vectors"
-            echo "  PART 3: Operations         (Modules 25-37) CDC, audit, compaction, backup, rolling restart"
-            echo "  PART 4: Performance        (Modules 38-42) Stress testing, rate limiting, thread pools"
-            echo "  PART 5: Driver Policies    (Modules 43-47) Token-aware, speculative, DC failover, retry"
-            echo "  PART 6: Transactions       (Modules 48-53) ACID model, batches, LWT, sagas"
-            echo "  PART 7: Enterprise         (Modules 54-61) Data API, multi-tenancy, DR, decommission"
-            echo "  PART 8: Ops Deep-Dives     (Modules 62-71) RBAC, TDE, crash recovery, MVs, tuning"
-            echo "  PART 9: DORA Ransomware    (Modules 72-78) WORM backups, attack sim, recovery, K8s"
+            echo "  PART 1:  Foundations         (Modules  0-13)  ~30 min  RF, CL, failures, write/read path"
+            echo "  PART 2:  Advanced Failures   (Modules 14-24)  ~35 min  Rack failures, gossip, SAI, vectors"
+            echo "  ────── suggested break ──────"
+            echo "  PART 3:  Operations          (Modules 25-37)  ~40 min  CDC, audit, compaction, backup"
+            echo "  PART 4:  Performance         (Modules 38-42)  ~20 min  Stress testing, thread pools"
+            echo "  PART 5:  Driver Policies     (Modules 43-47)  ~25 min  Token-aware, speculative, failover"
+            echo "  ────── suggested break ──────"
+            echo "  PART 6:  Transactions        (Modules 48-53)  ~25 min  ACID model, batches, LWT, sagas"
+            echo "  PART 7:  Enterprise          (Modules 54-61)  ~30 min  Data API, multi-tenancy, DR"
+            echo "  ────── suggested break ──────"
+            echo "  PART 8:  Ops Deep-Dives      (Modules 62-71)  ~35 min  RBAC, TDE, crash recovery, tuning"
+            echo "  PART 9:  DORA Ransomware     (Modules 72-78)  ~30 min  WORM backups, attack sim, K8s"
+            echo "  PART 10: Production Essentials (Modules 79-83) ~25 min  Counters, JVM, aggregations"
             echo ""
             echo "  You can run any single module: ./demo-entropy.sh 23"
             echo "  Modules > 1 auto-create the rf_prod keyspace if needed."
@@ -1055,15 +1064,29 @@ run_module() {
                      "The digest optimization avoids sending full data from every replica."
             ;;
         10)
-            header 10 "Node Recovery"
-            echo "When a node restarts after being down, it automatically receives"
-            echo "any hints stored by other nodes, and gossip announces its return."
+            header 10 "Node Recovery — The Full Picture"
+            echo "Module 4 showed hints being stored and replayed. Now let's see the"
+            echo "COMPLETE recovery picture: gossip state transitions, hint delivery"
+            echo "metrics, and what happens when hints are NOT enough."
             echo ""
-            echo -e "${C_YELLOW}QUESTION: After a node restarts, how does it know what data it missed?${C_RESET}"
-            echo -e "${C_YELLOW}Think: who stored the missed writes, and what triggers their delivery?${C_RESET}"
+            echo "+---------------------------------------------------------------+"
+            echo "|  Recovery Timeline (what happens when a node comes back):     |"
+            echo "|                                                               |"
+            echo "|  1. Node starts, loads commitlog + SSTables from disk         |"
+            echo "|  2. Gossip: peers detect it, state changes DN -> UN           |"
+            echo "|  3. Hint replay: coordinators send stored hints (~minutes)    |"
+            echo "|  4. Read repair: subsequent reads fix any remaining gaps      |"
+            echo "|  5. Anti-entropy repair: scheduled run ensures 100% sync      |"
+            echo "|                                                               |"
+            echo "|  Layers 3-5 are the THREE-LAYER DEFENSE from Module 6.       |"
+            echo "+---------------------------------------------------------------+"
+            echo ""
+            echo -e "${C_YELLOW}QUESTION: What happens if a node was down longer than max_hint_window${C_RESET}"
+            echo -e "${C_YELLOW}(default 3 hours)? How does data get synchronized?${C_RESET}"
             pause
-            echo -e "${C_GREEN}ANSWER: Other coordinators stored 'hints' during the outage.${C_RESET}"
-            echo -e "${C_GREEN}When gossip announces the node is back, hints are replayed automatically.${C_RESET}"
+            echo -e "${C_GREEN}ANSWER: Hints expire after max_hint_window. For longer outages, only${C_RESET}"
+            echo -e "${C_GREEN}read repair and anti-entropy repair (nodetool repair) can fill the gap.${C_RESET}"
+            echo -e "${C_GREEN}This is why scheduled repair is critical (see Modules 39, 61, 65).${C_RESET}"
             echo ""
 
             log_info "Ensuring nodes 2 and 3 are running..."
@@ -1073,14 +1096,25 @@ run_module() {
                 wait_for_node_un "172.28.0.3" "Node 2" 30 3
             fi
 
+            separator
+            echo -e "${C_WHITE}--- Gossip State ---${C_RESET}"
+            log_info "Checking gossip state for node2 — look for STATUS: NORMAL..."
+            log_cmd "docker exec hcd-node1 nodetool gossipinfo | grep -A 5 '172.28.0.3' | head -8 || echo '(Gossip info for node2)'"
+
+            separator
+            echo -e "${C_WHITE}--- Hint Delivery Metrics ---${C_RESET}"
             log_info "Checking HintedHandoff metrics from thread pool stats..."
             log_cmd "docker exec hcd-node1 nodetool tpstats | grep -i HintedHandoff || echo '(No HintedHandoff activity recorded)'"
 
-            lookfor "The 'Completed' column shows how many hint deliveries have occurred."
-            lookfor "A non-zero value means hints were replayed to returning nodes."
+            log_info "Checking hint file count on node1 (should be 0 after replay)..."
+            log_cmd "docker exec hcd-node1 ls /var/lib/cassandra/hints/ 2>/dev/null | wc -l || echo '0'"
 
-            takeaway "Recovery is automatic: gossip detects the node is back, and" \
-                     "coordinators replay stored hints. No manual intervention required."
+            lookfor "The 'Completed' column shows how many hint deliveries have occurred."
+            lookfor "Hints directory should be empty after successful replay."
+
+            takeaway "Recovery has three phases: commitlog replay (local), hint delivery (peers)," \
+                     "and scheduled repair (background). Module 4 showed hints; this module shows" \
+                     "the full recovery lifecycle. For outages > max_hint_window, repair is essential."
             ;;
         11)
             header 11 "Tombstones & Shadowed Data"
@@ -2268,6 +2302,8 @@ run_module() {
             header 22 "Compaction: The Entropy Cleaner"
             echo "Compaction merges SSTables, resolves overwrites (LWW), and removes"
             echo "expired tombstones. It is the physical resolution of logical entropy."
+            echo -e "${C_DIM}(This module covers compaction basics. Module 31 compares all 4 strategies"
+            echo -e "in depth: STCS, LCS, TWCS, and UCS.)${C_RESET}"
             echo ""
             echo "+------------------------------------------------------------+"
             echo "|  Before Compaction:                                        |"
@@ -3983,6 +4019,8 @@ run_module() {
             header 39 "Repair Strategies"
             echo "Repair ensures all replicas converge to the same data. Different"
             echo "modes trade off speed, network cost, and operational complexity."
+            echo -e "${C_DIM}(This module covers repair modes and scheduling. Module 61 goes deeper"
+            echo -e "into Merkle trees, gc_grace zombie rows, and production scheduling.)${C_RESET}"
             echo ""
             echo "+------------------------------------------------------------------+"
             echo "| Mode            | Scope        | Network | When to Use           |"
@@ -4756,14 +4794,14 @@ run_module() {
                      "The driver + retry policy = your application's entropy absorption layer."
             ;;
         47)
-            header 47 "Demo Summary Dashboard"
+            header 47 "Parts 1-5 Checkpoint"
             echo ""
             echo -e "${C_CYAN}╔══════════════════════════════════════════════════════════════════════╗${C_RESET}"
             echo -e "${C_CYAN}║                    HCD ENTROPY & CONSISTENCY DEMO                   ║${C_RESET}"
-            echo -e "${C_CYAN}║                         SUMMARY DASHBOARD                           ║${C_RESET}"
+            echo -e "${C_CYAN}║                     PARTS 1-5 CHECKPOINT                            ║${C_RESET}"
             echo -e "${C_CYAN}╠══════════════════════════════════════════════════════════════════════╣${C_RESET}"
             echo -e "${C_CYAN}║                                                                    ║${C_RESET}"
-            echo -e "${C_CYAN}║  Modules Completed:  79 (0-78)                                     ║${C_RESET}"
+            echo -e "${C_CYAN}║  Modules Completed:  48 (0-47)                                     ║${C_RESET}"
             echo -e "${C_CYAN}║  Cluster:            6 nodes, 2 DCs, RF=3 per DC                   ║${C_RESET}"
             echo -e "${C_CYAN}║                                                                    ║${C_RESET}"
             echo -e "${C_CYAN}╠══════════════════════════════════════════════════════════════════════╣${C_RESET}"
@@ -9608,6 +9646,382 @@ CLEOF' 2>/dev/null || true
                       "2. Measure RTO/RPO and compare against DORA requirements" \
                       "3. Document the drill results for your competent authority"
             ;;
+
+        # ══════════════════════════════════════════════════════════════
+        # PART 10: Production Essentials (Modules 79-83)
+        # ══════════════════════════════════════════════════════════════
+        79)
+            header 79 "Counter Columns"
+            echo "Counters are the ONLY non-idempotent operation in HCD. Unlike normal"
+            echo "writes (which can be replayed safely), counter increments must never"
+            echo "be replayed — each increment changes the value permanently."
+            echo ""
+            echo "+---------------------------------------------------------------+"
+            echo "|  Normal write:   INSERT x=5  →  replay  →  x=5  (same!)     |"
+            echo "|  Counter:        INCREMENT +1 →  replay  →  +2   (WRONG!)   |"
+            echo "|                                                               |"
+            echo "|  This is why counters have special rules:                     |"
+            echo "|  1. Counter columns MUST be in a dedicated table              |"
+            echo "|  2. Only PRIMARY KEY + counter columns allowed (no mixing)    |"
+            echo "|  3. Cannot use LWT (IF) with counters                         |"
+            echo "|  4. Cannot set a counter to a specific value (only +/-)       |"
+            echo "+---------------------------------------------------------------+"
+            echo ""
+
+            echo -e "${C_YELLOW}QUESTION: Why can't you mix counter and non-counter columns in the same table?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Counter columns use a different internal storage mechanism${C_RESET}"
+            echo -e "${C_GREEN}(counter shards per replica). Mixing would require two incompatible${C_RESET}"
+            echo -e "${C_GREEN}write paths in the same SSTable — HCD forbids this by design.${C_RESET}"
+            echo ""
+
+            ensure_rf_prod
+
+            separator
+            echo -e "${C_WHITE}--- Counter Table & Operations ---${C_RESET}"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.page_views (
+                page_url text,
+                day date,
+                view_count counter,
+                unique_visitors counter,
+                PRIMARY KEY (page_url, day)
+            );\""
+
+            log_info "Incrementing counters..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"UPDATE rf_prod.page_views SET view_count = view_count + 10, unique_visitors = unique_visitors + 3 WHERE page_url = '/products' AND day = '2025-01-15';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"UPDATE rf_prod.page_views SET view_count = view_count + 5, unique_visitors = unique_visitors + 2 WHERE page_url = '/products' AND day = '2025-01-15';\""
+
+            log_info "Reading counter values (should show 15 views, 5 visitors)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT * FROM rf_prod.page_views;\""
+
+            separator
+            echo -e "${C_WHITE}--- Decrement ---${C_RESET}"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"UPDATE rf_prod.page_views SET view_count = view_count - 1 WHERE page_url = '/products' AND day = '2025-01-15';\""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT page_url, day, view_count FROM rf_prod.page_views;\""
+
+            lookfor "view_count should now be 14 (15 - 1)."
+
+            separator
+            echo -e "${C_WHITE}--- Counter Repair ---${C_RESET}"
+            echo "Counters are especially sensitive to replica divergence. Because"
+            echo "increments are non-idempotent, an un-repaired counter can drift"
+            echo "permanently. Always run repair on counter tables more frequently."
+            echo ""
+            echo "  Best practice: nodetool repair -pr <keyspace> on a weekly schedule"
+            echo "  For counter-heavy workloads: consider repair every 24-48 hours"
+
+            takeaway "Counters are the only non-idempotent operation: increment/decrement, never SET." \
+                     "Dedicated tables only (no mixing with regular columns)." \
+                     "No LWT support. Repair frequency is critical for counter accuracy." \
+                     "Use cases: page views, vote counts, rate limiting — NOT financial balances."
+            ;;
+        80)
+            header 80 "Prepared Statements & Driver Best Practices"
+            echo "In production, HOW you talk to HCD matters as much as WHAT you store."
+            echo "The #1 performance mistake: using simple (unprepared) statements."
+            echo ""
+            echo "+---------------------------------------------------------------+"
+            echo "|  Simple Statement (BAD for repeated queries):                 |"
+            echo "|                                                               |"
+            echo "|  Client  ──parse──>  Coordinator  ──execute──>  Result       |"
+            echo "|  Client  ──parse──>  Coordinator  ──execute──>  Result       |"
+            echo "|  (parse overhead on EVERY call: ~1ms per query)              |"
+            echo "|                                                               |"
+            echo "|  Prepared Statement (GOOD):                                  |"
+            echo "|                                                               |"
+            echo "|  Client  ──prepare──> Coordinator  (once, returns ID)        |"
+            echo "|  Client  ──ID+vals──> Coordinator  ──execute──>  Result      |"
+            echo "|  Client  ──ID+vals──> Coordinator  ──execute──>  Result      |"
+            echo "|  (no parse overhead: just bind variables + execute)           |"
+            echo "+---------------------------------------------------------------+"
+            echo ""
+
+            echo -e "${C_YELLOW}QUESTION: What happens if you call session.prepare() on every request?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: The driver caches prepared statements by query string. Calling${C_RESET}"
+            echo -e "${C_GREEN}prepare() repeatedly returns the cached version — no extra round-trip.${C_RESET}"
+            echo -e "${C_GREEN}But it's still bad practice: the hash lookup adds latency. Prepare once${C_RESET}"
+            echo -e "${C_GREEN}at application startup and reuse the PreparedStatement object.${C_RESET}"
+            echo ""
+
+            ensure_rf_prod
+
+            separator
+            echo -e "${C_WHITE}--- CQL Example: Prepared vs Simple ---${C_RESET}"
+            echo "  Simple (what NOT to do in a loop):"
+            echo "    session.execute(\"SELECT * FROM users WHERE id = '\" + userId + \"'\")"
+            echo ""
+            echo "  Prepared (correct pattern):"
+            echo "    stmt = session.prepare(\"SELECT * FROM users WHERE id = ?\")"
+            echo "    session.execute(stmt, [userId])"
+            echo ""
+            echo "  Benefits:"
+            echo "    - Parse once, execute thousands of times"
+            echo "    - Automatic type safety (no CQL injection)"
+            echo "    - Token-aware routing uses the bound partition key"
+            echo ""
+
+            log_info "Demo: comparing simple vs prepared via cqlsh (both work, but drivers differ)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT * FROM rf_prod.health WHERE id = 1;\""
+
+            separator
+            echo -e "${C_WHITE}--- Driver Best Practices Checklist ---${C_RESET}"
+            echo ""
+            echo "  1. Prepare statements at startup, reuse objects"
+            echo "  2. Use TokenAwarePolicy (coordinator = replica, Module 43)"
+            echo "  3. Set LOCAL_QUORUM as default consistency"
+            echo "  4. Enable speculative execution for p99 (Module 44)"
+            echo "  5. Mark idempotent queries: stmt.setIdempotent(true)"
+            echo "     (enables safe retry and speculative execution)"
+            echo "  6. Connection pool: 1 connection per host per DC is usually enough"
+            echo "     (each connection multiplexes ~32K concurrent requests)"
+            echo "  7. Set request timeout to 2-5 seconds (not 0 / infinite)"
+            echo "  8. Use the async API for throughput-critical paths"
+            echo ""
+
+            separator
+            echo -e "${C_WHITE}--- Idempotency Flag ---${C_RESET}"
+            echo "The idempotency flag tells the driver: 'this query is safe to retry.'"
+            echo ""
+            echo "  Idempotent (safe):   INSERT/UPDATE with fixed values"
+            echo "  NON-idempotent:      Counter increments, list appends, LWT"
+            echo ""
+            echo "  When idempotent=true AND speculative execution is enabled:"
+            echo "  → driver sends backup request to another replica after delay"
+            echo "  → first response wins, duplicate is harmless"
+
+            takeaway "Prepare statements once, reuse forever — biggest single optimization." \
+                     "Mark idempotent queries explicitly for safe retry and speculative execution." \
+                     "1 connection per host handles ~32K concurrent requests via multiplexing." \
+                     "See Modules 43-46 for driver policies (TokenAware, speculative, failover, retry)."
+            ;;
+        81)
+            header 81 "JVM & GC Tuning"
+            echo "HCD runs on the JVM. GC pauses directly impact tail latency — a"
+            echo "10-second GC pause looks like a 10-second query timeout to clients."
+            echo "Understanding heap sizing and GC behavior is critical for production."
+            echo ""
+
+            echo -e "${C_YELLOW}QUESTION: Why should the HCD heap never exceed 31 GB?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Above 31 GB, the JVM cannot use Compressed Ordinary Object${C_RESET}"
+            echo -e "${C_GREEN}Pointers (CompressedOops). Object references jump from 4 bytes to 8 bytes,${C_RESET}"
+            echo -e "${C_GREEN}effectively wasting ~30% of heap. A 32 GB heap performs WORSE than 31 GB.${C_RESET}"
+            echo ""
+
+            separator
+            echo -e "${C_WHITE}--- Current JVM Settings ---${C_RESET}"
+            log_info "Reading JVM heap configuration..."
+            log_cmd "docker exec hcd-node1 nodetool info 2>/dev/null | grep -iE 'heap|generation|key cache' || echo '(nodetool info output)'"
+
+            separator
+            echo -e "${C_WHITE}--- GC Statistics ---${C_RESET}"
+            log_cmd "docker exec hcd-node1 nodetool gcstats 2>/dev/null || echo '(GC stats not available — check with: nodetool gcstats)'"
+
+            separator
+            echo -e "${C_WHITE}--- Heap Sizing Rules ---${C_RESET}"
+            echo ""
+            echo "  ┌──────────────────────────────────────────────────────────────┐"
+            echo "  │ Heap Sizing Guidelines                                       │"
+            echo "  ├──────────────────────────────────────────────────────────────┤"
+            echo "  │ Rule 1: MAX heap = min(31 GB, 1/4 of system RAM)            │"
+            echo "  │ Rule 2: MIN heap = MAX heap (avoid resize pauses)            │"
+            echo "  │ Rule 3: Demo uses 512 MB; production: 8-16 GB typical       │"
+            echo "  │ Rule 4: Leave RAM for OS page cache (SSTable reads)          │"
+            echo "  │ Rule 5: Off-heap: memtables, bloom filters, compression      │"
+            echo "  │         buffers — these use native memory, not heap           │"
+            echo "  └──────────────────────────────────────────────────────────────┘"
+            echo ""
+
+            separator
+            echo -e "${C_WHITE}--- GC Algorithm Selection ---${C_RESET}"
+            echo ""
+            echo "  G1GC (default in HCD 1.2+):"
+            echo "    - Best for heaps 8-31 GB"
+            echo "    - Target pause: 200-500ms"
+            echo "    - Set: -XX:MaxGCPauseMillis=500"
+            echo ""
+            echo "  ZGC (Cassandra 5.0+ / experimental):"
+            echo "    - Sub-millisecond pauses"
+            echo "    - Higher CPU overhead"
+            echo "    - Set: -XX:+UseZGC"
+            echo ""
+            echo "  CMS (legacy, avoid for new deployments):"
+            echo "    - Concurrent Mark-Sweep, removed in Java 14+"
+            echo "    - Was default in Cassandra 3.x"
+            echo ""
+
+            separator
+            echo -e "${C_WHITE}--- Production Tuning Checklist ---${C_RESET}"
+            echo ""
+            echo "  [ ] Heap: -Xms and -Xmx set to the SAME value (no resize)"
+            echo "  [ ] CompressedOops: verify with -XX:+PrintCompressedOopsMode"
+            echo "  [ ] GC logging: -Xlog:gc*:file=/var/log/cassandra/gc.log"
+            echo "  [ ] Monitor: p99 GC pause < 500ms (alert if > 1s)"
+            echo "  [ ] Off-heap memtables: memtable_allocation_type: offheap_objects"
+            echo "  [ ] Page cache: leave 50%+ of RAM for OS (SSTable reads)"
+            echo ""
+
+            takeaway "Heap sizing: max 31 GB (CompressedOops boundary). Set -Xms = -Xmx." \
+                     "G1GC is the default; ZGC offers sub-ms pauses at higher CPU cost." \
+                     "Leave RAM for page cache — HCD uses mmap for SSTable reads." \
+                     "Monitor GC pauses: > 1 second = client timeouts. Use nodetool gcstats."
+            ;;
+        82)
+            header 82 "CQL Aggregation & Analytics Functions"
+            echo "CQL supports server-side aggregation functions, but they behave very"
+            echo "differently from SQL. Understanding their limitations prevents both"
+            echo "performance disasters and incorrect results."
+            echo ""
+
+            echo -e "${C_YELLOW}QUESTION: Why does SELECT count(*) FROM large_table trigger a warning?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: It's a full-table scan. The coordinator must contact ALL replicas${C_RESET}"
+            echo -e "${C_GREEN}for ALL partitions, collect every row, and count them. On a 1TB table,${C_RESET}"
+            echo -e "${C_GREEN}this can take minutes and consume significant memory. Cassandra warns${C_RESET}"
+            echo -e "${C_GREEN}you via guardrails (Module 27) or query timeout.${C_RESET}"
+            echo ""
+
+            ensure_rf_prod
+
+            separator
+            echo -e "${C_WHITE}--- Aggregation Demo ---${C_RESET}"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.sales (
+                region text,
+                month text,
+                product text,
+                revenue decimal,
+                quantity int,
+                PRIMARY KEY (region, month, product)
+            );\""
+
+            log_info "Inserting sample sales data..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"
+                INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('us-east', '2025-01', 'widget', 1500.00, 30);
+                INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('us-east', '2025-02', 'widget', 2100.00, 42);
+                INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('us-east', '2025-01', 'gadget', 800.00, 16);
+                INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('eu-west', '2025-01', 'widget', 1200.00, 24);
+                INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('eu-west', '2025-02', 'gadget', 950.00, 19);
+            \""
+
+            separator
+            echo -e "${C_WHITE}--- Built-in Aggregates ---${C_RESET}"
+            log_info "COUNT, SUM, AVG within a single partition (efficient)..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT count(*), sum(revenue), avg(revenue), min(quantity), max(quantity) FROM rf_prod.sales WHERE region = 'us-east';\""
+
+            separator
+            echo -e "${C_WHITE}--- Cross-Partition Aggregation (use with caution) ---${C_RESET}"
+            log_info "Full-table count — this scans ALL partitions..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"SELECT count(*) FROM rf_prod.sales;\""
+
+            separator
+            echo -e "${C_WHITE}--- Safe Aggregation Patterns ---${C_RESET}"
+            echo ""
+            echo "  SAFE (within a partition):"
+            echo "    SELECT count(*) FROM sales WHERE region = 'us-east'"
+            echo "    → contacts only the 3 replicas that own 'us-east'"
+            echo ""
+            echo "  DANGEROUS (cross-partition):"
+            echo "    SELECT count(*) FROM sales"
+            echo "    → coordinator-side aggregation across ALL partitions"
+            echo "    → for large tables: use Spark, or maintain a counter table"
+            echo ""
+            echo "  PATTERN: Pre-aggregate with counters or materialized views"
+            echo "    UPDATE region_stats SET total_revenue = total_revenue + ?"
+            echo "    WHERE region = ? AND month = ?"
+
+            takeaway "CQL aggregates work best WITHIN a single partition (efficient, bounded)." \
+                     "Cross-partition aggregates are full-table scans — avoid in production." \
+                     "For analytics: pre-aggregate with counter tables, or use Apache Spark." \
+                     "Available functions: COUNT, SUM, AVG, MIN, MAX, plus user-defined aggregates (UDA)."
+            ;;
+        83)
+            header 83 "Collection Types Deep-Dive (Frozen vs Non-Frozen)"
+            echo "CQL offers three collection types: SET, LIST, and MAP. Each has"
+            echo "different update semantics, and the 'frozen' modifier fundamentally"
+            echo "changes how they are stored and updated."
+            echo ""
+            echo "+---------------------------------------------------------------+"
+            echo "|  Type  │ Ordered? │ Unique? │ Best For                        |"
+            echo "|--------│----------│---------│---------------------------------|"
+            echo "|  SET   │ Sorted   │ Yes     │ Tags, permissions, labels       |"
+            echo "|  LIST  │ Ordered  │ No      │ Event history, ordered items    |"
+            echo "|  MAP   │ By key   │ Keys    │ Attributes, metadata, settings  |"
+            echo "+---------------------------------------------------------------+"
+            echo ""
+
+            echo -e "${C_YELLOW}QUESTION: What happens when two clients concurrently add to the same${C_RESET}"
+            echo -e "${C_YELLOW}non-frozen SET from different nodes?${C_RESET}"
+            pause
+            echo -e "${C_GREEN}ANSWER: Both additions survive! Non-frozen sets use LWW at the element${C_RESET}"
+            echo -e "${C_GREEN}level. Each element has its own timestamp, so concurrent adds produce a${C_RESET}"
+            echo -e "${C_GREEN}union. This is safe for 'add' operations but can cause surprises with${C_RESET}"
+            echo -e "${C_GREEN}'remove' if the remove and add happen concurrently (add wins if newer).${C_RESET}"
+            echo ""
+
+            ensure_rf_prod
+
+            separator
+            echo -e "${C_WHITE}--- Non-Frozen Collections (partial updates) ---${C_RESET}"
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.user_prefs (
+                user_id uuid PRIMARY KEY,
+                tags set<text>,
+                history list<text>,
+                settings map<text, text>
+            );\""
+
+            log_info "Inserting initial data..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.user_prefs (user_id, tags, history, settings)
+                VALUES (uuid(), {'admin', 'active'}, ['login', 'view-dashboard'], {'theme': 'dark', 'lang': 'en'});\""
+
+            log_info "Partial update — add a single element to each collection..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"
+                UPDATE rf_prod.user_prefs SET tags = tags + {'premium'},
+                    history = history + ['upgrade'],
+                    settings['timezone'] = 'UTC'
+                WHERE user_id IN (SELECT user_id FROM rf_prod.user_prefs LIMIT 1);
+            \" 2>/dev/null || echo '(Partial update — SELECT-in-UPDATE not supported in all versions; using fixed UUID in production)'"
+
+            separator
+            echo -e "${C_WHITE}--- Frozen Collections (full replacement only) ---${C_RESET}"
+            echo ""
+            echo "  frozen<set<text>>  → stored as a single serialized blob"
+            echo "  Any 'update' replaces the ENTIRE collection"
+            echo "  Required for: nested collections, UDT fields, secondary indexes"
+            echo ""
+            log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.snapshots (
+                id uuid PRIMARY KEY,
+                metadata frozen<map<text, text>>,
+                labels frozen<set<text>>
+            );\""
+
+            log_info "With frozen, you must write the complete collection..."
+            log_cmd "docker exec hcd-node1 cqlsh -e \"INSERT INTO rf_prod.snapshots (id, metadata, labels)
+                VALUES (uuid(), {'version': '1.0', 'author': 'ops'}, {'production', 'verified'});\""
+
+            separator
+            echo -e "${C_WHITE}--- Frozen vs Non-Frozen Comparison ---${C_RESET}"
+            echo ""
+            echo "  ┌──────────────┬──────────────────────┬─────────────────────────┐"
+            echo "  │              │ Non-Frozen            │ Frozen                  │"
+            echo "  ├──────────────┼──────────────────────┼─────────────────────────┤"
+            echo "  │ Storage      │ Element-level cells   │ Single serialized blob  │"
+            echo "  │ Update       │ Add/remove elements   │ Full replacement only   │"
+            echo "  │ Read cost    │ Assemble from cells   │ Deserialize blob        │"
+            echo "  │ Max size     │ 64 KB recommended     │ 64 KB recommended       │"
+            echo "  │ Indexable    │ SAI on elements       │ SAI on entire value     │"
+            echo "  │ Nesting      │ Not allowed           │ Required for nesting    │"
+            echo "  │ Concurrency  │ Element-level LWW     │ Full-value LWW          │"
+            echo "  └──────────────┴──────────────────────┴─────────────────────────┘"
+            echo ""
+            echo -e "${C_DIM}Rule of thumb: use non-frozen when you update individual elements frequently.${C_RESET}"
+            echo -e "${C_DIM}Use frozen when the collection is always written/read as a whole.${C_RESET}"
+
+            takeaway "Non-frozen collections allow partial updates (add/remove elements)." \
+                     "Frozen collections are serialized as blobs — any change replaces the whole value." \
+                     "Nested collections (e.g., map<text, list<int>>) require frozen inner types." \
+                     "Keep collections small (< 64 KB). For large datasets, model as separate tables."
+            ;;
     esac
     pause
 }
@@ -9682,7 +10096,7 @@ else
     done
     # Show elapsed time for the final module
     if [ -n "$MODULE_START_TIME" ]; then
-        echo -e "${C_DIM}  (module 78 completed in $(( $(date +%s) - MODULE_START_TIME ))s)${C_RESET}"
+        echo -e "${C_DIM}  (module 83 completed in $(( $(date +%s) - MODULE_START_TIME ))s)${C_RESET}"
     fi
     DEMO_ELAPSED=$(( $(date +%s) - DEMO_START_TIME ))
     DEMO_MINS=$((DEMO_ELAPSED / 60))
@@ -9702,9 +10116,9 @@ else
     echo -e "${C_GREEN}║      | |__| |_| | |  | |  __/| |___| |___  | | | |___            ║${C_RESET}"
     echo -e "${C_GREEN}║       \\____\\___/|_|  |_|_|   |_____|_____| |_| |_____|            ║${C_RESET}"
     echo -e "${C_GREEN}║                                                                  ║${C_RESET}"
-    printf "${C_GREEN}║  %-64s ║${C_RESET}\n" "79 modules completed in ${DEMO_MINS}m ${DEMO_SECS}s"
-    echo -e "${C_GREEN}║  9 parts: Foundations, Failures, Ops, Performance, Drivers,      ║${C_RESET}"
-    echo -e "${C_GREEN}║           Transactions, Enterprise, Deep-Dives, DORA             ║${C_RESET}"
+    printf "${C_GREEN}║  %-64s ║${C_RESET}\n" "84 modules completed in ${DEMO_MINS}m ${DEMO_SECS}s"
+    echo -e "${C_GREEN}║  10 parts: Foundations, Failures, Ops, Performance, Drivers,     ║${C_RESET}"
+    echo -e "${C_GREEN}║            Transactions, Enterprise, Deep-Dives, DORA, Production║${C_RESET}"
     echo -e "${C_GREEN}║                                                                  ║${C_RESET}"
     echo -e "${C_GREEN}║  Every claim was proven live — not slides, not theory.            ║${C_RESET}"
     echo -e "${C_GREEN}║  IBM HCD: enterprise-grade resilience, demonstrated.              ║${C_RESET}"
@@ -9717,7 +10131,7 @@ else
     echo -e "${C_CYAN}│  1. Replay key sections:  make demo-ransomware  (modules 72-78)  │${C_RESET}"
     echo -e "${C_CYAN}│  2. Custom topology:      python3 scripts/generate-topology.py -i│${C_RESET}"
     echo -e "${C_CYAN}│  3. Monitoring:           make monitoring  (Grafana + Prometheus) │${C_RESET}"
-    echo -e "${C_CYAN}│  4. Validate all:         make demo-score  (79/79 scorecard)     │${C_RESET}"
+    echo -e "${C_CYAN}│  4. Validate all:         make demo-score  (84/84 scorecard)     │${C_RESET}"
     echo -e "${C_CYAN}│  5. Production:           same cluster design scales to 1000s    │${C_RESET}"
     echo -e "${C_CYAN}│                           of nodes — zero code changes needed     │${C_RESET}"
     echo -e "${C_CYAN}│                                                                  │${C_RESET}"

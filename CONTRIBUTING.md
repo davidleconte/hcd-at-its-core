@@ -13,7 +13,7 @@
 3. Run validation:
    ```bash
    make test          # all tests must pass
-   make demo-score    # 79/79 modules must pass
+   make demo-score    # all modules must pass
    make validate      # docker-compose.yml syntax
    make lint          # shellcheck + ruff
    ```

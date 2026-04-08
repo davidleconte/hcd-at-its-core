@@ -16,8 +16,8 @@ def test_dry_run_execution():
     result = run_demo("--dry-run", "--no-pause")
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "[DRY-RUN]" in result.stdout
-    # Verify all 79 module headers appear
-    for i in range(79):
+    # Verify all 84 module headers appear
+    for i in range(84):
         assert f"Module {i}:" in result.stdout, f"Module {i} header missing from full run"
 
 
@@ -32,19 +32,19 @@ def test_invalid_module():
     """Verify the script handles invalid module numbers gracefully."""
     result = run_demo("--dry-run", "99")
     assert "Invalid module number" in result.stdout
-    assert "Valid: 0-78" in result.stdout
+    assert "Valid: 0-83" in result.stdout
 
 
 def test_boundary_module_valid():
-    """Verify module 78 is accepted."""
-    result = run_demo("--dry-run", "--no-pause", "78")
+    """Verify module 83 is accepted."""
+    result = run_demo("--dry-run", "--no-pause", "83")
     assert result.returncode == 0
-    assert "Module 78:" in result.stdout
+    assert "Module 83:" in result.stdout
 
 
 def test_boundary_module_invalid():
-    """Verify module 79 is rejected."""
-    result = run_demo("--dry-run", "79")
+    """Verify module 84 is rejected."""
+    result = run_demo("--dry-run", "84")
     assert "Invalid module number" in result.stdout
 
 
@@ -97,10 +97,10 @@ def test_combined_flags():
 
 
 def test_score_mode():
-    """Verify --score flag runs scorecard and reports 79/79 pass."""
+    """Verify --score flag runs scorecard and reports 84/84 pass."""
     result = run_demo("--score")
     assert result.returncode == 0
-    assert "79" in result.stdout, "Scorecard should report 79 modules"
+    assert "84" in result.stdout, "Scorecard should report 84 modules"
     assert "PASS" in result.stdout, "Scorecard should show PASS results"
     assert "100%" in result.stdout, "All modules should pass (100%)"
 
@@ -124,7 +124,7 @@ MODULE_CONTENT_EXPECTATIONS = [
     ("44", ["speculative"]),
     ("45", ["dc-failover", "failover"]),
     ("46", ["retry", "fallthrough"]),
-    ("47", ["SUMMARY DASHBOARD"]),
+    ("47", ["CHECKPOINT"]),
     ("48", ["acid", "atomicity"]),
     ("49", ["logged", "batchlog"]),
     ("50", ["lost update", "compare-and-swap", "accounts"]),
@@ -156,6 +156,11 @@ MODULE_CONTENT_EXPECTATIONS = [
     ("76", ["recovery", "restore", "worm"]),
     ("77", ["failover", "disconnect", "datacenter", "partition"]),
     ("78", ["k8ssandra", "kubernetes", "auto-heal"]),
+    ("79", ["counter", "increment", "non-idempotent"]),
+    ("80", ["prepared", "idempoten", "driver"]),
+    ("81", ["jvm", "heap", "gc", "compressedoops"]),
+    ("82", ["aggregat", "count", "sum", "avg"]),
+    ("83", ["frozen", "collection", "set", "map"]),
 ]
 
 
@@ -176,7 +181,7 @@ def test_module_content(module_id, keywords):
     )
 
 
-@pytest.mark.parametrize("module_id", [str(i) for i in range(79)])
+@pytest.mark.parametrize("module_id", [str(i) for i in range(84)])
 def test_individual_modules_dry(module_id):
     """Verify each individual module runs in dry-run mode."""
     result = run_demo("--dry-run", "--no-pause", module_id)

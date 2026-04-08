@@ -83,7 +83,7 @@ Tests use `--dry-run` mode so they don't require a running cluster.
 
 ## Running the Demo
 
-The Entropy & Consistency demo is an interactive, didactic script (79 modules, 0-78) that explains HCD internals through hands-on scenarios, including a DORA ransomware resilience suite (modules 72-78) with MinIO WORM backups.
+The Entropy & Consistency demo is an interactive, didactic script (84 modules, 0-83) that explains HCD internals through hands-on scenarios, including a DORA ransomware resilience suite (modules 72-78) and production essentials (modules 79-83) with MinIO WORM backups.
 
 *Focus areas: Entropy resolution, SAI composability, mutation-based write path, multi-DC failover (Module 23), CDC, audit logging, and guardrails.*
 
@@ -91,7 +91,7 @@ The Entropy & Consistency demo is an interactive, didactic script (79 modules, 0
 # Full interactive demo
 ./scripts/demo-entropy.sh
 
-# Run specific module (0-78)
+# Run specific module (0-83)
 ./scripts/demo-entropy.sh 3
 
 # Non-interactive mode (no pauses)
@@ -116,8 +116,9 @@ To add Module N to `demo-entropy.sh`:
        takeaway "Key learning point"
        ;;
    ```
-2. Update the validation regex: `^([0-9]|[1-6][0-9]|7[0-8])$` (adjust upper bound)
-3. Update the main loop range: `for i in {0..N}`
+2. Update the validation regex in the script (adjust upper bound to include N)
+3. Update `TOTAL_MODULES` and `PART_NAMES` array in the script
+4. Update the main loop range: `for i in {0..N}`
 4. Add the module to `DEMO_ENTROPY.md` (overview list + body section)
 5. Update `tests/test_demo_entropy.py`: adjust `range(N+1)` in parametrize and full-run test
 6. Run `pytest tests/test_demo_entropy.py -v` to verify

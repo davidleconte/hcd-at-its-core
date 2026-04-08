@@ -8,9 +8,9 @@
 
 ## Test plan
 
-- [ ] `make test` passes (184/184)
+- [ ] `make test` passes (all green)
 - [ ] `make demo-dry` completes without errors
-- [ ] `make demo-score` passes (79/79)
+- [ ] `make demo-score` passes (all modules)
 - [ ] `make validate` confirms docker-compose.yml syntax
 
 ## Checklist
