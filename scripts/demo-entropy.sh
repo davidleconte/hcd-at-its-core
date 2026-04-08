@@ -1665,7 +1665,7 @@ run_module() {
             log_cmd "docker exec hcd-node1 cqlsh -e \"TRACING ON; BEGIN BATCH INSERT INTO rf_prod.assets JSON '{\\\"id\\\": \\\"990e8400-e29b-41d4-a716-446655440004\\\", \\\"name\\\": \\\"Batch-1\\\"}'; INSERT INTO rf_prod.assets JSON '{\\\"id\\\": \\\"aa0e8400-e29b-41d4-a716-446655440005\\\", \\\"name\\\": \\\"Batch-2\\\"}'; APPLY BATCH;\""
 
             # =====================================================================
-            # ENTERPRISE PATTERNS (Parts 9-13)
+            # ENTERPRISE PATTERNS (5 sub-sections)
             # =====================================================================
 
             takeaway "Native JSON support lets REST APIs interact with HCD using JSON objects" \
@@ -1804,7 +1804,7 @@ run_module() {
             echo "+------------------------------------------------------------------------+"
 
             separator
-            echo -e "${C_WHITE}--- Part 10: JSON Document Versioning (Audit Trail Pattern) ---${C_RESET}"
+            echo -e "${C_WHITE}--- Section 2: JSON Document Versioning (Audit Trail Pattern) ---${C_RESET}"
             echo "Pattern: append-only versioned documents using timeuuid clustering."
             echo "Every edit creates a new row — nothing is overwritten, nothing is lost."
             echo "This is the foundation for audit trails, CMS systems, and configuration"
@@ -1879,7 +1879,7 @@ run_module() {
             echo -e "${C_BLUE}    versions, consider bucketing by month: PRIMARY KEY ((doc_id, month), version)${C_RESET}"
 
             separator
-            echo -e "${C_WHITE}--- Part 11: Event Sourcing with JSON Payloads ---${C_RESET}"
+            echo -e "${C_WHITE}--- Section 3: Event Sourcing with JSON Payloads ---${C_RESET}"
             echo "Event sourcing stores domain events (facts) instead of mutable state."
             echo "Each event is an immutable record of something that happened. You rebuild"
             echo "the current state by replaying events in order."
@@ -1971,7 +1971,7 @@ run_module() {
             echo -e "${C_BLUE}See Module 26 (CDC) for the streaming side of this architecture.${C_RESET}"
 
             separator
-            echo -e "${C_WHITE}--- Part 12: Bulk JSON & Performance Considerations ---${C_RESET}"
+            echo -e "${C_WHITE}--- Section 4: Bulk JSON & Performance Considerations ---${C_RESET}"
             echo "When does JSON parsing overhead matter? Let's examine the trade-offs."
             echo ""
 
@@ -2023,7 +2023,7 @@ run_module() {
             echo -e "${C_BLUE}or individual writes instead. See Module 50 for the full batch deep dive.${C_RESET}"
 
             separator
-            echo -e "${C_WHITE}--- Part 13: JSON + SAI Composable Queries ---${C_RESET}"
+            echo -e "${C_WHITE}--- Section 5: JSON + SAI Composable Queries ---${C_RESET}"
             echo "The real power of JSON in HCD emerges when you combine INSERT JSON / SELECT JSON"
             echo "with SAI indexes. You get document-store ergonomics (JSON in, JSON out) with"
             echo "relational query power (multi-column filtering without ALLOW FILTERING)."

@@ -770,9 +770,9 @@ SELECT * FROM system_views.indexes;
 
 ---
 
-## Module 19: Native JSON Operations - Deep Dive
+## Module 19: JSON Fundamentals
 
-HCD's native JSON support provides document-database flexibility with schema enforcement.
+HCD's native JSON support provides document-database flexibility with schema enforcement. This module covers INSERT/SELECT JSON, DEFAULT UNSET, fromJson/toJson, collection serialization, and multi-format coexistence (Parts 1-8). Module 20 continues with enterprise patterns.
 
 ### Syntax Reference
 ```sql
@@ -793,9 +793,9 @@ BEGIN BATCH
 APPLY BATCH;
 ```
 
-### Module 19 — Enterprise Pattern Reference
+### Module 20 — Enterprise Pattern Reference
 
-#### Sub-section 9: UDT + Nested JSON (Document Modeling)
+#### Section 1: UDT + Nested JSON (Document Modeling)
 ```sql
 -- User-Defined Types for nested structures
 CREATE TYPE rf_prod.address (street text, city text, state text, zip text, country text);
@@ -819,7 +819,7 @@ INSERT INTO rf_prod.orders JSON '{"order_id": "...",
 -- Key constraint: frozen<> means atomic replacement — no partial UDT updates
 ```
 
-#### Sub-section 10: JSON Document Versioning (Audit Trail Pattern)
+#### Section 2: JSON Document Versioning (Audit Trail Pattern)
 ```sql
 CREATE TABLE rf_prod.document_versions (
     doc_id uuid,
@@ -839,7 +839,7 @@ SELECT JSON version, author, metadata FROM rf_prod.document_versions WHERE doc_i
 -- Add TTL to old versions for automatic cleanup
 ```
 
-#### Sub-section 11: Event Sourcing with JSON Payloads
+#### Section 3: Event Sourcing with JSON Payloads
 ```sql
 CREATE TABLE rf_prod.event_store (
     aggregate_id uuid,
@@ -857,7 +857,7 @@ CREATE TABLE rf_prod.event_store (
 -- This is the CQRS pattern — see Module 25 (CDC) and Module 51 (banking)
 ```
 
-#### Sub-section 12: Bulk JSON & Performance
+#### Section 4: Bulk JSON & Performance
 ```
 INSERT method         Round-trips  Use when
 ──────────────────────────────────────────────────────────────
@@ -870,7 +870,7 @@ Rule: JSON parsing adds ~0.1ms vs 2-5ms total latency — negligible <10K writes
 UNLOGGED BATCH is safe ONLY for same-partition writes (see Module 49)
 ```
 
-#### Sub-section 13: JSON + SAI Composable Queries
+#### Section 5: JSON + SAI Composable Queries
 ```sql
 CREATE TABLE rf_prod.catalog (
     product_id uuid PRIMARY KEY,
