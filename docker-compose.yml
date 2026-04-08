@@ -6,9 +6,9 @@ x-hcd-common: &hcd-common
     - ALL
   cap_add:
     # NET_ADMIN is required for demo modules that simulate network failures:
-    # - Module 17 (Zombie Node): docker network disconnect/connect
-    # - Module 29 (Latency): tc qdisc for WAN latency injection
-    # - Module 77 (DC Failover Under Attack): dc1 network partition
+    # - Module 18 (Zombie Node): docker network disconnect/connect
+    # - Module 30 (Latency): tc qdisc for WAN latency injection
+    # - Module 78 (DC Failover Under Attack): dc1 network partition
     - NET_ADMIN
   security_opt:
     - no-new-privileges:true

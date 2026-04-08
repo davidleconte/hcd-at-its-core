@@ -1777,22 +1777,22 @@ Each scenario and deep-dive section produces DORA compliance evidence. The full 
 ### Completed
 
 1. **Modules 72-78 implemented** in `demo-entropy.sh` (Part 9: DORA Ransomware Resilience):
-   - Module 72: Kill Chain & Infrastructure Setup (DORA quiz, dora_bank keyspace, MinIO WORM)
-   - Module 73: Backup to WORM & Integrity Verification (snapshots, SHA-256, Object Lock test)
-   - Module 74: Commitlog Archiving to WORM (WAL archiving, two-tier WORM)
-   - Module 75: The Attack Simulation (5-phase ransomware: recon, exfil, TRUNCATE, snapshot wipe, ransom note)
-   - Module 76: Recovery from WORM Backups (integrity verify, restore, cross-DC consistency)
-   - Module 77: DC Failover Under Attack (network partition, LOCAL_QUORUM, repair convergence)
-   - Module 78: DORA Compliance Scorecard & K8s Auto-Healing (article matrix, recovery paths, K8ssandra CRD)
+   - Module 73: Kill Chain & Infrastructure Setup (DORA quiz, dora_bank keyspace, MinIO WORM)
+   - Module 74: Backup to WORM & Integrity Verification (snapshots, SHA-256, Object Lock test)
+   - Module 75: Commitlog Archiving to WORM (WAL archiving, two-tier WORM)
+   - Module 76: The Attack Simulation (5-phase ransomware: recon, exfil, TRUNCATE, snapshot wipe, ransom note)
+   - Module 77: Recovery from WORM Backups (integrity verify, restore, cross-DC consistency)
+   - Module 78: DC Failover Under Attack (network partition, LOCAL_QUORUM, repair convergence)
+   - Module 79: DORA Compliance Scorecard & K8s Auto-Healing (article matrix, recovery paths, K8ssandra CRD)
 2. **DORA scorecard** — `--score` mode validates all 85 modules (85/85)
 3. **DEMO_ENTROPY.md** — Part 9 documentation added (overview table + module body sections)
-4. **Tests** — all tests pass (content tests for modules 72-78 included); validate with `make test`
+4. **Tests** — all tests pass (content tests for modules 73-79 included); validate with `make test`
 5. **MinIO WORM** — docker-compose.yml service under `ransomware` profile; `ensure_minio()` helper in script
 6. **Commitlog archiving** — configured via `commitlog_archiving.properties` in module 74
 
 ### Remaining
 
-1. **S2 (Insider) & S4 (Silent Infiltrator) deep modules** — partially covered by existing modules 25-27 (CDC, audit, guardrails) and 62 (RBAC); dedicated ransomware-specific modules not yet implemented
+1. **S2 (Insider) & S4 (Silent Infiltrator) deep modules** — partially covered by existing modules 26-28 (CDC, audit, guardrails) and 63 (RBAC); dedicated ransomware-specific modules not yet implemented
 2. **K8ssandra migration guide** — create `K8SSANDRA_MIGRATION.md` with step-by-step migration from Docker Compose
 3. **Presentation deck** — extract diagrams for executive presentation
 4. **Production commitlog archiving** — current demo uses local `cp`; production would use `s3cmd`/`aws s3 cp` to WORM directly

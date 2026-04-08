@@ -1,5 +1,5 @@
 # Prometheus alerting rules for HCD cluster monitoring
-# Reference: Modules 38-40, 69, 81
+# Reference: Modules 39-41, 70, 82
 
 groups:
   - name: hcd_cluster_health
@@ -14,7 +14,7 @@ groups:
           summary: "HCD node {{ $labels.instance }} is down"
           description: "No metrics received from {{ $labels.instance }} for 2 minutes. Check container health."
 
-      # GC pause exceeds 1 second (Module 81)
+      # GC pause exceeds 1 second (Module 82)
       - alert: HCDHighGCPause
         expr: rate(jvm_gc_collection_time_ms[5m]) / rate(jvm_gc_collection_count[5m]) > 1000
         for: 5m
@@ -22,9 +22,9 @@ groups:
           severity: warning
         annotations:
           summary: "High GC pause on {{ $labels.instance }}"
-          description: "Average GC pause exceeds 1 second on {{ $labels.instance }}. Check heap sizing (Module 81)."
+          description: "Average GC pause exceeds 1 second on {{ $labels.instance }}. Check heap sizing (Module 82)."
 
-      # Dropped messages indicate overload (Module 69)
+      # Dropped messages indicate overload (Module 70)
       - alert: HCDDroppedMessages
         expr: rate(cassandra_dropped_Dropped[5m]) > 0
         for: 5m
@@ -32,9 +32,9 @@ groups:
           severity: warning
         annotations:
           summary: "Dropped messages on {{ $labels.instance }}"
-          description: "{{ $labels.message_type }} messages are being dropped on {{ $labels.instance }}. Check thread pool saturation (Module 69)."
+          description: "{{ $labels.message_type }} messages are being dropped on {{ $labels.instance }}. Check thread pool saturation (Module 70)."
 
-      # Compaction backlog growing (Module 69)
+      # Compaction backlog growing (Module 70)
       - alert: HCDCompactionBacklog
         expr: cassandra_compaction_PendingTasks > 50
         for: 10m
@@ -44,7 +44,7 @@ groups:
           summary: "Compaction backlog on {{ $labels.instance }}"
           description: "{{ $value }} pending compaction tasks on {{ $labels.instance }}. Read latency may increase."
 
-      # Heap usage exceeds 80% (Module 81)
+      # Heap usage exceeds 80% (Module 82)
       - alert: HCDHeapPressure
         expr: jvm_memory_heap_used_bytes / jvm_memory_heap_max_bytes > 0.80
         for: 10m
@@ -54,7 +54,7 @@ groups:
           summary: "High heap usage on {{ $labels.instance }}"
           description: "Heap usage at {{ $value | humanizePercentage }} on {{ $labels.instance }}. Risk of GC storms."
 
-      # Hints accumulating (node down, Module 65)
+      # Hints accumulating (node down, Module 66)
       - alert: HCDHintsAccumulating
         expr: cassandra_hints_TotalHintsInProgress > 100
         for: 5m

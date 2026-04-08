@@ -10,7 +10,7 @@ data_file_directories:
     - /var/lib/cassandra/data
 commitlog_directory: /var/lib/cassandra/commitlog
 # Sync mode: 'periodic' fsyncs every N ms (lower latency, up to N ms data at risk on hard crash).
-# Use 'batch' for zero-loss guarantees (fsync per write, ~2x latency). See Module 64.
+# Use 'batch' for zero-loss guarantees (fsync per write, ~2x latency). See Module 65.
 commitlog_sync: periodic
 commitlog_sync_period_in_ms: 10000
 commitlog_segment_size_in_mb: 32
@@ -54,10 +54,10 @@ cas_contention_timeout_in_ms: 1000
 request_timeout_in_ms: 10000
 cross_node_timeout: true
 
-# CDC (Change Data Capture) - Module 25
+# CDC (Change Data Capture) - Module 26
 cdc_enabled: true
 
-# Audit Logging - Module 26
+# Audit Logging - Module 27
 # Enabled/disabled at runtime via nodetool enableauditlog / disableauditlog
 # Default logger writes to /var/lib/cassandra/audit/
 audit_logging_options:
@@ -70,7 +70,7 @@ audit_logging_options:
     max_queue_weight: 268435456
     max_log_size: 17179869184
 
-# Guardrails - Module 27
+# Guardrails - Module 28
 # Protect the database from common anti-patterns
 tables_warn_threshold: 150
 tables_fail_threshold: -1
@@ -88,7 +88,7 @@ page_size_warn_threshold: 5000
 page_size_fail_threshold: -1
 read_before_write_list_operations_enabled: true
 
-# Authentication & Authorization — Modules 41, 62
+# Authentication & Authorization — Modules 42, 63
 # Uncomment to enable RBAC. Default: AllowAllAuthenticator (no auth required).
 # authenticator: PasswordAuthenticator
 # authorizer: CassandraAuthorizer
@@ -96,7 +96,7 @@ read_before_write_list_operations_enabled: true
 # roles_validity_in_ms: 2000
 # permissions_validity_in_ms: 2000
 
-# Internode Encryption — Module 63
+# Internode Encryption — Module 64
 # Uncomment to enable TLS between nodes. Requires keystore/truststore setup.
 # server_encryption_options:
 #     internode_encryption: all
@@ -105,7 +105,7 @@ read_before_write_list_operations_enabled: true
 #     truststore: /opt/hcd/resources/cassandra/conf/.truststore
 #     truststore_password: cassandra
 
-# Client-to-Node Encryption — Module 63
+# Client-to-Node Encryption — Module 64
 # Uncomment to require TLS for CQL connections.
 # client_encryption_options:
 #     enabled: true
@@ -113,7 +113,7 @@ read_before_write_list_operations_enabled: true
 #     keystore_password: cassandra
 #     require_client_auth: false
 
-# Transparent Data Encryption (TDE) — Module 63
+# Transparent Data Encryption (TDE) — Module 64
 # Uncomment to encrypt SSTables at rest. Requires cipher and key provider config.
 # transparent_data_encryption_options:
 #     enabled: false

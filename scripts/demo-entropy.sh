@@ -1608,7 +1608,7 @@ run_module() {
                      "Supports equality, range, map key/value, and text analyzer queries."
             ;;
         19)
-            header 19 "Native JSON Operations - Deep Dive"
+            header 19 "JSON Fundamentals"
             echo "HCD provides native JSON support, enabling document-database patterns."
             echo "This allows REST APIs to interact with Cassandra using JSON objects"
             echo "while maintaining schema enforcement underneath."

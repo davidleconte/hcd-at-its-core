@@ -57,7 +57,7 @@ pytest tests/test_topology_unit.py       # topology generator unit tests
 
 - **Dockerfile** - Single image based on `eclipse-temurin:11-jre`. Installs HCD from local tarball, sets up Python 3.11 via `uv`, creates wrapper scripts for `nodetool`/`cqlsh`/etc. that set `HCD_CONF` paths. Runs as non-root `cassandra` user (UID/GID 999).
 - **docker-compose.yml** - Defines 6 services using YAML anchors (`x-hcd-common`). Node 1 is the primary seed; nodes 2-6 depend on node 1's health. Seeds are nodes 1 and 4 (one per DC). Port 9042 bound to localhost on node 1. Hardened with `cap_drop: ALL`, `no-new-privileges`, ulimits (`nofile: 100000`, `memlock: unlimited`), and CPU/memory limits.
-- **config/cassandra.yaml.template** - Cassandra config template using `${ENV_VAR}` substitution, processed by `envsubst` at container startup. Includes CDC, audit logging, and guardrails configuration for modules 25-27.
+- **config/cassandra.yaml.template** - Cassandra config template using `${ENV_VAR}` substitution, processed by `envsubst` at container startup. Includes CDC, audit logging, and guardrails configuration for modules 26-28.
 - **scripts/docker-entrypoint.sh** - Generates `cassandra.yaml` from template, writes rack/DC properties, waits for seed node with exponential backoff before starting HCD.
 - **Makefile** - Developer shortcuts with auto-detection of `docker compose` (v2) vs `docker-compose` (v1).
 - **scripts/generate-topology.py** - Generates `docker-compose.yml` for arbitrary cluster sizes and multi-DC configurations. Uses atomic file writes and validates DC node count consistency.
@@ -65,7 +65,7 @@ pytest tests/test_topology_unit.py       # topology generator unit tests
 - **config/prometheus.yml** - Prometheus scrape config for JMX exporter metrics on all 6 nodes (port 9404).
 - **config/jmx-exporter.yml** - JMX-to-Prometheus metric mapping for Cassandra thread pools, latencies, compaction, hints, and caches.
 - **config/grafana/** - Grafana provisioning (datasource + dashboard). Pre-built dashboard shows write/read p99, thread pool activity, compaction pending, dropped messages, and hints.
-- **scripts/driver-demo.py** - Python helper script using the DataStax cassandra-driver for modules 43-46. Subcommands: `token-aware`, `speculative`, `dc-failover`, `retry-policies`. Use `--local-dc` to override the default datacenter (default: `dc1`).
+- **scripts/driver-demo.py** - Python helper script using the DataStax cassandra-driver for modules 44-47. Subcommands: `token-aware`, `speculative`, `dc-failover`, `retry-policies`. Use `--local-dc` to override the default datacenter (default: `dc1`).
 
 ## Code Style
 
