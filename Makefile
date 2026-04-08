@@ -6,7 +6,7 @@ EXPECTED_NODES ?= 6
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part minio minio-down check-prereqs test lint validate wait clean monitoring monitoring-down api api-down
+.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part minio minio-down check-prereqs test lint validate pin-digests wait clean monitoring monitoring-down api api-down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -108,6 +108,19 @@ lint: ## Lint shell scripts (shellcheck) and Python (ruff)
 
 validate: ## Validate docker-compose.yml syntax
 	@$(COMPOSE) config >/dev/null && echo "docker-compose.yml is valid"
+
+pin-digests: ## Pin Dockerfile base images by SHA256 digest for reproducibility
+	@echo "Pulling images and extracting digests..."
+	@BASE_DIGEST=$$(docker pull -q eclipse-temurin:11-jre >/dev/null && docker inspect --format='{{index .RepoDigests 0}}' eclipse-temurin:11-jre | sed 's/.*@//'); \
+	UV_DIGEST=$$(docker pull -q ghcr.io/astral-sh/uv:0.5.14 >/dev/null && docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/astral-sh/uv:0.5.14 | sed 's/.*@//'); \
+	if [ -n "$$BASE_DIGEST" ]; then \
+		sed -i.bak "s|FROM eclipse-temurin:11-jre.*|FROM eclipse-temurin:11-jre@$$BASE_DIGEST|" Dockerfile && rm -f Dockerfile.bak; \
+		echo "  [OK] Base image pinned: $$BASE_DIGEST"; \
+	else echo "  [SKIP] Could not resolve eclipse-temurin:11-jre digest"; fi; \
+	if [ -n "$$UV_DIGEST" ]; then \
+		sed -i.bak "s|COPY --from=ghcr.io/astral-sh/uv:0.5.14|COPY --from=ghcr.io/astral-sh/uv:0.5.14@$$UV_DIGEST|" Dockerfile && rm -f Dockerfile.bak; \
+		echo "  [OK] uv image pinned: $$UV_DIGEST"; \
+	else echo "  [SKIP] Could not resolve ghcr.io/astral-sh/uv:0.5.14 digest"; fi
 
 wait: ## Wait until all nodes are UN (Up/Normal)
 	@echo "Waiting for $(EXPECTED_NODES) nodes to reach UN status..."

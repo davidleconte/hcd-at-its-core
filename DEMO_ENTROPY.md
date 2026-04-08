@@ -2505,3 +2505,20 @@ After completing this part, you will be able to:
 14. Abadi, Daniel. "Consistency Tradeoffs in Modern Distributed Database System Design." *IEEE Computer* 45(2), 2012. Introduces the PACELC model extending CAP.
 
 15. Veeam Software. *Immutable Backups and the 3-2-1-1-0 Rule*. Veeam, 2023. Best practices for ransomware-resistant backup strategies.
+
+---
+
+## Appendix D: Review Question Answer Key
+
+| Part | Q1 | Q2 | Q3 | Q4 | Q5 |
+|------|----|----|----|----|-----|
+| **1 — Foundations** | (b) 2 | (c) Hinted handoff | (b) Ghost reads of deleted data | (b) 2 | (c) Background read repair triggered |
+| **2 — Advanced Failures** | (b) Per-SSTable with range support | (b) Succeed if local DC has quorum | (b) DDL not reaching all nodes | (a) STCS | (c) Network partition |
+| **3 — Operations** | (b) `cdc_raw` directory | (c) TWCS | (b) Succeed using remaining nodes | (b) Hard links to current SSTables | (b) Unbounded IN clauses and full table scans |
+| **4 — Performance** | (b) Writes faster than node can process | (a) Skips already-repaired SSTables | (b) Approximately equal with variance | (c) Authenticate but access nothing | (b) ReadStage |
+| **5 — Driver Policies** | (b) Routing to partition-owning replicas | (a) Duplicate writes if not idempotent | (b) Coordinator didn't get enough ACKs | (b) Driver can fall back to dc2 | (c) dc-failover |
+| **6 — Transactions** | (b) Atomicity only | (b) Read-then-write is not atomic | (b) Paxos | (b) Logical undo of a prior step | (b) LWT with IF condition |
+| **7 — Enterprise** | (b) REST/HTTP with JSON | (b) Logical separation with independent RF | (b) Enough replicas remain for RF | (b) Incorrect values without error | (b) Partitioning contended rows |
+| **8 — Ops Deep-Dives** | (b) Replaying the commitlog | (b) Gap must be closed by repair | (b) Unnecessary SSTable disk seek | (b) After repair completes | (b) View updates applied asynchronously |
+| **9 — DORA Ransomware** | (b) Preventing deletion for retention period | (a) TRUNCATE + clearsnapshot | (a) Point-in-time recovery beyond snapshots | (b) Propagates to ALL replicas in ALL DCs | (b) Backup immutability, RTO, DC failover, audit trail |
+| **10 — Production** | (b) Incompatible write paths | (b) Parsing once, reusing the plan | (b) TimeoutException on clients | (c) Coordinator aggregates all partitions | (b) Entire map must be rewritten |

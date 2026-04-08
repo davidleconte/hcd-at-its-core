@@ -1,0 +1,85 @@
+# Prometheus alerting rules for HCD cluster monitoring
+# Reference: Modules 38-40, 69, 81
+
+groups:
+  - name: hcd_cluster_health
+    rules:
+      # Node down: no metrics scraped for 2 minutes
+      - alert: HCDNodeDown
+        expr: up{job="hcd-cluster"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HCD node {{ $labels.instance }} is down"
+          description: "No metrics received from {{ $labels.instance }} for 2 minutes. Check container health."
+
+      # GC pause exceeds 1 second (Module 81)
+      - alert: HCDHighGCPause
+        expr: rate(jvm_gc_collection_time_ms[5m]) / rate(jvm_gc_collection_count[5m]) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High GC pause on {{ $labels.instance }}"
+          description: "Average GC pause exceeds 1 second on {{ $labels.instance }}. Check heap sizing (Module 81)."
+
+      # Dropped messages indicate overload (Module 69)
+      - alert: HCDDroppedMessages
+        expr: rate(cassandra_dropped_Dropped[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dropped messages on {{ $labels.instance }}"
+          description: "{{ $labels.message_type }} messages are being dropped on {{ $labels.instance }}. Check thread pool saturation (Module 69)."
+
+      # Compaction backlog growing (Module 69)
+      - alert: HCDCompactionBacklog
+        expr: cassandra_compaction_PendingTasks > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Compaction backlog on {{ $labels.instance }}"
+          description: "{{ $value }} pending compaction tasks on {{ $labels.instance }}. Read latency may increase."
+
+      # Heap usage exceeds 80% (Module 81)
+      - alert: HCDHeapPressure
+        expr: jvm_memory_heap_used_bytes / jvm_memory_heap_max_bytes > 0.80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High heap usage on {{ $labels.instance }}"
+          description: "Heap usage at {{ $value | humanizePercentage }} on {{ $labels.instance }}. Risk of GC storms."
+
+      # Hints accumulating (node down, Module 65)
+      - alert: HCDHintsAccumulating
+        expr: cassandra_hints_TotalHintsInProgress > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hints accumulating on {{ $labels.instance }}"
+          description: "{{ $value }} pending hints on {{ $labels.instance }}. A replica may be down. Check nodetool status."
+
+      # Write latency p99 exceeds 100ms
+      - alert: HCDHighWriteLatency
+        expr: cassandra_client_request_Latency_99thPercentile{scope="Write"} > 100000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High write latency p99 on {{ $labels.instance }}"
+          description: "Write p99 latency exceeds 100ms on {{ $labels.instance }}. Check commitlog and thread pools."
+
+      # Read latency p99 exceeds 500ms
+      - alert: HCDHighReadLatency
+        expr: cassandra_client_request_Latency_99thPercentile{scope="Read"} > 500000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High read latency p99 on {{ $labels.instance }}"
+          description: "Read p99 latency exceeds 500ms on {{ $labels.instance }}. Check compaction backlog and bloom filters."

@@ -1,5 +1,6 @@
-# Pin by digest for reproducibility: docker pull eclipse-temurin:11-jre && docker inspect --format='{{index .RepoDigests 0}}' eclipse-temurin:11-jre
-# Then replace the FROM line with: FROM eclipse-temurin:11-jre@sha256:<digest>
+# To pin by digest for reproducible builds, run: make pin-digests
+# This will update this file with the current digest automatically.
+# FORMAT: FROM eclipse-temurin:11-jre@sha256:<digest>
 FROM eclipse-temurin:11-jre
 
 LABEL maintainer="HCD Docker Cluster" \
@@ -27,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv and setup Python environment
-# Pin by digest for reproducibility: docker pull ghcr.io/astral-sh/uv:0.5.14 && docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/astral-sh/uv:0.5.14
+# Pin by digest: run make pin-digests to update automatically
 COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /bin/uv
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
 ENV VIRTUAL_ENV=/opt/venv
