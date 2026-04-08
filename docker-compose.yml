@@ -256,7 +256,7 @@ services:
 
   # ─── Data API (optional: docker compose --profile api up) ───
   data-api:
-    image: stargateio/data-api:v1
+    image: stargateio/data-api:v1.0.18
     container_name: data-api
     profiles: ["api"]
     networks:

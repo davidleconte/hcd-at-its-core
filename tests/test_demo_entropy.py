@@ -100,7 +100,8 @@ def test_score_mode():
     """Verify --score flag runs scorecard and reports 84/84 pass."""
     result = run_demo("--score")
     assert result.returncode == 0
-    assert "84" in result.stdout, "Scorecard should report 84 modules"
+    assert "84" in result.stdout and ("84/84" in result.stdout or "Score:  100%" in result.stdout), \
+        "Scorecard should report 84 modules with 84/84 pass or 100%"
     assert "PASS" in result.stdout, "Scorecard should show PASS results"
     assert "100%" in result.stdout, "All modules should pass (100%)"
 

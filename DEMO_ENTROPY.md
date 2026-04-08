@@ -109,6 +109,7 @@ By the end of this handbook, you will be able to:
 | **DORA** | EU Regulation 2022/2554 (Digital Operational Resilience Act) requiring financial entities to demonstrate ICT risk management and resilience testing. |
 | **Frozen Collection** | Collection type (list, set, or map) serialized as a single opaque blob; the entire value must be overwritten to update any element. |
 | **gc_grace_seconds** | Period after which a tombstone is eligible for purging during compaction; must exceed the repair cycle interval to prevent zombie data. |
+| **GFS** (Grandfather-Father-Son) | Backup rotation strategy retaining daily (son), weekly (father), and monthly (grandfather) snapshots for cost-efficient long-term retention. |
 | **Gossip** | Peer-to-peer protocol by which nodes periodically exchange state information (load, tokens, status) with a small set of peers. |
 | **Hinted Handoff** | Mechanism where the coordinator stores a "hint" for writes destined for an unavailable replica and replays them on recovery. |
 | **K8ssandra** | Open-source Kubernetes operator stack for HCD/Cassandra bundling automated repair (Reaper), backup (Medusa), and monitoring. |
@@ -140,6 +141,7 @@ By the end of this handbook, you will be able to:
 | **TokenAwarePolicy** | Driver load-balancing policy that routes requests directly to partition-owning replicas, minimizing coordinator hops. |
 | **Tombstone** | Deletion marker written to flag data as deleted; retained until `gc_grace_seconds` has elapsed and purged during compaction. |
 | **TTL** (Time To Live) | Per-cell or per-row expiry value in seconds; after TTL elapses, data is tombstoned and removed during compaction. |
+| **UDA** (User-Defined Aggregate) | Custom aggregation function defined in CQL using a state function, final function, and initial state value; enables domain-specific analytics beyond built-in COUNT/SUM/AVG. |
 | **UDT** (User-Defined Type) | Named, reusable composite type defined at keyspace level that groups multiple named fields, embeddable as a column type. |
 | **Vnode** (Virtual Node) | Logical subdivision of the token ring assigned to a physical node; enables smoother load distribution and faster bootstrapping. |
 | **WORM** (Write Once Read Many) | Storage policy preventing data modification or deletion after initial write, used for immutable backup archives. |

@@ -9,6 +9,8 @@ partitioner: org.apache.cassandra.dht.Murmur3Partitioner
 data_file_directories:
     - /var/lib/cassandra/data
 commitlog_directory: /var/lib/cassandra/commitlog
+# Sync mode: 'periodic' fsyncs every N ms (lower latency, up to N ms data at risk on hard crash).
+# Use 'batch' for zero-loss guarantees (fsync per write, ~2x latency). See Module 64.
 commitlog_sync: periodic
 commitlog_sync_period_in_ms: 10000
 commitlog_segment_size_in_mb: 32

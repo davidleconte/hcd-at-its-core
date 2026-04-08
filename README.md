@@ -60,6 +60,7 @@ Run `make help` for all targets. Key shortcuts:
 | `make demo-dry` | Dry-run demo (no cluster needed) |
 | `make demo-full` | Build cluster + run full automated demo |
 | `make demo-score` | Validate all 84 modules (scorecard) |
+| `make demo-part P=N` | Run a specific part (1-10) |
 | `make demo-ransomware` | Run DORA ransomware demo (modules 72-78) |
 | `make minio` | Start MinIO WORM storage |
 | `make minio-down` | Stop MinIO |

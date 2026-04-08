@@ -220,6 +220,16 @@ lookfor() {
     echo -e "${C_WHITE}>>> $1${C_RESET}"
 }
 
+# Safe printf for color-formatted aligned output (POSIX-compliant).
+# Usage: cprintf "${C_GREEN}" "%-64s" "dynamic text" "║"
+cprintf() {
+    local color="$1" fmt="$2" val="$3" suffix="${4:-}"
+    # shellcheck disable=SC2059
+    printf '%b' "$color"
+    printf "$fmt" "$val"
+    printf '%b\n' "${suffix}${C_RESET}"
+}
+
 challenge() {
     echo ""
     echo -e "${C_YELLOW}--- Challenge (optional) ---${C_RESET}"
@@ -10164,7 +10174,7 @@ else
     echo -e "${C_GREEN}║      | |__| |_| | |  | |  __/| |___| |___  | | | |___            ║${C_RESET}"
     echo -e "${C_GREEN}║       \\____\\___/|_|  |_|_|   |_____|_____| |_| |_____|            ║${C_RESET}"
     echo -e "${C_GREEN}║                                                                  ║${C_RESET}"
-    printf "${C_GREEN}║  %-64s ║${C_RESET}\n" "84 modules completed in ${DEMO_MINS}m ${DEMO_SECS}s"
+    cprintf "${C_GREEN}" "║  %-64s" "84 modules completed in ${DEMO_MINS}m ${DEMO_SECS}s" " ║"
     echo -e "${C_GREEN}║  10 parts: Foundations, Failures, Ops, Performance, Drivers,     ║${C_RESET}"
     echo -e "${C_GREEN}║            Transactions, Enterprise, Deep-Dives, DORA, Production║${C_RESET}"
     echo -e "${C_GREEN}║                                                                  ║${C_RESET}"

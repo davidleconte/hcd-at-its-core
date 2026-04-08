@@ -1,6 +1,9 @@
-"""Tests for shell scripts (syntax validation and basic behavior)."""
+"""Tests for shell scripts, config validation, and basic behavior."""
+import json
 import subprocess
+
 import pytest
+import yaml
 
 
 SHELL_SCRIPTS = [
@@ -81,3 +84,40 @@ def test_makefile_exists():
     )
     # -n is dry-run; just verify make can parse the file
     assert result.returncode == 0
+
+
+def test_prometheus_alerts_valid_yaml():
+    """Verify config/alerts.yml is valid YAML with expected structure."""
+    with open("config/alerts.yml") as f:
+        data = yaml.safe_load(f)
+    assert "groups" in data, "alerts.yml must have a 'groups' key"
+    assert len(data["groups"]) > 0, "alerts.yml must have at least one group"
+    group = data["groups"][0]
+    assert "rules" in group, "Alert group must have 'rules'"
+    assert len(group["rules"]) >= 5, "Expected at least 5 alert rules"
+    # Verify each rule has required fields
+    for rule in group["rules"]:
+        assert "alert" in rule, f"Rule missing 'alert' name: {rule}"
+        assert "expr" in rule, f"Rule {rule['alert']} missing 'expr'"
+        assert "labels" in rule, f"Rule {rule['alert']} missing 'labels'"
+        assert "severity" in rule["labels"], f"Rule {rule['alert']} missing severity label"
+
+
+def test_grafana_dashboard_valid_json():
+    """Verify Grafana dashboard JSON is valid and has expected panels."""
+    with open("config/grafana/dashboards/hcd-cluster.json") as f:
+        data = json.load(f)
+    assert "panels" in data, "Dashboard must have 'panels'"
+    assert len(data["panels"]) >= 4, "Expected at least 4 dashboard panels"
+    # Verify each panel has a title
+    for panel in data["panels"]:
+        if panel.get("type") != "row":
+            assert "title" in panel, f"Panel missing 'title': {panel.get('id')}"
+
+
+def test_prometheus_config_valid_yaml():
+    """Verify config/prometheus.yml is valid YAML with scrape config."""
+    with open("config/prometheus.yml") as f:
+        data = yaml.safe_load(f)
+    assert "scrape_configs" in data, "prometheus.yml must have scrape_configs"
+    assert "rule_files" in data, "prometheus.yml must reference rule_files"

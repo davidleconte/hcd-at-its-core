@@ -6,6 +6,7 @@
 ├── config/                 # Configuration templates
 │   ├── cassandra.yaml.template
 │   ├── prometheus.yml      # Prometheus scrape config for JMX metrics
+│   ├── alerts.yml          # Prometheus alerting rules (8 production alerts)
 │   ├── jmx-exporter.yml   # JMX-to-Prometheus metric mapping
 │   └── grafana/            # Grafana provisioning (datasource + dashboard)
 │       ├── provisioning/
@@ -21,7 +22,7 @@
 │   ├── test_topology.py
 │   ├── test_topology_unit.py
 │   ├── test_scripts.py
-│   └── __init__.py
+│   └── test_driver_demo.py
 ├── .env.example           # Environment variable template
 ├── docker-compose.yml     # Multi-node cluster definition (1024M per node)
 ├── Dockerfile             # Container image definition
