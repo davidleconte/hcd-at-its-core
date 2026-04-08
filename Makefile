@@ -6,7 +6,7 @@ EXPECTED_NODES ?= 6
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part minio minio-down check-prereqs test lint validate pin-digests wait clean monitoring monitoring-down api api-down
+.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part minio minio-down check-prereqs test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -46,24 +46,24 @@ demo-dry: ## Run the demo in dry-run mode (no cluster needed)
 demo-full: ## Build cluster + run full automated demo
 	./scripts/execute-full-demo.sh
 
-demo-score: ## Validate all 84 modules (dry-run scorecard)
+demo-score: ## Validate all 85 modules (dry-run scorecard)
 	./scripts/demo-entropy.sh --score
 
-demo-ransomware: ## Run DORA ransomware demo (modules 72-78)
-	@for m in 72 73 74 75 76 77 78; do ./scripts/demo-entropy.sh $$m; done
+demo-ransomware: ## Run DORA ransomware demo (modules 73-79)
+	@for m in 73 74 75 76 77 78 79; do ./scripts/demo-entropy.sh $$m; done
 
 demo-part: ## Run a demo part (1-10): make demo-part P=3
 	@case "$(P)" in \
 		1) for m in $$(seq 0 13);  do ./scripts/demo-entropy.sh $$m; done ;; \
-		2) for m in $$(seq 14 24); do ./scripts/demo-entropy.sh $$m; done ;; \
-		3) for m in $$(seq 25 37); do ./scripts/demo-entropy.sh $$m; done ;; \
-		4) for m in $$(seq 38 42); do ./scripts/demo-entropy.sh $$m; done ;; \
-		5) for m in $$(seq 43 47); do ./scripts/demo-entropy.sh $$m; done ;; \
-		6) for m in $$(seq 48 53); do ./scripts/demo-entropy.sh $$m; done ;; \
-		7) for m in $$(seq 54 61); do ./scripts/demo-entropy.sh $$m; done ;; \
-		8) for m in $$(seq 62 71); do ./scripts/demo-entropy.sh $$m; done ;; \
-		9) for m in $$(seq 72 78); do ./scripts/demo-entropy.sh $$m; done ;; \
-		10) for m in $$(seq 79 83); do ./scripts/demo-entropy.sh $$m; done ;; \
+		2) for m in $$(seq 14 25); do ./scripts/demo-entropy.sh $$m; done ;; \
+		3) for m in $$(seq 26 38); do ./scripts/demo-entropy.sh $$m; done ;; \
+		4) for m in $$(seq 39 43); do ./scripts/demo-entropy.sh $$m; done ;; \
+		5) for m in $$(seq 44 48); do ./scripts/demo-entropy.sh $$m; done ;; \
+		6) for m in $$(seq 49 54); do ./scripts/demo-entropy.sh $$m; done ;; \
+		7) for m in $$(seq 55 62); do ./scripts/demo-entropy.sh $$m; done ;; \
+		8) for m in $$(seq 63 72); do ./scripts/demo-entropy.sh $$m; done ;; \
+		9) for m in $$(seq 73 79); do ./scripts/demo-entropy.sh $$m; done ;; \
+		10) for m in $$(seq 80 84); do ./scripts/demo-entropy.sh $$m; done ;; \
 		*) echo "Usage: make demo-part P=N (where N is 1-10)" >&2; \
 		   echo "  1=Foundations   2=Failures    3=Operations  4=Performance  5=Drivers" >&2; \
 		   echo "  6=Transactions  7=Enterprise  8=Deep-Dives  9=DORA        10=Production" >&2; exit 1 ;; \
@@ -99,8 +99,11 @@ check-prereqs: ## Verify all prerequisites are installed
 	@command -v ruff >/dev/null 2>&1 && echo "  [OK] ruff" || echo "  [OPTIONAL] ruff (for Python linting)"
 	@test -f hcd-1.2.3-bin.tar.gz && echo "  [OK] hcd-1.2.3-bin.tar.gz" || echo "  [MISSING] hcd-1.2.3-bin.tar.gz (place in project root)"
 
-test: ## Run all pytest tests
+test: ## Run all pytest tests (dry-run, no cluster needed)
 	pytest tests/ -v
+
+test-integration: ## Run integration tests against live cluster (requires make up && make wait)
+	pytest tests/test_integration.py -v --run-integration
 
 lint: ## Lint shell scripts (shellcheck) and Python (ruff)
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck scripts/*.sh; else echo "shellcheck not installed, skipping"; fi

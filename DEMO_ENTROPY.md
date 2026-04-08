@@ -1,11 +1,11 @@
 # HCD Entropy & Consistency Didactic Demo
-> **Executive Summary:** An 84-module interactive demo proving that IBM HCD delivers zero-downtime resilience, automatic self-healing, and tunable consistency across datacenters — including a full DORA ransomware resilience scenario with WORM-protected backups. Designed for live stakeholder presentations and hands-on engineering onboarding.
+> **Executive Summary:** An 85-module interactive demo proving that IBM HCD delivers zero-downtime resilience, automatic self-healing, and tunable consistency across datacenters — including a full DORA ransomware resilience scenario with WORM-protected backups. Designed for live stakeholder presentations and hands-on engineering onboarding.
 >
 > **Why this matters:** Unplanned database downtime costs enterprises $5,600-$9,000 per minute [1]. This demo proves — live, on your laptop — that HCD survives datacenter-level failures with zero data loss and zero application errors, eliminating the single largest source of availability risk in distributed data infrastructure.
 
 | | |
 |---|---|
-| **Modules** | 84 (0-83), organized in 10 parts |
+| **Modules** | 85 (0-84), organized in 10 parts |
 | **Cluster** | 6 nodes, 2 DCs, RF=3 per DC |
 | **Time (interactive)** | ~4-5 hours (full), ~20-35 min per part |
 | **Time (non-interactive)** | ~60-90 minutes |
@@ -27,11 +27,11 @@ This handbook is for **database engineers, architects, SREs, and technical decis
 
 ### How to Use This Book
 
-This is a **hands-on lab manual**, not a reference text. Every concept is demonstrated with live commands against a real 6-node cluster running on your laptop. The 84 modules are organized in 10 parts of increasing complexity.
+This is a **hands-on lab manual**, not a reference text. Every concept is demonstrated with live commands against a real 6-node cluster running on your laptop. The 85 modules are organized in 10 parts of increasing complexity.
 
 **Three ways to use this material:**
 
-1. **Full sequential walkthrough** (~4-5 hours): Run all 84 modules in order. Best for first-time learners and comprehensive onboarding.
+1. **Full sequential walkthrough** (~4-5 hours): Run all 85 modules in order. Best for first-time learners and comprehensive onboarding.
 2. **Part-by-part sessions** (~20-35 min each): Work through one part per sitting. Suggested break points are marked in the demo roadmap.
 3. **Targeted deep-dives**: Jump to any module by number (`./demo-entropy.sh 23`). Modules > 1 auto-create required keyspaces.
 
@@ -71,7 +71,7 @@ By the end of this handbook, you will be able to:
     make demo                        # full interactive demo
     ./scripts/demo-entropy.sh 23     # jump to a specific module
     ./scripts/demo-entropy.sh --dry-run --no-pause  # dry-run, no cluster needed
-    ./scripts/demo-entropy.sh --score              # validate all 84 modules (scorecard)
+    ./scripts/demo-entropy.sh --score              # validate all 85 modules (scorecard)
     ```
     > **Single-module execution:** When jumping to Module N > 1, the script auto-creates the `rf_prod` keyspace via `ensure_rf_prod()` so prerequisites are satisfied.
 
@@ -1732,7 +1732,7 @@ This ensures the driver encounters both timeout and unavailable exceptions, maki
 
 A visual recap of everything covered in the demo, presented as an ASCII dashboard showing:
 
-- **Total modules**: 84 (0-83)
+- **Total modules**: 85 (0-84)
 - **What was proved**: Zero data loss during node/DC failure, automatic self-healing, LWW conflict resolution, rolling restart with zero downtime, automatic driver DC failover, p99 latency masking, safe banking transfers, saga compensation
 - **Topics covered**: Core, Indexing (SAI), Write Path, Multi-DC, Ops, Security, Data Modeling, Driver Policies, Transactions (ACID, Batches, LWT, Sagas)
 - **Key production takeaways**: LOCAL_QUORUM, TokenAwarePolicy, used_hosts_per_remote_dc, weekly repair, partition key design, monitoring, PasswordAuthenticator

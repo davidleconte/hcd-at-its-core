@@ -59,7 +59,7 @@ Run `make help` for all targets. Key shortcuts:
 | `make demo` | Run the interactive entropy demo |
 | `make demo-dry` | Dry-run demo (no cluster needed) |
 | `make demo-full` | Build cluster + run full automated demo |
-| `make demo-score` | Validate all 84 modules (scorecard) |
+| `make demo-score` | Validate all 85 modules (scorecard) |
 | `make demo-part P=N` | Run a specific part (1-10) |
 | `make demo-ransomware` | Run DORA ransomware demo (modules 72-78) |
 | `make minio` | Start MinIO WORM storage |
@@ -229,4 +229,4 @@ The default heap is 512 MB per node within a 1024 MB container memory limit. A 6
 
 ## Review & Feedback
 
-84-module interactive demo in 10 parts covering distributed systems, Cassandra internals, enterprise operations, DORA ransomware resilience, and production essentials. Validate with `make demo-score` (84/84 modules) and `make test` (all tests green).
+85-module interactive demo in 10 parts covering distributed systems, Cassandra internals, enterprise operations, DORA ransomware resilience, and production essentials. Validate with `make demo-score` (84/85 modules) and `make test` (all tests green).

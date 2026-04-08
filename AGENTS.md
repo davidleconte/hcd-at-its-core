@@ -84,7 +84,7 @@ Tests use `--dry-run` mode so they don't require a running cluster.
 
 ## Running the Demo
 
-The Entropy & Consistency demo is an interactive, didactic script (84 modules, 0-83) that explains HCD internals through hands-on scenarios, including a DORA ransomware resilience suite (modules 72-78) and production essentials (modules 79-83) with MinIO WORM backups.
+The Entropy & Consistency demo is an interactive, didactic script (85 modules, 0-84) that explains HCD internals through hands-on scenarios, including a DORA ransomware resilience suite (modules 73-79) and production essentials (modules 80-84) with MinIO WORM backups.
 
 *Focus areas: Entropy resolution, SAI composability, mutation-based write path, multi-DC failover (Module 23), CDC, audit logging, and guardrails.*
 
@@ -92,7 +92,7 @@ The Entropy & Consistency demo is an interactive, didactic script (84 modules, 0
 # Full interactive demo
 ./scripts/demo-entropy.sh
 
-# Run specific module (0-83)
+# Run specific module (0-84)
 ./scripts/demo-entropy.sh 3
 
 # Non-interactive mode (no pauses)

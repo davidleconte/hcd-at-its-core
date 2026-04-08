@@ -1,5 +1,5 @@
 #!/bin/bash
-# demo-entropy.sh — Interactive 84-module HCD entropy & consistency demo.
+# demo-entropy.sh — Interactive 85-module HCD entropy & consistency demo.
 #
 # Usage:
 #   ./scripts/demo-entropy.sh                     # interactive (full demo)
@@ -47,19 +47,19 @@ cleanup() {
         docker unpause "$node" >/dev/null 2>&1 || true
     done
     ${COMPOSE} start hcd-node1 hcd-node2 hcd-node3 hcd-node4 hcd-node5 hcd-node6 >/dev/null 2>&1 || true
-    # Reconnect dc1 nodes with static IPs (Module 77 may disconnect them)
+    # Reconnect dc1 nodes with static IPs (Module 78 may disconnect them)
     local dc1_ips=("172.28.0.2" "172.28.0.3" "172.28.0.4")
     local dc1_names=("hcd-node1" "hcd-node2" "hcd-node3")
     for idx in 0 1 2; do
         docker network connect --ip "${dc1_ips[$idx]}" "${HCD_NETWORK}" "${dc1_names[$idx]}" >/dev/null 2>&1 || true
     done
-    # Reconnect dc2 nodes with static IPs (Module 70 may disconnect them)
+    # Reconnect dc2 nodes with static IPs (Module 71 may disconnect them)
     local dc2_ips=("172.28.0.5" "172.28.0.6" "172.28.0.7")
     local dc2_names=("hcd-node4" "hcd-node5" "hcd-node6")
     for idx in 0 1 2; do
         docker network connect --ip "${dc2_ips[$idx]}" "${HCD_NETWORK}" "${dc2_names[$idx]}" >/dev/null 2>&1 || true
     done
-    # Remove any tc latency injection from WAN simulation (Module 29)
+    # Remove any tc latency injection from WAN simulation (Module 30)
     for node in hcd-node4 hcd-node5 hcd-node6; do
         docker exec "$node" tc qdisc del dev eth0 root 2>/dev/null || true
     done
@@ -91,7 +91,7 @@ pause() {
     fi
 }
 
-readonly TOTAL_MODULES=84
+readonly TOTAL_MODULES=85
 readonly PART_NAMES=(
     "Foundations"        # 0
     "Foundations"        # 1
@@ -113,7 +113,8 @@ readonly PART_NAMES=(
     "Advanced Failures"  # 17
     "Advanced Failures"  # 18
     "Advanced Failures"  # 19
-    "Advanced Failures"  # 20
+    "Advanced Failures"  # 20 (JSON Enterprise Patterns)
+    "Advanced Failures"  # 21
     "Advanced Failures"  # 21
     "Advanced Failures"  # 22
     "Advanced Failures"  # 23
@@ -297,9 +298,9 @@ done
 
 # ─── Validation ───────────────────────────────────────────────────
 if [[ -n "$SELECTED_MODULE" ]]; then
-    # Matches 0-9, 10-79, 80-83 (84 total modules: 0-83 inclusive)
-    if ! [[ "$SELECTED_MODULE" =~ ^([0-9]|[1-7][0-9]|8[0-3])$ ]]; then
-        echo "Invalid module number: ${SELECTED_MODULE} (Valid: 0-83)"
+    # Matches 0-9, 10-79, 80-84 (85 total modules: 0-84 inclusive)
+    if ! [[ "$SELECTED_MODULE" =~ ^([0-9]|[1-7][0-9]|8[0-4])$ ]]; then
+        echo "Invalid module number: ${SELECTED_MODULE} (Valid: 0-84)"
         exit 1
     fi
 fi
@@ -572,18 +573,18 @@ run_module() {
             echo -e "${C_WHITE}--- Demo Roadmap ---${C_RESET}"
             echo ""
             echo "  PART 1:  Foundations         (Modules  0-13)  ~30 min  RF, CL, failures, write/read path"
-            echo "  PART 2:  Advanced Failures   (Modules 14-24)  ~35 min  Rack failures, gossip, SAI, vectors"
+            echo "  PART 2:  Advanced Failures   (Modules 14-25)  ~35 min  Rack failures, gossip, SAI, vectors"
             echo "  ────── suggested break ──────"
-            echo "  PART 3:  Operations          (Modules 25-37)  ~40 min  CDC, audit, compaction, backup"
-            echo "  PART 4:  Performance         (Modules 38-42)  ~20 min  Stress testing, thread pools"
-            echo "  PART 5:  Driver Policies     (Modules 43-47)  ~25 min  Token-aware, speculative, failover"
+            echo "  PART 3:  Operations          (Modules 26-38)  ~40 min  CDC, audit, compaction, backup"
+            echo "  PART 4:  Performance         (Modules 39-43)  ~20 min  Stress testing, thread pools"
+            echo "  PART 5:  Driver Policies     (Modules 44-48)  ~25 min  Token-aware, speculative, failover"
             echo "  ────── suggested break ──────"
-            echo "  PART 6:  Transactions        (Modules 48-53)  ~25 min  ACID model, batches, LWT, sagas"
-            echo "  PART 7:  Enterprise          (Modules 54-61)  ~30 min  Data API, multi-tenancy, DR"
+            echo "  PART 6:  Transactions        (Modules 49-54)  ~25 min  ACID model, batches, LWT, sagas"
+            echo "  PART 7:  Enterprise          (Modules 55-62)  ~30 min  Data API, multi-tenancy, DR"
             echo "  ────── suggested break ──────"
-            echo "  PART 8:  Ops Deep-Dives      (Modules 62-71)  ~35 min  RBAC, TDE, crash recovery, tuning"
-            echo "  PART 9:  DORA Ransomware     (Modules 72-78)  ~30 min  WORM backups, attack sim, K8s"
-            echo "  PART 10: Production Essentials (Modules 79-83) ~25 min  Counters, JVM, aggregations"
+            echo "  PART 8:  Ops Deep-Dives      (Modules 63-72)  ~35 min  RBAC, TDE, crash recovery, tuning"
+            echo "  PART 9:  DORA Ransomware     (Modules 73-79)  ~30 min  WORM backups, attack sim, K8s"
+            echo "  PART 10: Production Essentials (Modules 80-84) ~25 min  Counters, JVM, aggregations"
             echo ""
             echo "  You can run any single module: ./demo-entropy.sh 23"
             echo "  Modules > 1 auto-create the rf_prod keyspace if needed."
@@ -1306,7 +1307,7 @@ run_module() {
         14)
             header 14 "The Ghost Rack (Double Rack Failure)"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
-            echo -e "${C_BLUE}  PART 2: ADVANCED FAILURES (Modules 14-24)${C_RESET}"
+            echo -e "${C_BLUE}  PART 2: ADVANCED FAILURES (Modules 14-25)${C_RESET}"
             echo -e "${C_BLUE}  Foundations are done. Now we break things harder: racks, DCs,${C_RESET}"
             echo -e "${C_BLUE}  gossip, and the network itself. Watch the cluster survive.${C_RESET}"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
@@ -1667,16 +1668,21 @@ run_module() {
             # ENTERPRISE PATTERNS (Parts 9-13)
             # =====================================================================
 
+            takeaway "Native JSON support lets REST APIs interact with HCD using JSON objects" \
+                     "while maintaining schema enforcement. INSERT JSON, SELECT JSON, fromJson()," \
+                     "toJson(), DEFAULT UNSET, and collection serialization cover all CRUD patterns."
+            ;;
+        20)
+            header 20 "JSON Enterprise Patterns"
+            echo "Building on Module 19's JSON fundamentals, this module covers enterprise"
+            echo "patterns: UDT-based document modeling, append-only versioning, event"
+            echo "sourcing with JSON payloads, bulk performance, and SAI composable queries."
             echo ""
-            echo -e "${C_MAGENTA}--- Module 19 Midpoint: JSON Basics Complete ---${C_RESET}"
-            echo -e "${C_MAGENTA}Parts 1-8 covered: INSERT/SELECT JSON, DEFAULT UNSET, WHERE clauses,${C_RESET}"
-            echo -e "${C_MAGENTA}fromJson()/toJson(), nested access, and multi-format coexistence.${C_RESET}"
-            echo -e "${C_MAGENTA}Parts 9-13 ahead: UDTs, versioning, event sourcing, bulk perf, SAI+JSON.${C_RESET}"
-            echo ""
-            pause
+
+            ensure_rf_prod
 
             separator
-            echo -e "${C_WHITE}--- Part 9: UDT + Nested JSON (Document Modeling) ---${C_RESET}"
+            echo -e "${C_WHITE}--- UDT + Nested JSON (Document Modeling) ---${C_RESET}"
             echo "User-Defined Types (UDTs) let you model nested JSON documents with"
             echo "full schema enforcement. Unlike schemaless document stores, Cassandra"
             echo "validates every field against the UDT definition — preventing silent"
@@ -1867,8 +1873,8 @@ run_module() {
             echo ""
             echo -e "${C_BLUE}Production tips:${C_RESET}"
             echo -e "${C_BLUE}  - Add TTL to old versions for automatic cleanup (e.g., keep last 90 days)${C_RESET}"
-            echo -e "${C_BLUE}  - Combine with CDC (Module 25) for real-time change notifications${C_RESET}"
-            echo -e "${C_BLUE}  - Use LWT (Module 48) for optimistic concurrency: 'UPDATE ... IF version = X'${C_RESET}"
+            echo -e "${C_BLUE}  - Combine with CDC (Module 26) for real-time change notifications${C_RESET}"
+            echo -e "${C_BLUE}  - Use LWT (Module 49) for optimistic concurrency: 'UPDATE ... IF version = X'${C_RESET}"
             echo -e "${C_BLUE}  - Partition size limit: ~100MB per doc_id. If a document has thousands of${C_RESET}"
             echo -e "${C_BLUE}    versions, consider bucketing by month: PRIMARY KEY ((doc_id, month), version)${C_RESET}"
 
@@ -1960,9 +1966,9 @@ run_module() {
             echo "                                    | Index   |  | Update |  | Engine |"
             echo "                                    +---------+  +--------+  +--------+"
             echo ""
-            echo -e "${C_BLUE}This is the pattern behind banking ledgers (Module 51), order management,${C_RESET}"
+            echo -e "${C_BLUE}This is the pattern behind banking ledgers (Module 52), order management,${C_RESET}"
             echo -e "${C_BLUE}and any system where 'what happened' matters as much as 'what is'.${C_RESET}"
-            echo -e "${C_BLUE}See Module 25 (CDC) for the streaming side of this architecture.${C_RESET}"
+            echo -e "${C_BLUE}See Module 26 (CDC) for the streaming side of this architecture.${C_RESET}"
 
             separator
             echo -e "${C_WHITE}--- Part 12: Bulk JSON & Performance Considerations ---${C_RESET}"
@@ -2014,7 +2020,7 @@ run_module() {
             echo ""
             echo -e "${C_BLUE}UNLOGGED BATCH is safe only for same-partition writes. Cross-partition${C_RESET}"
             echo -e "${C_BLUE}UNLOGGED BATCH can cause partial writes on failure — use LOGGED BATCH${C_RESET}"
-            echo -e "${C_BLUE}or individual writes instead. See Module 49 for the full batch deep dive.${C_RESET}"
+            echo -e "${C_BLUE}or individual writes instead. See Module 50 for the full batch deep dive.${C_RESET}"
 
             separator
             echo -e "${C_WHITE}--- Part 13: JSON + SAI Composable Queries ---${C_RESET}"
@@ -2150,8 +2156,8 @@ run_module() {
                      "JSON + SAI indexes = document-store ergonomics with relational query power." \
                      "DEFAULT UNSET remains the key to surgical partial updates without tombstones."
             ;;
-        20)
-            header 20 "Vector Search & AI Readiness"
+        21)
+            header 21 "Vector Search & AI Readiness"
             echo "HCD SAI supports Vector Search for AI-driven applications."
             echo "This is the technology behind semantic search in ChatGPT, Copilot, and RAG."
             echo ""
@@ -2178,7 +2184,7 @@ run_module() {
 
             if [ "$DRY_RUN" = false ]; then
                 if ! docker exec hcd-node1 cqlsh -e "DESCRIBE TABLE rf_prod.documents;" 2>/dev/null | grep -q 'embedding'; then
-                    echo -e "${C_YELLOW}Skipping Module 20: vector<float, N> requires HCD 1.2+ with vector support.${C_RESET}"
+                    echo -e "${C_YELLOW}Skipping Module 21: vector<float, N> requires HCD 1.2+ with vector support.${C_RESET}"
                     takeaway "Vector search requires HCD 1.2+ with vector type support." \
                              "The syntax is: vector<float, N> for N-dimensional embeddings." \
                              "Check your HCD version with 'nodetool version'."
@@ -2297,8 +2303,8 @@ run_module() {
                      "filtering for production RAG pipelines -- no external vector DB needed." \
                      "The full RAG flow: embed → store in HCD → ANN retrieve → LLM generate."
             ;;
-        21)
-            header 21 "Mixed Real-time Operations (CRUD + Upsert)"
+        22)
+            header 22 "Mixed Real-time Operations (CRUD + Upsert)"
             echo "In HCD, INSERT and UPDATE are both 'Upserts' -- they create a new"
             echo "mutation with a timestamp. The latest timestamp always wins (LWW)."
             echo ""
@@ -2356,11 +2362,11 @@ run_module() {
                      "INSERT and UPDATE are identical at the storage layer." \
                      "The latest timestamp wins during reads (Last-Write-Wins / LWW)."
             ;;
-        22)
-            header 22 "Compaction: The Entropy Cleaner"
+        23)
+            header 23 "Compaction: The Entropy Cleaner"
             echo "Compaction merges SSTables, resolves overwrites (LWW), and removes"
             echo "expired tombstones. It is the physical resolution of logical entropy."
-            echo -e "${C_DIM}(This module covers compaction basics. Module 31 compares all 4 strategies"
+            echo -e "${C_DIM}(This module covers compaction basics. Module 32 compares all 4 strategies"
             echo -e "in depth: STCS, LCS, TWCS, and UCS.)${C_RESET}"
             echo ""
             echo "+------------------------------------------------------------+"
@@ -2410,8 +2416,8 @@ run_module() {
                      "UCS adapts to workload patterns automatically, unlike STCS/LCS/TWCS" \
                      "which required manual tuning. Earlier versions (Cassandra 4.x) default to STCS."
             ;;
-        23)
-            header 23 "Kill an Entire Datacenter (Multi-DC Failover)"
+        24)
+            header 24 "Kill an Entire Datacenter (Multi-DC Failover)"
             echo -e "${C_DIM}(Estimated time: ~5-8 minutes including node restarts)${C_RESET}"
             echo ""
             echo "+----------------------------------------------------------------+"
@@ -2475,7 +2481,7 @@ run_module() {
             pause
 
             log_info "Writing NEW data from dc2 while dc1 is completely down..."
-            for i in $(seq 21 30); do
+            for i in $(seq 22 30); do
                 log_cmd "docker exec hcd-node5 cqlsh -e \"CONSISTENCY LOCAL_QUORUM; INSERT INTO rf_prod.dc_failover (id, msg, written_from) VALUES ($i, 'row-$i-during-outage', 'dc2');\""
             done
             log_cmd "docker exec hcd-node5 cqlsh -e \"CONSISTENCY LOCAL_QUORUM; SELECT count(*) FROM rf_prod.dc_failover;\""
@@ -2522,7 +2528,7 @@ run_module() {
             echo ""
             echo "  RTO (Recovery Time Objective) = seconds (gossip detection time)"
             echo "    → dc2 served reads within seconds of dc1 going down."
-            echo "    → With DCAwareRoundRobinPolicy (Module 45), the driver fails over"
+            echo "    → With DCAwareRoundRobinPolicy (Module 46), the driver fails over"
             echo "      automatically — application RTO approaches 0."
             echo ""
             echo "  Compare with traditional DR:"
@@ -2539,8 +2545,8 @@ run_module() {
                      "RPO=0, RTO=seconds. Both DCs active. No manual failover needed." \
                      "This is the power of multi-DC replication with NetworkTopologyStrategy."
             ;;
-        24)
-            header 24 "Grand Finale - The Self-Healing Database"
+        25)
+            header 25 "Grand Finale - The Self-Healing Database"
             echo ""
             echo "We are going to throw everything at this database and watch it heal."
             echo "Three escalating failures. One conclusion."
@@ -2646,10 +2652,10 @@ run_module() {
                      "Hinted Handoff handles short outages; anti-entropy repair guarantees eventual full consistency." \
                      "This is self-healing at scale — no manual intervention, no data loss."
             ;;
-        25)
-            header 25 "Change Data Capture (CDC)"
+        26)
+            header 26 "Change Data Capture (CDC)"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
-            echo -e "${C_BLUE}  PART 3: OPERATIONS (Modules 25-37)${C_RESET}"
+            echo -e "${C_BLUE}  PART 3: OPERATIONS (Modules 26-38)${C_RESET}"
             echo -e "${C_BLUE}  The cluster is resilient. Now: CDC, audit logging, data modeling,${C_RESET}"
             echo -e "${C_BLUE}  compaction, backup, and zero-downtime maintenance.${C_RESET}"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
@@ -2753,8 +2759,8 @@ run_module() {
                      "consumable event for downstream systems -- no polling required." \
                      "In production, use Debezium + Kafka Connect for reliable CDC consumption."
             ;;
-        26)
-            header 26 "Audit Logging"
+        27)
+            header 27 "Audit Logging"
             echo "Enterprise compliance requires knowing who did what, when."
             echo "HCD audit logging captures all CQL operations with timestamps,"
             echo "client IPs, and the exact statements executed."
@@ -2815,8 +2821,8 @@ run_module() {
                      "In production, audit logs feed into SIEM systems (Splunk, ELK)" \
                      "for real-time compliance monitoring and threat detection."
             ;;
-        27)
-            header 27 "Guardrails - Protecting the Database from Misuse"
+        28)
+            header 28 "Guardrails - Protecting the Database from Misuse"
             echo "HCD includes guardrails that prevent common mistakes from causing"
             echo "production incidents. These are configurable limits that warn or reject"
             echo "operations that could harm cluster health."
@@ -2871,9 +2877,9 @@ run_module() {
                      "production incidents. They are the database's immune system --" \
                      "catching misuse at the API layer before it becomes a crisis."
             ;;
-        28)
-            header 28 "Data Modeling Anti-Patterns"
-            echo "In Module 27, we saw guardrails that DETECT misuse. Now we go deeper:"
+        29)
+            header 29 "Data Modeling Anti-Patterns"
+            echo "In Module 28, we saw guardrails that DETECT misuse. Now we go deeper:"
             echo "the #1 root cause of those guardrail violations is poor partition key design."
             echo ""
             echo "The #1 mistake in Cassandra/HCD is poor partition key design."
@@ -2964,12 +2970,12 @@ run_module() {
             echo "  │  Pattern 2: Tenant ID in partition key (recommended)              │"
             echo "  │  - PRIMARY KEY ((tenant_id, bucket), event_id)                   │"
             echo "  │  - Pro: simple, scales to millions of tenants                     │"
-            echo "  │  - Con: noisy neighbor risk — use guardrails (Module 27) to limit │"
+            echo "  │  - Con: noisy neighbor risk — use guardrails (Module 28) to limit │"
             echo "  │                                                                   │"
             echo "  │  Pattern 3: Tenant ID + DC affinity (premium tenants)             │"
             echo "  │  - Premium tenants → dedicated DC with higher RF                  │"
             echo "  │  - Free tenants → shared DC with lower RF                         │"
-            echo "  │  - RBAC (Module 41) restricts each tenant's access scope          │"
+            echo "  │  - RBAC (Module 42) restricts each tenant's access scope          │"
             echo "  └──────────────────────────────────────────────────────────────────┘"
             echo ""
             echo "  The bucketed partition key we just built is Pattern 2 in action."
@@ -2985,11 +2991,11 @@ run_module() {
                       "Hint: PRIMARY KEY ((user_id, month_bucket), sent_at) WITH CLUSTERING ORDER BY (sent_at DESC)" \
                      "Bad keys create hot partitions; good keys spread load evenly." \
                      "Rule of thumb: keep partitions under 100MB and 100K rows." \
-                     "(Revisit this in Module 30 to see time-bucketing applied to IoT sensor data.)"
+                     "(Revisit this in Module 31 to see time-bucketing applied to IoT sensor data.)"
             ;;
-        29)
-            header 29 "Latency Comparison - The Cost of Consistency"
-            echo "Module 28 showed how partition keys affect DATA distribution."
+        30)
+            header 30 "Latency Comparison - The Cost of Consistency"
+            echo "Module 29 showed how partition keys affect DATA distribution."
             echo "Now we explore how CONSISTENCY LEVELS affect latency — the other"
             echo "half of the performance equation."
             echo ""
@@ -3109,11 +3115,11 @@ run_module() {
                      "CL=ALL pays the full WAN round-trip cost — visible with latency injection." \
                      "EACH_QUORUM (writes) should only be used when global linearizability is required."
             ;;
-        30)
-            header 30 "Time-Series Use Case"
-            echo "Modules 28-29 covered the theory: partition design and consistency costs."
+        31)
+            header 31 "Time-Series Use Case"
+            echo "Modules 29-29 covered the theory: partition design and consistency costs."
             echo "Now we put it all together with Cassandra's killer use case: time-series."
-            echo "This pattern combines everything: bucketed partitions (Module 28),"
+            echo "This pattern combines everything: bucketed partitions (Module 29),"
             echo "clustering order, and TTL-based auto-expiration."
             echo ""
             echo "Time-series data (IoT sensors, metrics, logs) is Cassandra's killer use case."
@@ -3157,8 +3163,8 @@ run_module() {
                      "TTL auto-expires old data. No manual deletes needed." \
                      "This pattern is the foundation for IoT, metrics, and log storage."
             ;;
-        31)
-            header 31 "Compaction Strategies Deep Dive"
+        32)
+            header 32 "Compaction Strategies Deep Dive"
             echo "Compaction merges SSTables to reclaim space, resolve overwrites (LWW),"
             echo "and remove expired tombstones. The strategy you choose has MAJOR impact"
             echo "on read/write performance and disk usage."
@@ -3210,7 +3216,7 @@ run_module() {
             log_cmd "docker exec hcd-node1 cqlsh -e \"CREATE TABLE IF NOT EXISTS rf_prod.compact_twcs (id int PRIMARY KEY, val text) WITH compaction = {'class': 'TimeWindowCompactionStrategy', 'compaction_window_unit': 'DAYS', 'compaction_window_size': 1};\""
 
             echo ""
-            echo -e "${C_YELLOW}QUESTION: For the sensor_data table (Module 30) with TTL expiration,${C_RESET}"
+            echo -e "${C_YELLOW}QUESTION: For the sensor_data table (Module 31) with TTL expiration,${C_RESET}"
             echo -e "${C_YELLOW}which strategy would be most efficient?${C_RESET}"
             pause
             echo -e "${C_GREEN}ANSWER: TWCS. It drops entire time windows when TTL expires — no tombstones,${C_RESET}"
@@ -3240,14 +3246,14 @@ run_module() {
             log_cmd "docker exec hcd-node1 nodetool tablestats rf_prod.compact_ucs 2>/dev/null | grep -E 'SSTable count|Compaction' | head -n 5 || echo '(UCS stats)'"
 
             lookfor "Compare SSTable counts and sizes between strategies."
-            lookfor "TWCS is ideal for sensor_data (Module 30) -- entire windows drop cleanly."
+            lookfor "TWCS is ideal for sensor_data (Module 31) -- entire windows drop cleanly."
 
             takeaway "Choose your compaction strategy based on your workload:" \
                      "  STCS = write-heavy, LCS = read-heavy, TWCS = time-series, UCS = general." \
                      "Wrong strategy = 10x worse performance. Right strategy = effortless scaling."
             ;;
-        32)
-            header 32 "Compression Strategies"
+        33)
+            header 33 "Compression Strategies"
             echo "HCD compresses SSTables on disk to reduce I/O and storage. The"
             echo "compression algorithm affects read latency, write throughput, and"
             echo "disk usage differently."
@@ -3316,8 +3322,8 @@ run_module() {
                      "Tune chunk_length_in_kb: 4KB for point reads, 64KB for scans." \
                      "Small-data caveat: compression shines at scale, not with 30 demo rows."
             ;;
-        33)
-            header 33 "Live Failover Under Load"
+        34)
+            header 34 "Live Failover Under Load"
             echo -e "${C_DIM}(Estimated time: ~5 minutes including node stop/start)${C_RESET}"
             echo "This module proves HCD stays available DURING failure, not just after."
             echo "We start a continuous write stream, kill a node mid-stream, and verify"
@@ -3412,8 +3418,8 @@ run_module() {
                      "With RF=3 and LOCAL_QUORUM, one node can be down with zero impact." \
                      "This is the fundamental promise of a leaderless architecture."
             ;;
-        34)
-            header 34 "Multi-DC Write Conflict Resolution"
+        35)
+            header 35 "Multi-DC Write Conflict Resolution"
             echo "When two clients write to the SAME row from different datacenters"
             echo "at nearly the same time, HCD resolves the conflict using"
             echo "Last-Write-Wins (LWW) -- the highest timestamp wins."
@@ -3472,8 +3478,8 @@ run_module() {
                      "WRITETIME() lets you inspect exactly which write won and when." \
                      "Critical: keep clocks synchronized with NTP. Clock skew = wrong winner."
             ;;
-        35)
-            header 35 "Adding a New Datacenter Live"
+        36)
+            header 36 "Adding a New Datacenter Live"
             echo "One of HCD's most powerful operational features: you can add a new"
             echo "datacenter to a running cluster with zero downtime. Data streams"
             echo "automatically to the new nodes."
@@ -3577,7 +3583,7 @@ run_module() {
             echo "  │  - VPN/peering between clouds for internode traffic               │"
             echo "  │  - LOCAL_QUORUM avoids cross-cloud latency for normal operations  │"
             echo "  │  - Each cloud provider is an independent failure domain            │"
-            echo "  │  - WAN latency (Module 29) simulates the real cross-cloud gap     │"
+            echo "  │  - WAN latency (Module 30) simulates the real cross-cloud gap     │"
             echo "  │  - No vendor lock-in: same HCD binary runs on any cloud or bare   │"
             echo "  │    metal — migrate a DC at a time with zero downtime               │"
             echo "  └──────────────────────────────────────────────────────────────────┘"
@@ -3769,8 +3775,8 @@ run_module() {
                      "Rebuild is idempotent and background — it never blocks the mutation path." \
                      "HCD's multi-DC model maps 1:1 to multi-cloud or hybrid deployments."
             ;;
-        36)
-            header 36 "Backup & Restore"
+        37)
+            header 37 "Backup & Restore"
             echo "HCD provides point-in-time snapshots for backup. Snapshots are"
             echo "instantaneous (hard-links to SSTables) and don't impact performance."
             echo ""
@@ -3838,8 +3844,8 @@ run_module() {
             echo "  6. RETENTION: Define snapshot retention policy (7 days? 30 days?)"
             echo ""
             ;;
-        37)
-            header 37 "Rolling Restart (Zero-Downtime Maintenance)"
+        38)
+            header 38 "Rolling Restart (Zero-Downtime Maintenance)"
             echo -e "${C_DIM}(Estimated time: ~8-10 minutes including 2 node restarts + wait)${C_RESET}"
             echo "The standard procedure for patching, upgrading, or config changes:"
             echo "restart one node at a time, waiting for UN before moving to the next."
@@ -3962,17 +3968,17 @@ run_module() {
                      "We proved it: ${ROLLING_READS_OK:-15} writes succeeded across all 3 restarts." \
                      "Always wait for UN before restarting the next node."
             ;;
-        38)
-            header 38 "Rate Limiting & Back-Pressure (Ops Monitoring)"
+        39)
+            header 39 "Rate Limiting & Back-Pressure (Ops Monitoring)"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
-            echo -e "${C_BLUE}  PART 4: PERFORMANCE (Modules 38-42)${C_RESET}"
+            echo -e "${C_BLUE}  PART 4: PERFORMANCE (Modules 39-43)${C_RESET}"
             echo -e "${C_BLUE}  Time to measure: stress tests, throughput benchmarks,${C_RESET}"
             echo -e "${C_BLUE}  thread pools, and the numbers that matter in production.${C_RESET}"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
             echo ""
             echo "This module is about DETECTING trouble: learning to read HCD's internal"
             echo "gauges so you can spot overload BEFORE it causes client-facing timeouts."
-            echo "(Module 40 will cover throughput benchmarking for capacity planning.)"
+            echo "(Module 41 will cover throughput benchmarking for capacity planning.)"
             echo ""
 
             # Grafana integration hint
@@ -4073,11 +4079,11 @@ run_module() {
                      "Blocked > 0 = coordinator overload. Add nodes or throttle client load." \
                      "p99 latency is your canary. If it spikes, investigate before p50 follows."
             ;;
-        39)
-            header 39 "Repair Strategies"
+        40)
+            header 40 "Repair Strategies"
             echo "Repair ensures all replicas converge to the same data. Different"
             echo "modes trade off speed, network cost, and operational complexity."
-            echo -e "${C_DIM}(This module covers repair modes and scheduling. Module 61 goes deeper"
+            echo -e "${C_DIM}(This module covers repair modes and scheduling. Module 62 goes deeper"
             echo -e "into Merkle trees, gc_grace zombie rows, and production scheduling.)${C_RESET}"
             echo ""
             echo "+------------------------------------------------------------------+"
@@ -4184,12 +4190,12 @@ run_module() {
                      "Use incremental repair for frequent runs with lower network overhead." \
                      "Full repair after disasters. Sub-range repair for surgical fixes."
             ;;
-        40)
-            header 40 "Stress Testing & Capacity Planning"
+        41)
+            header 41 "Stress Testing & Capacity Planning"
             echo -e "${C_DIM}(Estimated time: ~3-5 minutes for 200 sequential writes + analysis)${C_RESET}"
             check_monitoring_ready 2>/dev/null || true
             echo ""
-            echo "Module 38 taught you to read HCD's gauges (tpstats, thread pools)."
+            echo "Module 39 taught you to read HCD's gauges (tpstats, thread pools)."
             echo "Now we push the system harder to answer a different question:"
             echo "how many ops/sec can this cluster handle, and what does the"
             echo "latency distribution look like under sustained load?"
@@ -4291,8 +4297,8 @@ run_module() {
                      "In production, use cassandra-stress for 100K+ ops/sec benchmarking." \
                      "Monitor: p99 latency, SSTable count, Bloom filter FP ratio per table."
             ;;
-        41)
-            header 41 "Security Fundamentals"
+        42)
+            header 42 "Security Fundamentals"
             echo ""
             echo -e "${C_YELLOW}╔═══════════════════════════════════════════════════════════════════╗${C_RESET}"
             echo -e "${C_YELLOW}║  ⚠  SYNTAX DEMO ONLY — RBAC IS NOT ENFORCED ON THIS CLUSTER    ║${C_RESET}"
@@ -4313,7 +4319,7 @@ run_module() {
             echo "  ┌─────────────┐     ┌────────────────┐     ┌──────────────┐"
             echo "  │ Authn       │ ──► │ Authz           │ ──► │ Audit        │"
             echo "  │ (who)       │     │ (what allowed)  │     │ (what did)   │"
-            echo "  │ Roles/Login │     │ GRANT/REVOKE    │     │ Module 26    │"
+            echo "  │ Roles/Login │     │ GRANT/REVOKE    │     │ Module 27    │"
             echo "  └─────────────┘     └────────────────┘     └──────────────┘"
             echo ""
 
@@ -4460,8 +4466,8 @@ run_module() {
                      "Use keytool to manage JKS keystores, or PKCS12 for modern deployments." \
                      "Never use self-signed certs in production — use your corporate CA."
             ;;
-        42)
-            header 42 "Geographic Visualization & Token Ownership"
+        43)
+            header 43 "Geographic Visualization & Token Ownership"
             echo "Understanding which nodes own which data is critical for debugging"
             echo "performance and availability issues. HCD's token ring determines"
             echo "exactly where every piece of data lives."
@@ -4511,7 +4517,7 @@ run_module() {
             echo "  ┌─────────────────────────────────────────────────────────────────┐"
             echo "  │  GDPR Data Sovereignty with HCD:                                │"
             echo "  │                                                                  │"
-            echo "  │  dc1 (eu-west) ← EU citizen data STAYS here (GDPR Art. 44-49)  │"
+            echo "  │  dc1 (eu-west) ← EU citizen data STAYS here (GDPR Art. 44-50)  │"
             echo "  │  dc2 (us-east) ← US data lives here                             │"
             echo "  │                                                                  │"
             echo "  │  Strategy:                                                       │"
@@ -4524,7 +4530,7 @@ run_module() {
             echo "  │  Enforcement:                                                    │"
             echo "  │  - App routes EU users → dc1 contact points only                │"
             echo "  │  - LOCAL_QUORUM ensures reads never cross the Atlantic           │"
-            echo "  │  - Audit logging (Module 26) proves data access compliance       │"
+            echo "  │  - Audit logging (Module 27) proves data access compliance       │"
             echo "  └─────────────────────────────────────────────────────────────────┘"
             echo ""
             echo "  In production, you would map dc1=eu-west and dc2=us-east. The tracing"
@@ -4537,10 +4543,10 @@ run_module() {
                      "LOCAL_QUORUM guarantees no WAN traffic -- trace it to prove it." \
                      "For GDPR: use per-region keyspaces with RF=0 in non-compliant DCs."
             ;;
-        43)
-            header 43 "Driver Policies — The Client-Side of Entropy"
+        44)
+            header 44 "Driver Policies — The Client-Side of Entropy"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
-            echo -e "${C_BLUE}  PART 5: DRIVER POLICIES (Modules 43-47)${C_RESET}"
+            echo -e "${C_BLUE}  PART 5: DRIVER POLICIES (Modules 44-48)${C_RESET}"
             echo -e "${C_BLUE}  Server-side resilience is half the story. Now: how your${C_RESET}"
             echo -e "${C_BLUE}  application driver makes or breaks production reliability.${C_RESET}"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
@@ -4594,8 +4600,8 @@ run_module() {
                      "Combined with DCAwareRoundRobinPolicy, traffic stays local to the DC." \
                      "This is entropy prevention at the client layer: fewer hops = fewer replicas that can diverge."
             ;;
-        44)
-            header 44 "Speculative Execution — Masking Latency Spikes"
+        45)
+            header 45 "Speculative Execution — Masking Latency Spikes"
             echo "In a distributed system, ANY replica can become temporarily slow"
             echo "(compaction running, GC pause, disk I/O spike). This creates"
             echo "tail latency — your p99 is dictated by your slowest replica."
@@ -4658,10 +4664,10 @@ run_module() {
                      "Best for idempotent reads and writes. Avoid with LWT (Paxos is not idempotent)." \
                      "In production, this is the difference between p99=5ms and p99=500ms."
             ;;
-        45)
-            header 45 "Live DC Failover with Driver"
+        46)
+            header 46 "Live DC Failover with Driver"
             echo -e "${C_DIM}(Estimated time: ~3-5 minutes for continuous write loop + failover)${C_RESET}"
-            echo "Module 23 proved zero-downtime failover using cqlsh pointed at dc2."
+            echo "Module 24 proved zero-downtime failover using cqlsh pointed at dc2."
             echo "But in production, you don't manually switch nodes. The DataStax driver"
             echo "does it AUTOMATICALLY — your application code never changes."
             echo ""
@@ -4750,18 +4756,18 @@ run_module() {
             echo -e "${C_WHITE}RPO/RTO with driver-managed failover:${C_RESET}"
             echo "  RPO = 0 (zero data loss — writes continue on dc2 during dc1 outage)"
             echo "  RTO = ~1-3 seconds (driver detects failure via connection monitoring)"
-            echo "  vs Module 23 (manual cqlsh): RTO = human reaction time (minutes)"
+            echo "  vs Module 24 (manual cqlsh): RTO = human reaction time (minutes)"
             echo "  The driver reduces RTO from minutes to seconds — automatically."
             echo ""
 
             takeaway "The DataStax driver handles full DC failure with ZERO application errors." \
                      "Critical setting: used_hosts_per_remote_dc must be > 0 for cross-DC failover." \
-                     "RPO=0, RTO=1-3 seconds — the driver automates what Module 23 did manually." \
+                     "RPO=0, RTO=1-3 seconds — the driver automates what Module 24 did manually." \
                      "This is client-side entropy resolution: the driver absorbs datacenter-level entropy" \
                      "so the application never sees it."
             ;;
-        46)
-            header 46 "Retry Policies Under Partition"
+        47)
+            header 47 "Retry Policies Under Partition"
             echo "When a node times out or becomes unavailable, what happens next?"
             echo "The driver's RETRY POLICY decides: retry, rethrow, or ignore."
             echo ""
@@ -4851,27 +4857,27 @@ run_module() {
                      "FallthroughRetryPolicy gives full visibility — use for critical transactions." \
                      "The driver + retry policy = your application's entropy absorption layer."
             ;;
-        47)
-            header 47 "Parts 1-5 Checkpoint"
+        48)
+            header 48 "Parts 1-5 Checkpoint"
             echo ""
             echo -e "${C_CYAN}╔══════════════════════════════════════════════════════════════════════╗${C_RESET}"
             echo -e "${C_CYAN}║                    HCD ENTROPY & CONSISTENCY DEMO                   ║${C_RESET}"
             echo -e "${C_CYAN}║                     PARTS 1-5 CHECKPOINT                            ║${C_RESET}"
             echo -e "${C_CYAN}╠══════════════════════════════════════════════════════════════════════╣${C_RESET}"
             echo -e "${C_CYAN}║                                                                    ║${C_RESET}"
-            echo -e "${C_CYAN}║  Modules Completed:  48 (0-47)                                     ║${C_RESET}"
+            echo -e "${C_CYAN}║  Modules Completed:  48 (0-48)                                     ║${C_RESET}"
             echo -e "${C_CYAN}║  Cluster:            6 nodes, 2 DCs, RF=3 per DC                   ║${C_RESET}"
             echo -e "${C_CYAN}║                                                                    ║${C_RESET}"
             echo -e "${C_CYAN}╠══════════════════════════════════════════════════════════════════════╣${C_RESET}"
             echo -e "${C_CYAN}║  WHAT WE PROVED:                                                   ║${C_RESET}"
             echo -e "${C_CYAN}║                                                                    ║${C_RESET}"
-            echo -e "${C_CYAN}║  ✓ Zero data loss during node failure    (Module 33)               ║${C_RESET}"
+            echo -e "${C_CYAN}║  ✓ Zero data loss during node failure    (Module 34)               ║${C_RESET}"
             echo -e "${C_CYAN}║  ✓ Zero data loss during DC failure      (Modules 23, 45)          ║${C_RESET}"
             echo -e "${C_CYAN}║  ✓ Automatic self-healing via repair     (Modules 7-11, 24, 39)    ║${C_RESET}"
-            echo -e "${C_CYAN}║  ✓ LWW conflict resolution across DCs   (Module 34)               ║${C_RESET}"
-            echo -e "${C_CYAN}║  ✓ Rolling restart with zero downtime    (Module 37)               ║${C_RESET}"
-            echo -e "${C_CYAN}║  ✓ Automatic driver DC failover          (Module 45)               ║${C_RESET}"
-            echo -e "${C_CYAN}║  ✓ p99 → p50 via speculative execution   (Module 44)               ║${C_RESET}"
+            echo -e "${C_CYAN}║  ✓ LWW conflict resolution across DCs   (Module 35)               ║${C_RESET}"
+            echo -e "${C_CYAN}║  ✓ Rolling restart with zero downtime    (Module 38)               ║${C_RESET}"
+            echo -e "${C_CYAN}║  ✓ Automatic driver DC failover          (Module 46)               ║${C_RESET}"
+            echo -e "${C_CYAN}║  ✓ p99 → p50 via speculative execution   (Module 45)               ║${C_RESET}"
             echo -e "${C_CYAN}║                                                                    ║${C_RESET}"
             echo -e "${C_CYAN}╠══════════════════════════════════════════════════════════════════════╣${C_RESET}"
             echo -e "${C_CYAN}║  TOPICS COVERED:                                                   ║${C_RESET}"
@@ -4890,12 +4896,12 @@ run_module() {
             echo -e "${C_CYAN}║  KEY PRODUCTION TAKEAWAYS:                                         ║${C_RESET}"
             echo -e "${C_CYAN}║                                                                    ║${C_RESET}"
             echo -e "${C_CYAN}║  1. Use LOCAL_QUORUM for strong consistency without WAN penalty     ║${C_RESET}"
-            echo -e "${C_CYAN}║  2. TokenAwarePolicy eliminates coordinator hops (Module 43)       ║${C_RESET}"
-            echo -e "${C_CYAN}║  3. Set used_hosts_per_remote_dc > 0 for DC failover (Module 45)   ║${C_RESET}"
-            echo -e "${C_CYAN}║  4. Run nodetool repair -pr weekly on every node (Module 39)       ║${C_RESET}"
-            echo -e "${C_CYAN}║  5. Design partition keys for even distribution (Module 28)        ║${C_RESET}"
-            echo -e "${C_CYAN}║  6. Monitor tpstats + proxyhistograms for early warnings (Mod 38)  ║${C_RESET}"
-            echo -e "${C_CYAN}║  7. Enable PasswordAuthenticator and TLS in production (Mod 41)    ║${C_RESET}"
+            echo -e "${C_CYAN}║  2. TokenAwarePolicy eliminates coordinator hops (Module 44)       ║${C_RESET}"
+            echo -e "${C_CYAN}║  3. Set used_hosts_per_remote_dc > 0 for DC failover (Module 46)   ║${C_RESET}"
+            echo -e "${C_CYAN}║  4. Run nodetool repair -pr weekly on every node (Module 40)       ║${C_RESET}"
+            echo -e "${C_CYAN}║  5. Design partition keys for even distribution (Module 29)        ║${C_RESET}"
+            echo -e "${C_CYAN}║  6. Monitor tpstats + proxyhistograms for early warnings (Mod 39)  ║${C_RESET}"
+            echo -e "${C_CYAN}║  7. Enable PasswordAuthenticator and TLS in production (Mod 42)    ║${C_RESET}"
             echo -e "${C_CYAN}║                                                                    ║${C_RESET}"
             echo -e "${C_CYAN}╚══════════════════════════════════════════════════════════════════════╝${C_RESET}"
             echo ""
@@ -4938,11 +4944,11 @@ run_module() {
                      "The DataStax driver completes the picture: smart routing, failover, retries." \
                      "Together, they form a system that survives anything short of total destruction."
             ;;
-        48)
-            header 48 "ACID vs HCD: What 'Transactions' Really Mean Here"
+        49)
+            header 49 "ACID vs HCD: What 'Transactions' Really Mean Here"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
-            echo -e "${C_BLUE}  PART 6: TRANSACTIONS & CONSISTENCY PATTERNS (Modules 48-53)${C_RESET}"
-            echo -e "${C_BLUE}  We've covered operations (25-47). Now: how do you build correct${C_RESET}"
+            echo -e "${C_BLUE}  PART 6: TRANSACTIONS & CONSISTENCY PATTERNS (Modules 49-54)${C_RESET}"
+            echo -e "${C_BLUE}  We've covered operations (25-48). Now: how do you build correct${C_RESET}"
             echo -e "${C_BLUE}  applications on top of an eventually-consistent database?${C_RESET}"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
             echo ""
@@ -5010,10 +5016,10 @@ run_module() {
             takeaway "HCD guarantees: Atomicity (per-partition), tunable Consistency, and Durability (CommitLog + RF)." \
                      "There is NO isolation in the RDBMS sense. LWT provides row-level CAS, not transactions." \
                      "This is not a limitation — it is the design that enables linear horizontal scaling." \
-                     "Module 12 showed LWT for race conditions. Modules 49-53 show the full pattern toolkit."
+                     "Module 12 showed LWT for race conditions. Modules 50-53 show the full pattern toolkit."
             ;;
-        49)
-            header 49 "LOGGED vs UNLOGGED BATCH — Atomicity Without Isolation"
+        50)
+            header 50 "LOGGED vs UNLOGGED BATCH — Atomicity Without Isolation"
             echo "Batches in HCD are NOT for performance. They are for ATOMICITY."
             echo "Grouping 1000 inserts into a batch creates a single massive mutation"
             echo "that overwhelms the coordinator. Use async individual writes for throughput."
@@ -5105,10 +5111,10 @@ run_module() {
                      "LOGGED BATCH for cross-partition atomicity (batchlog adds ~30% latency overhead)." \
                      "Batches are for ATOMICITY, never for performance. Use async writes for throughput." \
                      "Key difference from RDBMS: a batch provides atomicity but NOT isolation." \
-                     "A concurrent read CAN see partial batch results. Modules 50-51 address this."
+                     "A concurrent read CAN see partial batch results. Modules 51-51 address this."
             ;;
-        50)
-            header 50 "The Lost Update Problem — Why Read-Modify-Write Needs LWT"
+        51)
+            header 51 "The Lost Update Problem — Why Read-Modify-Write Needs LWT"
             echo "The most dangerous consistency bug in distributed systems: the LOST UPDATE."
             echo "Two clients read a value, compute a new value, and write it back."
             echo "Without coordination, one update silently disappears."
@@ -5234,16 +5240,16 @@ run_module() {
                      "IF conditions on UPDATE/INSERT provide compare-and-swap (CAS) semantics." \
                      "[applied]: False returns the CURRENT values — use them to compute your retry." \
                      "SERIAL = global linearizability. LOCAL_SERIAL = DC-local (lower latency)." \
-                     "This is the foundation for safe financial operations (Module 51)."
+                     "This is the foundation for safe financial operations (Module 52)."
 
             challenge "Two users add items to a shared shopping cart concurrently." \
                       "Design a schema where both additions succeed without LWT." \
                       "Hint: Use a collection column (SET or MAP) — Cassandra merges concurrent SET additions automatically." \
-                      "(Contrast with Module 51's banking saga where LWT IS required for correctness.)"
+                      "(Contrast with Module 52's banking saga where LWT IS required for correctness.)"
             ;;
-        51)
-            header 51 "Banking: Instant Payment Between Two Banks"
-            echo "This module applies everything from Modules 48-50 to a real-world scenario:"
+        52)
+            header 52 "Banking: Instant Payment Between Two Banks"
+            echo "This module applies everything from Modules 49-50 to a real-world scenario:"
             echo "an instant payment from Alice (Bank A) to Bob (Bank B)."
             echo ""
             echo "+-----------------------------------------------------------------------+"
@@ -5366,12 +5372,12 @@ run_module() {
             echo "  │  - Audit trail: CDC captures every balance mutation (Section 302) │"
             echo "  │  - Immutability: HCD's append-only storage = tamper-evident log   │"
             echo "  │  - Version columns: full change history per account               │"
-            echo "  │  - Audit logging (Module 26): who accessed what, when             │"
+            echo "  │  - Audit logging (Module 27): who accessed what, when             │"
             echo "  │                                                                   │"
             echo "  │  PCI-DSS (Payment Card Industry):                                 │"
-            echo "  │  - Encryption at rest: TDE for SSTables (Module 63)               │"
-            echo "  │  - Encryption in transit: TLS for client + internode (Module 63)  │"
-            echo "  │  - Access control: RBAC roles (Module 62) — least privilege       │"
+            echo "  │  - Encryption at rest: TDE for SSTables (Module 64)               │"
+            echo "  │  - Encryption in transit: TLS for client + internode (Module 64)  │"
+            echo "  │  - Access control: RBAC roles (Module 63) — least privilege       │"
             echo "  │  - Network segmentation: DC isolation = cardholder data zones     │"
             echo "  │  - HCD FIPS 140-2 support: required for government payment systems│"
             echo "  │                                                                   │"
@@ -5387,8 +5393,8 @@ run_module() {
                      "Version columns prevent double-processing (idempotency key)." \
                      "CDC + audit logging + RBAC + TLS = SOX, PCI-DSS, PSD2 compliance-ready."
             ;;
-        52)
-            header 52 "The Saga Pattern: Supplier/Customer Order Flow"
+        53)
+            header 53 "The Saga Pattern: Supplier/Customer Order Flow"
             echo "A supplier receives an order from a customer. Four steps must happen:"
             echo "place order → reserve inventory → capture payment → ship."
             echo "Each step is an independent LWT-protected mutation."
@@ -5512,8 +5518,8 @@ run_module() {
                      "Design rule: every saga step must be idempotent and independently reversible." \
                      "This pattern scales across DCs, services, and organizational boundaries."
             ;;
-        53)
-            header 53 "Consistency Decision Framework"
+        54)
+            header 54 "Consistency Decision Framework"
             echo "You now have the complete toolkit. This module brings it all together:"
             echo "a decision framework for choosing the right consistency pattern."
             echo ""
@@ -5591,20 +5597,20 @@ run_module() {
             echo ""
             echo "  LOCAL_QUORUM writes:  Modules 2, 29, 33 (failover under load)"
             echo "  LWT (Paxos):          Modules 12 (tickets), 50 (lost update), 51 (banking)"
-            echo "  LOGGED BATCH:         Module 49 (cross-table atomicity)"
+            echo "  LOGGED BATCH:         Module 50 (cross-table atomicity)"
             echo "  Saga (LWT+CDC):       Modules 51 (banking), 52 (order flow)"
-            echo "  UNLOGGED BATCH:       Module 49 (same-partition)"
+            echo "  UNLOGGED BATCH:       Module 50 (same-partition)"
             echo ""
             echo "  Use case mapping:"
             echo "  ┌─────────────────────────┬───────────────────────────────┐"
             echo "  │ Use Case                │ Pattern                       │"
             echo "  ├─────────────────────────┼───────────────────────────────┤"
-            echo "  │ IoT sensor ingestion    │ LOCAL_QUORUM (Module 30)      │"
+            echo "  │ IoT sensor ingestion    │ LOCAL_QUORUM (Module 31)      │"
             echo "  │ Ticket reservations     │ LWT (Module 12)               │"
-            echo "  │ User + audit atomic     │ LOGGED BATCH (Module 49)      │"
-            echo "  │ Bank transfer           │ Saga: LWT + CDC (Module 51)   │"
-            echo "  │ Order fulfillment       │ Saga: LWT + CDC (Module 52)   │"
-            echo "  │ Account balance update  │ LWT with IF (Module 50)       │"
+            echo "  │ User + audit atomic     │ LOGGED BATCH (Module 50)      │"
+            echo "  │ Bank transfer           │ Saga: LWT + CDC (Module 52)   │"
+            echo "  │ Order fulfillment       │ Saga: LWT + CDC (Module 53)   │"
+            echo "  │ Account balance update  │ LWT with IF (Module 51)       │"
             echo "  │ Log/metrics append      │ CL=ONE (eventual is fine)     │"
             echo "  └─────────────────────────┴───────────────────────────────┘"
             echo ""
@@ -5644,11 +5650,11 @@ run_module() {
             echo "  CONSIDER ALTERNATIVES WHEN:"
             echo ""
             echo "  → You need multi-row ACID transactions with rollback"
-            echo "    This demo showed HCD has NO cross-partition isolation (Module 48)."
+            echo "    This demo showed HCD has NO cross-partition isolation (Module 49)."
             echo "    If your workload requires it, evaluate PostgreSQL or CockroachDB."
             echo ""
             echo "  → You need ad-hoc analytics with complex JOINs"
-            echo "    HCD is optimized for known query patterns (Module 28: query-first modeling)."
+            echo "    HCD is optimized for known query patterns (Module 29: query-first modeling)."
             echo "    For exploratory analytics, pair HCD with a query engine or use a warehouse."
             echo ""
             echo "  → Your dataset fits on a single server (< 100GB)"
@@ -5696,10 +5702,10 @@ run_module() {
                 pause
                 echo -e "${C_GREEN}Answers:${C_RESET}"
                 echo -e "${C_GREEN}  Q1=b  1 node — LQ needs 2/3 acks; losing 2 leaves only 1 (Module 2, 33).${C_RESET}"
-                echo -e "${C_GREEN}  Q2=b  The version column in the LWT IF condition is idempotent (Module 51).${C_RESET}"
-                echo -e "${C_GREEN}  Q3=b  TWCS drops entire time windows without tombstones (Module 31).${C_RESET}"
-                echo -e "${C_GREEN}  Q4=b  Repair must run before gc_grace_seconds expires (Module 39, 61).${C_RESET}"
-                echo -e "${C_GREEN}  Q5=b  Speculative execution masks slow-tail replicas at p99 (Module 44).${C_RESET}"
+                echo -e "${C_GREEN}  Q2=b  The version column in the LWT IF condition is idempotent (Module 52).${C_RESET}"
+                echo -e "${C_GREEN}  Q3=b  TWCS drops entire time windows without tombstones (Module 32).${C_RESET}"
+                echo -e "${C_GREEN}  Q4=b  Repair must run before gc_grace_seconds expires (Module 40, 61).${C_RESET}"
+                echo -e "${C_GREEN}  Q5=b  Speculative execution masks slow-tail replicas at p99 (Module 45).${C_RESET}"
                 echo ""
                 echo -e "${C_GREEN}If you got 4-5: you're ready to operate HCD in production.${C_RESET}"
                 echo -e "${C_GREEN}If you got 2-3: revisit the modules referenced in each answer.${C_RESET}"
@@ -5710,10 +5716,10 @@ run_module() {
             fi
             # ─── End Post-Assessment ──────────────────────────────────────
             ;;
-        54)
-            header 54 "HCD Data API (REST/JSON Document Access)"
+        55)
+            header 55 "HCD Data API (REST/JSON Document Access)"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
-            echo -e "${C_BLUE}  PART 7: ENTERPRISE PATTERNS (Modules 54-61)${C_RESET}"
+            echo -e "${C_BLUE}  PART 7: ENTERPRISE PATTERNS (Modules 55-62)${C_RESET}"
             echo -e "${C_BLUE}  Beyond CQL: APIs, multi-tenancy, and production patterns${C_RESET}"
             echo -e "${C_BLUE}  for building real applications on HCD.${C_RESET}"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
@@ -5911,8 +5917,8 @@ run_module() {
                      "Use it for microservices and web apps; use CQL for high-performance workloads." \
                      "Data API adds HTTP overhead but removes the driver dependency entirely."
             ;;
-        55)
-            header 55 "Multi-Tenant Isolation (End-to-End)"
+        56)
+            header 56 "Multi-Tenant Isolation (End-to-End)"
             echo "Multi-tenancy is one of the most common production patterns. How do you"
             echo "serve hundreds of tenants from a single HCD cluster while ensuring data"
             echo "isolation, fair resource usage, and regulatory compliance (GDPR)?"
@@ -6031,7 +6037,7 @@ run_module() {
             # ─── Tenant-Aware Guardrails ─────────────────────────────────
             separator
             echo -e "${C_WHITE}--- Step 5: Tenant-Aware Guardrails ---${C_RESET}"
-            echo "Module 27 showed guardrails for partition size limits. In multi-tenant systems,"
+            echo "Module 28 showed guardrails for partition size limits. In multi-tenant systems,"
             echo "guardrails protect against a single 'noisy tenant' overwhelming the cluster."
             echo ""
             echo "+-----------------------------------------------------------------------+"
@@ -6130,9 +6136,9 @@ run_module() {
                      "Premium tenants can be pinned to dedicated DCs for guaranteed performance." \
                      "Monitor partition sizes per tenant to catch 'noisy neighbor' problems early."
             ;;
-        56)
-            header 56 "Node Decommission (Controlled Shrink)"
-            echo "The inverse of Module 35 (DC expansion). Production clusters change size:"
+        57)
+            header 57 "Node Decommission (Controlled Shrink)"
+            echo "The inverse of Module 36 (DC expansion). Production clusters change size:"
             echo "hardware refreshes, DC consolidation, cost optimization. HCD provides"
             echo "a graceful mechanism to remove a node without data loss."
             echo ""
@@ -6289,22 +6295,22 @@ run_module() {
                      "Removenode for dead nodes, assassinate only as last resort (data loss risk)." \
                      "Never decommission a seed node without first updating the seed list everywhere."
             ;;
-        57)
-            header 57 "Disaster Recovery Runbook"
-            echo "Module 36 covered basic snapshots. This module builds a complete DR"
+        58)
+            header 58 "Disaster Recovery Runbook"
+            echo "Module 37 covered basic snapshots. This module builds a complete DR"
             echo "procedure: coordinated multi-node snapshots, simulated disaster,"
             echo "full restore, and production recommendations."
             echo ""
             echo "  ┌──────────────────────────────────────────────────────────────────┐"
             echo "  │  DR MATURITY LEVELS                                              │"
             echo "  │                                                                   │"
-            echo "  │  Level 1: Snapshots only (Module 36)                             │"
+            echo "  │  Level 1: Snapshots only (Module 37)                             │"
             echo "  │           RPO = time since last snapshot                          │"
             echo "  │                                                                   │"
             echo "  │  Level 2: Snapshots + commitlog archival                         │"
             echo "  │           RPO = minutes (replay commitlogs on top of snapshot)   │"
             echo "  │                                                                   │"
-            echo "  │  Level 3: Multi-DC replication (Module 23)                       │"
+            echo "  │  Level 3: Multi-DC replication (Module 24)                       │"
             echo "  │           RPO = 0 (async replication across DCs)                 │"
             echo "  │                                                                   │"
             echo "  │  Level 4: Multi-DC + snapshots + off-site storage                │"
@@ -6327,7 +6333,7 @@ run_module() {
 
             separator
             echo -e "${C_WHITE}--- Step 2: Coordinated Multi-Node Snapshot ---${C_RESET}"
-            echo "Unlike Module 36 (single-node snapshot), a real DR backup must"
+            echo "Unlike Module 37 (single-node snapshot), a real DR backup must"
             echo "snapshot ALL nodes in a tight time window."
             echo ""
 
@@ -6509,8 +6515,8 @@ run_module() {
                      "After restore: verify (integrity) + repair (consistency) — both are mandatory." \
                      "Use Medusa in production to automate coordinated backups to cloud storage."
             ;;
-        58)
-            header 58 "Silent Data Corruption Detection"
+        59)
+            header 59 "Silent Data Corruption Detection"
             echo "Disks lie. Sectors fail silently — a phenomenon called 'bit rot'."
             echo "When an SSTable is corrupted on disk, Cassandra may return wrong data"
             echo "or fail reads entirely. Worse: undetected corruption can propagate"
@@ -6671,9 +6677,9 @@ run_module() {
                      "Repair restores correct data from healthy replicas (majority wins)." \
                      "Defense in depth: checksums + disk_failure_policy + filesystem integrity + timely repair."
             ;;
-        59)
-            header 59 "Cross-Service Saga (Simulated External Services)"
-            echo "Modules 51-52 showed sagas WITHIN Cassandra. In the real world,"
+        60)
+            header 60 "Cross-Service Saga (Simulated External Services)"
+            echo "Modules 52-52 showed sagas WITHIN Cassandra. In the real world,"
             echo "transactions span multiple services with their own databases."
             echo "This module simulates a cross-service saga using HCD as the"
             echo "persistence layer for saga state and event coordination."
@@ -6853,7 +6859,7 @@ run_module() {
             echo "|                                                                         |"
             echo "|  Outbox pattern (CORRECT):                                             |"
             echo "|    1. Write state + outbox event in SAME database write (atomic)       |"
-            echo "|    2. CDC (Module 25) polls outbox table for new events                |"
+            echo "|    2. CDC (Module 26) polls outbox table for new events                |"
             echo "|    3. CDC delivers event to external service (Kafka, HTTP, etc.)       |"
             echo "|    4. External service acknowledges -> mark delivered=true             |"
             echo "|                                                                         |"
@@ -6910,10 +6916,10 @@ run_module() {
                      "HCD is the persistence layer — use Temporal.io or a custom state machine for orchestration." \
                      "Every saga step must be idempotent (IF NOT EXISTS) and independently compensatable."
             ;;
-        60)
-            header 60 "LWT Contention Under Load"
+        61)
+            header 61 "LWT Contention Under Load"
             echo "Lightweight Transactions (LWT) use Paxos for compare-and-swap semantics."
-            echo "Module 50 showed how LWT prevents lost updates. This module shows what"
+            echo "Module 51 showed how LWT prevents lost updates. This module shows what"
             echo "happens when MANY concurrent writers compete for the SAME row using LWT —"
             echo "and how contention causes retry storms and throughput collapse."
             echo ""
@@ -7074,9 +7080,9 @@ run_module() {
                      "Never use LWT as a distributed lock or rate limiter — use Redis/Valkey instead." \
                      "LWT throughput per partition: ~100-1000 ops/sec (Paxos is single-leader)."
             ;;
-        61)
-            header 61 "Repair Deep-Dive (The Most Critical Ops Procedure)"
-            echo "Module 39 introduced repair basics. This module goes much deeper:"
+        62)
+            header 62 "Repair Deep-Dive (The Most Critical Ops Procedure)"
+            echo "Module 40 introduced repair basics. This module goes much deeper:"
             echo "WHY repair is mandatory, HOW Merkle trees work, and what happens"
             echo "when you skip repair (zombie rows — the #1 production data bug)."
             echo ""
@@ -7182,7 +7188,7 @@ run_module() {
             echo "Now query node3 directly (at CL=ONE, it reads only its own data):"
             log_cmd "docker exec hcd-node3 cqlsh -e \"CONSISTENCY ONE; SELECT count(*) FROM rf_prod.repair_deep;\" 2>&1 | tail -n 5 || echo '(node3 may still be starting)'"
 
-            lookfor "Node1 should show 30 rows. Node3 should show fewer (10-20)."
+            lookfor "Node1 should show 30 rows. Node3 should show fewer (10-21)."
             lookfor "The difference is the entropy we created — repair will fix it."
 
             separator
@@ -7289,7 +7295,7 @@ run_module() {
             echo "  │    - nodetool compactionstats (repair triggers compaction)        │"
             echo "  └──────────────────────────────────────────────────────────────────┘"
             echo ""
-            echo "  Reference: Module 39 introduced Reaper basics."
+            echo "  Reference: Module 40 introduced Reaper basics."
             echo "  In production, deploy Reaper as a sidecar (K8ssandra) or standalone container."
             echo ""
 
@@ -7315,12 +7321,12 @@ run_module() {
             ;;
 
         # ══════════════════════════════════════════════════════════════
-        # PART 8: OPERATIONAL DEEP-DIVES (Modules 62-71)
+        # PART 8: OPERATIONAL DEEP-DIVES (Modules 63-72)
         # ══════════════════════════════════════════════════════════════
-        62)
-            header 62 "Live RBAC Demo (Role-Based Access Control)"
+        63)
+            header 63 "Live RBAC Demo (Role-Based Access Control)"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
-            echo -e "${C_BLUE}  PART 8: OPERATIONAL DEEP-DIVES (Modules 62-71)${C_RESET}"
+            echo -e "${C_BLUE}  PART 8: OPERATIONAL DEEP-DIVES (Modules 63-72)${C_RESET}"
             echo -e "${C_BLUE}  Production operations, security, durability, and tuning.${C_RESET}"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
             echo ""
@@ -7448,8 +7454,8 @@ run_module() {
                       "GRANT SELECT ON TABLE rf_prod.entropy_test TO role_table_reader;" \
                       "Verify with LIST ALL PERMISSIONS OF role_table_reader;"
             ;;
-        63)
-            header 63 "Encryption at Rest (Transparent Data Encryption)"
+        64)
+            header 64 "Encryption at Rest (Transparent Data Encryption)"
             echo "Transparent Data Encryption (TDE) protects data on disk — SSTables,"
             echo "commitlogs, and hints are encrypted without any application changes."
             echo "TDE protects against physical disk theft, not compromised applications."
@@ -7571,7 +7577,7 @@ run_module() {
             echo -e "${C_GREEN}ANSWER: No. TDE protects data at rest — on disk. A compromised app${C_RESET}"
             echo -e "${C_GREEN}with valid credentials reads decrypted data through CQL normally.${C_RESET}"
             echo -e "${C_GREEN}TDE protects against: stolen disks, decommissioned hardware, backup theft,${C_RESET}"
-            echo -e "${C_GREEN}unauthorized filesystem access. For app-level security, use RBAC (Module 62).${C_RESET}"
+            echo -e "${C_GREEN}unauthorized filesystem access. For app-level security, use RBAC (Module 63).${C_RESET}"
             echo ""
 
             echo -e "${C_YELLOW}NOTE: TDE availability depends on the HCD distribution. Open-source"
@@ -7589,8 +7595,8 @@ run_module() {
                       "keytool -genseckey -keyalg AES -keysize 256 -keystore /tmp/hcd.keystore -storetype JCEKS -alias hcd_key" \
                       "Then configure transparent_data_encryption_options in cassandra.yaml to reference it."
             ;;
-        64)
-            header 64 "Commitlog Durability & Crash Recovery"
+        65)
+            header 65 "Commitlog Durability & Crash Recovery"
             echo "The commitlog is HCD's durability guarantee. Every write is appended"
             echo "to the commitlog BEFORE the acknowledgment is sent to the client."
             echo "If a node crashes, the commitlog is replayed on restart — zero data loss."
@@ -7709,8 +7715,8 @@ run_module() {
                       "Measure write latency before and after (expect ~2x increase)." \
                       "Decide which mode is appropriate for your SLA (latency vs. safety)."
             ;;
-        65)
-            header 65 "Hint Expiration & Data Gaps"
+        66)
+            header 66 "Hint Expiration & Data Gaps"
             echo "Hinted handoff is an optimization for short outages: when a replica is"
             echo "down, the coordinator stores hints (pending writes) and delivers them"
             echo "when the node returns. But hints have a time limit."
@@ -7812,7 +7818,7 @@ run_module() {
             echo ""
             echo "  nodetool repair -pr rf_prod   # primary-range repair on the stale node"
             echo ""
-            echo "  This is why scheduled repair (Module 61) is MANDATORY in production."
+            echo "  This is why scheduled repair (Module 62) is MANDATORY in production."
             echo "  Hints handle minutes of downtime; repair handles hours and days."
             echo ""
 
@@ -7835,10 +7841,10 @@ run_module() {
                       "Calculate: if your repair runs every 7 days, and max_hint_window is 3 hours," \
                       "any outage > 3 hours creates a gap that only the next repair fixes." \
                       "(Recall Module 4's hinted handoff demo — hints are the FIRST line of defense.)" \
-                      "(Module 39/61 covers the repair schedule that fills the gap when hints expire.)"
+                      "(Module 40/61 covers the repair schedule that fills the gap when hints expire.)"
             ;;
-        66)
-            header 66 "Dynamic Replication Factor Change"
+        67)
+            header 67 "Dynamic Replication Factor Change"
             echo "ALTER KEYSPACE changes the replication metadata — but it does NOT"
             echo "automatically copy data to new replicas. This creates a dangerous"
             echo "window where reads at higher consistency levels can fail."
@@ -7932,8 +7938,8 @@ run_module() {
                       "Answer: RF cannot exceed the number of nodes in a DC. Max useful RF = N." \
                       "  Setting RF > N wastes resources and creates unavailable replicas."
             ;;
-        67)
-            header 67 "Streaming & Bootstrap Monitoring"
+        68)
+            header 68 "Streaming & Bootstrap Monitoring"
             echo "When a new node joins the cluster or repair runs, data is transferred"
             echo "via streaming. Understanding streaming is critical for capacity planning"
             echo "and maintenance window estimation."
@@ -8059,8 +8065,8 @@ run_module() {
                       "Set it to 50 Mbps: nodetool setstreamthroughput 50" \
                       "Restore it: nodetool setstreamthroughput 200"
             ;;
-        68)
-            header 68 "Materialized Views — Server-Side Denormalization"
+        69)
+            header 69 "Materialized Views — Server-Side Denormalization"
             echo "Materialized Views (MVs) automatically maintain a denormalized copy"
             echo "of a base table, sorted by different columns. Writes to the base"
             echo "table automatically propagate to the view."
@@ -8167,8 +8173,8 @@ run_module() {
                       "  SELECT * FROM rf_prod.users_base WHERE created_at IS NOT NULL AND user_id IS NOT NULL" \
                       "  PRIMARY KEY (created_at, user_id); -- Expect ~2x write latency per MV added."
             ;;
-        69)
-            header 69 "Nodetool Ops Deep-Dive — Systematic Troubleshooting"
+        70)
+            header 70 "Nodetool Ops Deep-Dive — Systematic Troubleshooting"
             echo "nodetool is the primary operational interface for HCD. This module"
             echo "covers the essential commands for monitoring, debugging, and"
             echo "capacity planning — and how to combine them into a troubleshooting workflow."
@@ -8282,8 +8288,8 @@ run_module() {
                       "docker exec hcd-node1 nodetool tpstats | awk '/Dropped/{found=1} found && \$NF>0'" \
                       "Run it every 30 seconds with 'watch' during a load test."
             ;;
-        70)
-            header 70 "Cross-DC Consistency Window"
+        71)
+            header 71 "Cross-DC Consistency Window"
             echo "LOCAL_QUORUM guarantees consistency within ONE datacenter."
             echo "Cross-DC replication is asynchronous — dc2 can lag behind dc1."
             echo "This module demonstrates the divergence window during a DC partition."
@@ -8419,8 +8425,8 @@ run_module() {
                       "CONSISTENCY EACH_QUORUM; INSERT INTO rf_prod.entropy_test (id, value) VALUES (999, 'each-q');" \
                       "Compare with CONSISTENCY LOCAL_QUORUM for the same write."
             ;;
-        71)
-            header 71 "Bloom Filter & Cache Tuning"
+        72)
+            header 72 "Bloom Filter & Cache Tuning"
             echo "Bloom filters and caches are HCD's read-path optimizations."
             echo "Tuning them correctly can reduce read latency by 10-50%."
             echo ""
@@ -8550,13 +8556,13 @@ run_module() {
             ;;
 
         # ══════════════════════════════════════════════════════════════
-        # Part 9: DORA Ransomware Resilience (Modules 72-78)
+        # Part 9: DORA Ransomware Resilience (Modules 73-79)
         # ══════════════════════════════════════════════════════════════
 
-        72)
-            header 72 "DORA Ransomware — Kill Chain & Infrastructure Setup"
+        73)
+            header 73 "DORA Ransomware — Kill Chain & Infrastructure Setup"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
-            echo -e "${C_BLUE}  PART 9: DORA RANSOMWARE RESILIENCE (Modules 72-78)${C_RESET}"
+            echo -e "${C_BLUE}  PART 9: DORA RANSOMWARE RESILIENCE (Modules 73-79)${C_RESET}"
             echo -e "${C_BLUE}  We survived 71 tests. Now an attacker encrypts every table,${C_RESET}"
             echo -e "${C_BLUE}  wipes snapshots, and demands ransom. Watch what happens.${C_RESET}"
             echo -e "${C_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}"
@@ -8725,8 +8731,8 @@ run_module() {
                      "dora_bank keyspace: RF=3 per DC = 6 copies across 2 datacenters."
             ;;
 
-        73)
-            header 73 "DORA Ransomware — Backup to WORM & Integrity Verification"
+        74)
+            header 74 "DORA Ransomware — Backup to WORM & Integrity Verification"
             echo "  DORA Art. 12 requires backups that are:"
             echo "    (a) Physically or logically separated from production"
             echo "    (b) Protected against unauthorized modification"
@@ -8906,8 +8912,8 @@ run_module() {
                      "30-day retention ensures backups survive any attack window."
             ;;
 
-        74)
-            header 74 "DORA Ransomware — Commitlog Archiving to WORM"
+        75)
+            header 75 "DORA Ransomware — Commitlog Archiving to WORM"
             echo "  Snapshots capture point-in-time state, but what about data written"
             echo "  AFTER the last snapshot? That's where commitlog archiving comes in."
             echo ""
@@ -9083,8 +9089,8 @@ CLEOF' 2>/dev/null || true
                       "With 32MB segments and moderate write load: typically 1-5 minutes RPO."
             ;;
 
-        75)
-            header 75 "DORA Ransomware — The Attack Simulation"
+        76)
+            header 76 "DORA Ransomware — The Attack Simulation"
             echo "  NOW WE SIMULATE A RANSOMWARE ATTACK on the dora_bank database."
             echo ""
             echo "  ┌─────────────────────────────────────────────────────────────┐"
@@ -9231,12 +9237,12 @@ CLEOF' 2>/dev/null || true
                       "1. Are your backups on the same network as production?" \
                       "2. Can a compromised admin credential delete your backups?" \
                       "3. Do you have WORM/immutable storage for critical backups?" \
-                      "(Module 73 showed WORM backup to MinIO. Module 76 will restore from it.)" \
+                      "(Module 74 showed WORM backup to MinIO. Module 77 will restore from it.)" \
                       "(If your answer to #2 is 'yes', your backups will not survive ransomware.)"
             ;;
 
-        76)
-            header 76 "DORA Ransomware — Recovery from WORM Backups"
+        77)
+            header 77 "DORA Ransomware — Recovery from WORM Backups"
             echo "  The attack has devastated our cluster. All data is gone."
             echo "  Local snapshots are wiped. But WORM backups survive."
             echo ""
@@ -9392,8 +9398,8 @@ CLEOF' 2>/dev/null || true
                      "WORM backups remain intact AFTER restore — available for future recovery if needed."
             ;;
 
-        77)
-            header 77 "DORA Ransomware — DC Failover Under Attack"
+        78)
+            header 78 "DORA Ransomware — DC Failover Under Attack"
             echo "  What if the attacker targets an entire datacenter?"
             echo "  In this module, we simulate a DC1 failure (network partition)"
             echo "  and verify that DC2 continues serving reads and writes."
@@ -9544,8 +9550,8 @@ CLEOF' 2>/dev/null || true
                      "DORA Art. 11: business continuity must be maintained during ICT incidents."
             ;;
 
-        78)
-            header 78 "DORA Ransomware — DORA Compliance Scorecard & K8s Auto-Healing"
+        79)
+            header 79 "DORA Ransomware — DORA Compliance Scorecard & K8s Auto-Healing"
             echo "  Final module: map everything we demonstrated to DORA articles"
             echo "  and show how K8ssandra adds auto-healing for Kubernetes deployments."
             echo ""
@@ -9706,10 +9712,10 @@ CLEOF' 2>/dev/null || true
             ;;
 
         # ══════════════════════════════════════════════════════════════
-        # PART 10: Production Essentials (Modules 79-83)
+        # PART 10: Production Essentials (Modules 80-84)
         # ══════════════════════════════════════════════════════════════
-        79)
-            header 79 "Counter Columns"
+        80)
+            header 80 "Counter Columns"
             echo "Counters are the ONLY non-idempotent operation in HCD. Unlike normal"
             echo "writes (which can be replayed safely), counter increments must never"
             echo "be replayed — each increment changes the value permanently."
@@ -9773,8 +9779,8 @@ CLEOF' 2>/dev/null || true
                      "No LWT support. Repair frequency is critical for counter accuracy." \
                      "Use cases: page views, vote counts, rate limiting — NOT financial balances."
             ;;
-        80)
-            header 80 "Prepared Statements & Driver Best Practices"
+        81)
+            header 81 "Prepared Statements & Driver Best Practices"
             echo "In production, HOW you talk to HCD matters as much as WHAT you store."
             echo "The #1 performance mistake: using simple (unprepared) statements."
             echo ""
@@ -9826,9 +9832,9 @@ CLEOF' 2>/dev/null || true
             echo -e "${C_WHITE}--- Driver Best Practices Checklist ---${C_RESET}"
             echo ""
             echo "  1. Prepare statements at startup, reuse objects"
-            echo "  2. Use TokenAwarePolicy (coordinator = replica, Module 43)"
+            echo "  2. Use TokenAwarePolicy (coordinator = replica, Module 44)"
             echo "  3. Set LOCAL_QUORUM as default consistency"
-            echo "  4. Enable speculative execution for p99 (Module 44)"
+            echo "  4. Enable speculative execution for p99 (Module 45)"
             echo "  5. Mark idempotent queries: stmt.setIdempotent(true)"
             echo "     (enables safe retry and speculative execution)"
             echo "  6. Connection pool: 1 connection per host per DC is usually enough"
@@ -9851,10 +9857,10 @@ CLEOF' 2>/dev/null || true
             takeaway "Prepare statements once, reuse forever — biggest single optimization." \
                      "Mark idempotent queries explicitly for safe retry and speculative execution." \
                      "1 connection per host handles ~32K concurrent requests via multiplexing." \
-                     "See Modules 43-46 for driver policies (TokenAware, speculative, failover, retry)."
+                     "See Modules 44-46 for driver policies (TokenAware, speculative, failover, retry)."
             ;;
-        81)
-            header 81 "JVM & GC Tuning"
+        82)
+            header 82 "JVM & GC Tuning"
             echo "HCD runs on the JVM. GC pauses directly impact tail latency — a"
             echo "10-second GC pause looks like a 10-second query timeout to clients."
             echo "Understanding heap sizing and GC behavior is critical for production."
@@ -9925,8 +9931,8 @@ CLEOF' 2>/dev/null || true
                      "Leave RAM for page cache — HCD uses mmap for SSTable reads." \
                      "Monitor GC pauses: > 1 second = client timeouts. Use nodetool gcstats."
             ;;
-        82)
-            header 82 "CQL Aggregation & Analytics Functions"
+        83)
+            header 83 "CQL Aggregation & Analytics Functions"
             echo "CQL supports server-side aggregation functions, but they behave very"
             echo "differently from SQL. Understanding their limitations prevents both"
             echo "performance disasters and incorrect results."
@@ -9937,7 +9943,7 @@ CLEOF' 2>/dev/null || true
             echo -e "${C_GREEN}ANSWER: It's a full-table scan. The coordinator must contact ALL replicas${C_RESET}"
             echo -e "${C_GREEN}for ALL partitions, collect every row, and count them. On a 1TB table,${C_RESET}"
             echo -e "${C_GREEN}this can take minutes and consume significant memory. Cassandra warns${C_RESET}"
-            echo -e "${C_GREEN}you via guardrails (Module 27) or query timeout.${C_RESET}"
+            echo -e "${C_GREEN}you via guardrails (Module 28) or query timeout.${C_RESET}"
             echo ""
 
             ensure_rf_prod
@@ -9993,8 +9999,8 @@ CLEOF' 2>/dev/null || true
                      "For analytics: pre-aggregate with counter tables, or use Apache Spark." \
                      "Available functions: COUNT, SUM, AVG, MIN, MAX, plus user-defined aggregates (UDA)."
             ;;
-        83)
-            header 83 "Collection Types Deep-Dive (Frozen vs Non-Frozen)"
+        84)
+            header 84 "Collection Types Deep-Dive (Frozen vs Non-Frozen)"
             echo "CQL offers three collection types: SET, LIST, and MAP. Each has"
             echo "different update semantics, and the 'frozen' modifier fundamentally"
             echo "changes how they are stored and updated."
@@ -10154,7 +10160,8 @@ else
     done
     # Show elapsed time for the final module
     if [ -n "$MODULE_START_TIME" ]; then
-        echo -e "${C_DIM}  (module 83 completed in $(( $(date +%s) - MODULE_START_TIME ))s)${C_RESET}"
+        echo -e "${C_DIM}  (module 84 completed in $(( $(date +%s) - MODULE_START_TIME ))s)${C_RESET}"
+
     fi
     DEMO_ELAPSED=$(( $(date +%s) - DEMO_START_TIME ))
     DEMO_MINS=$((DEMO_ELAPSED / 60))
@@ -10174,7 +10181,7 @@ else
     echo -e "${C_GREEN}║      | |__| |_| | |  | |  __/| |___| |___  | | | |___            ║${C_RESET}"
     echo -e "${C_GREEN}║       \\____\\___/|_|  |_|_|   |_____|_____| |_| |_____|            ║${C_RESET}"
     echo -e "${C_GREEN}║                                                                  ║${C_RESET}"
-    cprintf "${C_GREEN}" "║  %-64s" "84 modules completed in ${DEMO_MINS}m ${DEMO_SECS}s" " ║"
+    cprintf "${C_GREEN}" "║  %-64s" "85 modules completed in ${DEMO_MINS}m ${DEMO_SECS}s" " ║"
     echo -e "${C_GREEN}║  10 parts: Foundations, Failures, Ops, Performance, Drivers,     ║${C_RESET}"
     echo -e "${C_GREEN}║            Transactions, Enterprise, Deep-Dives, DORA, Production║${C_RESET}"
     echo -e "${C_GREEN}║                                                                  ║${C_RESET}"
@@ -10186,10 +10193,10 @@ else
     echo -e "${C_CYAN}┌──────────────────────────────────────────────────────────────────┐${C_RESET}"
     echo -e "${C_CYAN}│  NEXT STEPS                                                      │${C_RESET}"
     echo -e "${C_CYAN}│                                                                  │${C_RESET}"
-    echo -e "${C_CYAN}│  1. Replay key sections:  make demo-ransomware  (modules 72-78)  │${C_RESET}"
+    echo -e "${C_CYAN}│  1. Replay key sections:  make demo-ransomware  (modules 72-79)  │${C_RESET}"
     echo -e "${C_CYAN}│  2. Custom topology:      python3 scripts/generate-topology.py -i│${C_RESET}"
     echo -e "${C_CYAN}│  3. Monitoring:           make monitoring  (Grafana + Prometheus) │${C_RESET}"
-    echo -e "${C_CYAN}│  4. Validate all:         make demo-score  (84/84 scorecard)     │${C_RESET}"
+    echo -e "${C_CYAN}│  4. Validate all:         make demo-score  (85/85 scorecard)     │${C_RESET}"
     echo -e "${C_CYAN}│  5. Production:           same cluster design scales to 1000s    │${C_RESET}"
     echo -e "${C_CYAN}│                           of nodes — zero code changes needed     │${C_RESET}"
     echo -e "${C_CYAN}│                                                                  │${C_RESET}"

@@ -20,7 +20,7 @@ make cqlsh           # open CQL shell on node1
 make demo            # interactive entropy demo
 make demo-dry        # dry-run (no cluster needed)
 make demo-full       # build cluster + run full demo
-make demo-score      # validate all 84 modules (scorecard)
+make demo-score      # validate all 85 modules (scorecard)
 make demo-ransomware # run DORA ransomware demo (modules 72-78)
 make minio           # start MinIO WORM storage
 make minio-down      # stop MinIO
@@ -36,9 +36,9 @@ make wait            # wait until all nodes are UN
 # Direct commands (equivalent)
 docker compose up -d --build
 docker exec hcd-node1 nodetool status
-./scripts/demo-entropy.sh 3              # run specific module (0-83)
+./scripts/demo-entropy.sh 3              # run specific module (0-84)
 ./scripts/demo-entropy.sh --dry-run      # dry-run mode
-./scripts/demo-entropy.sh --score        # automated 84-module scorecard
+./scripts/demo-entropy.sh --score        # automated 85-module scorecard
 
 # Generate topology for different cluster sizes
 python3 scripts/generate-topology.py -i                        # interactive
@@ -61,7 +61,7 @@ pytest tests/test_topology_unit.py       # topology generator unit tests
 - **scripts/docker-entrypoint.sh** - Generates `cassandra.yaml` from template, writes rack/DC properties, waits for seed node with exponential backoff before starting HCD.
 - **Makefile** - Developer shortcuts with auto-detection of `docker compose` (v2) vs `docker-compose` (v1).
 - **scripts/generate-topology.py** - Generates `docker-compose.yml` for arbitrary cluster sizes and multi-DC configurations. Uses atomic file writes and validates DC node count consistency.
-- **scripts/demo-entropy.sh** - Interactive 84-module demo (modules 0-83) in 10 parts. Parts 1-6 cover entropy, consistency, SAI, vector search, CDC, audit logging, guardrails, data modeling, compaction, compression, DC expansion (with chaos test), backup/restore, rolling restart, repair, stress testing, security (RBAC + TLS), GDPR data sovereignty, driver policies, ACID model, batches, LWT, sagas, and consistency decision framework. Part 7 (Enterprise, modules 54-61) adds: HCD Data API (REST/JSON via HTTP), multi-tenant isolation, node decommission, disaster recovery, silent data corruption, cross-service saga, LWT contention, and repair deep-dive. Part 8 (Ops Deep-Dives, modules 62-71) adds: live RBAC demo, encryption at rest (TDE), commitlog crash recovery, hint expiration & data gaps, dynamic RF change, streaming & bootstrap monitoring, materialized views, nodetool ops deep-dive, cross-DC consistency window, and bloom filter & cache tuning. Part 9 (DORA Ransomware, modules 72-78) adds: kill chain overview, WORM backup to MinIO Object Lock, commitlog archiving to WORM, ransomware attack simulation (TRUNCATE + snapshot wipe), recovery from WORM backups, DC failover under attack, and DORA compliance scorecard with K8ssandra auto-healing. Part 10 (Production Essentials, modules 79-83) adds: counter columns, prepared statements & driver best practices, JVM & GC tuning, CQL aggregation functions, and collection types deep-dive (frozen vs non-frozen). Supports `--dry-run`, `--no-pause`, and `--score` flags. Progress bar and counter `[mod/83]` in every module header (84 modules numbered 0-83).
+- **scripts/demo-entropy.sh** - Interactive 85-module demo (modules 0-84) in 10 parts. Parts 1-6 cover entropy, consistency, SAI, vector search, CDC, audit logging, guardrails, data modeling, compaction, compression, DC expansion (with chaos test), backup/restore, rolling restart, repair, stress testing, security (RBAC + TLS), GDPR data sovereignty, driver policies, ACID model, batches, LWT, sagas, and consistency decision framework. Part 7 (Enterprise, modules 54-61) adds: HCD Data API (REST/JSON via HTTP), multi-tenant isolation, node decommission, disaster recovery, silent data corruption, cross-service saga, LWT contention, and repair deep-dive. Part 8 (Ops Deep-Dives, modules 62-71) adds: live RBAC demo, encryption at rest (TDE), commitlog crash recovery, hint expiration & data gaps, dynamic RF change, streaming & bootstrap monitoring, materialized views, nodetool ops deep-dive, cross-DC consistency window, and bloom filter & cache tuning. Part 9 (DORA Ransomware, modules 72-78) adds: kill chain overview, WORM backup to MinIO Object Lock, commitlog archiving to WORM, ransomware attack simulation (TRUNCATE + snapshot wipe), recovery from WORM backups, DC failover under attack, and DORA compliance scorecard with K8ssandra auto-healing. Part 10 (Production Essentials, modules 79-83) adds: counter columns, prepared statements & driver best practices, JVM & GC tuning, CQL aggregation functions, and collection types deep-dive (frozen vs non-frozen). Supports `--dry-run`, `--no-pause`, and `--score` flags. Progress bar and counter `[mod/84]` in every module header (85 modules numbered 0-84).
 - **config/prometheus.yml** - Prometheus scrape config for JMX exporter metrics on all 6 nodes (port 9404).
 - **config/jmx-exporter.yml** - JMX-to-Prometheus metric mapping for Cassandra thread pools, latencies, compaction, hints, and caches.
 - **config/grafana/** - Grafana provisioning (datasource + dashboard). Pre-built dashboard shows write/read p99, thread pool activity, compaction pending, dropped messages, and hints.

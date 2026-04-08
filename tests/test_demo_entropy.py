@@ -16,8 +16,8 @@ def test_dry_run_execution():
     result = run_demo("--dry-run", "--no-pause")
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "[DRY-RUN]" in result.stdout
-    # Verify all 84 module headers appear
-    for i in range(84):
+    # Verify all 85 module headers appear
+    for i in range(85):
         assert f"Module {i}:" in result.stdout, f"Module {i} header missing from full run"
 
 
@@ -32,19 +32,19 @@ def test_invalid_module():
     """Verify the script handles invalid module numbers gracefully."""
     result = run_demo("--dry-run", "99")
     assert "Invalid module number" in result.stdout
-    assert "Valid: 0-83" in result.stdout
+    assert "Valid: 0-84" in result.stdout
 
 
 def test_boundary_module_valid():
-    """Verify module 83 is accepted."""
-    result = run_demo("--dry-run", "--no-pause", "83")
+    """Verify module 84 is accepted."""
+    result = run_demo("--dry-run", "--no-pause", "84")
     assert result.returncode == 0
-    assert "Module 83:" in result.stdout
+    assert "Module 84:" in result.stdout
 
 
 def test_boundary_module_invalid():
-    """Verify module 84 is rejected."""
-    result = run_demo("--dry-run", "84")
+    """Verify module 85 is rejected."""
+    result = run_demo("--dry-run", "85")
     assert "Invalid module number" in result.stdout
 
 
@@ -100,8 +100,8 @@ def test_score_mode():
     """Verify --score flag runs scorecard and reports 84/84 pass."""
     result = run_demo("--score")
     assert result.returncode == 0
-    assert "84" in result.stdout and ("84/84" in result.stdout or "Score:  100%" in result.stdout), \
-        "Scorecard should report 84 modules with 84/84 pass or 100%"
+    assert "85" in result.stdout and ("85/85" in result.stdout or "Score:  100%" in result.stdout), \
+        "Scorecard should report 85 modules with 85/85 pass or 100%"
     assert "PASS" in result.stdout, "Scorecard should show PASS results"
     assert "100%" in result.stdout, "All modules should pass (100%)"
 
@@ -129,70 +129,71 @@ MODULE_CONTENT_EXPECTATIONS = [
     ("17", ["zombie", "partition", "network"]),
     ("18", ["sai", "index", "storage attached"]),
     ("19", ["json", "fromjson", "tojson"]),
-    ("20", ["vector", "similarity", "ann"]),
-    ("21", ["mutation", "upsert", "lww"]),
-    ("22", ["compaction", "sstable", "merge"]),
-    ("23", ["dc_failover"]),
-    ("24", ["self-healing", "cascading", "grand finale"]),
-    ("25", ["cdc"]),
-    ("26", ["enableauditlog", "audit"]),
-    ("27", ["guardrail", "batch"]),
-    ("28", ["bad_model", "partition"]),
-    ("29", ["latency", "local_quorum", "consistency"]),
-    ("30", ["time-series", "time_series", "ttl", "windowed"]),
-    ("31", ["compaction", "STCS", "LCS"]),
-    ("32", ["compress", "LZ4", "Zstd"]),
-    ("33", ["failover", "load", "write"]),
-    ("34", ["conflict", "multi-dc", "timestamp"]),
-    ("35", ["rebuild", "datacenter"]),
-    ("36", ["snapshot", "backup"]),
-    ("37", ["rolling", "restart", "seed"]),
-    ("38", ["thread", "tpstats", "pool"]),
-    ("39", ["repair"]),
-    ("40", ["stress", "bloom", "insert"]),
-    ("41", ["role", "security"]),
-    ("42", ["endpoint", "geographic", "getendpoints"]),
-    ("43", ["tokenaware", "token-aware", "driver-demo"]),
-    ("44", ["speculative"]),
-    ("45", ["dc-failover", "failover"]),
-    ("46", ["retry", "fallthrough"]),
-    ("47", ["CHECKPOINT"]),
-    ("48", ["acid", "atomicity"]),
-    ("49", ["logged", "batchlog"]),
-    ("50", ["lost update", "compare-and-swap", "accounts"]),
-    ("51", ["bank", "payment"]),
-    ("52", ["saga", "compensat"]),
-    ("53", ["decision", "golden rules"]),
-    ("54", ["data api", "rest", "8181"]),
-    ("55", ["tenant", "isolation"]),
-    ("56", ["decommission", "removenode"]),
-    ("57", ["snapshot", "disaster", "restore"]),
-    ("58", ["corrupt", "verify", "scrub"]),
-    ("59", ["saga", "outbox", "compensat"]),
-    ("60", ["contention", "paxos"]),
-    ("61", ["merkle", "gc_grace", "zombie"]),
-    ("62", ["role", "rbac", "authenticator"]),
-    ("63", ["encrypt", "tde"]),
-    ("64", ["commitlog", "crash"]),
-    ("65", ["hint", "max_hint_window"]),
-    ("66", ["replication", "alter keyspace"]),
-    ("67", ["stream", "bootstrap", "netstats"]),
-    ("68", ["materialized", "view"]),
-    ("69", ["tablestats", "tpstats", "proxyhistograms"]),
-    ("70", ["disconnect", "cross-dc", "diverge", "partition"]),
-    ("71", ["bloom", "cache", "fp_chance"]),
-    ("72", ["dora", "ransomware"]),
-    ("73", ["snapshot", "worm", "integrity"]),
-    ("74", ["commitlog", "pitr", "archiv"]),
-    ("75", ["attack", "truncate", "ransom"]),
-    ("76", ["recovery", "restore", "worm"]),
-    ("77", ["failover", "disconnect", "datacenter", "partition"]),
-    ("78", ["k8ssandra", "kubernetes", "auto-heal"]),
-    ("79", ["counter", "increment", "non-idempotent"]),
-    ("80", ["prepared", "idempoten", "driver"]),
-    ("81", ["jvm", "heap", "gc", "compressedoops"]),
-    ("82", ["aggregat", "count", "sum", "avg"]),
-    ("83", ["frozen", "collection", "set", "map"]),
+    ("20", ["json", "udt", "enterprise", "versioning"]),
+    ("21", ["vector", "similarity", "ann"]),
+    ("22", ["mutation", "upsert", "lww"]),
+    ("23", ["compaction", "sstable", "merge"]),
+    ("24", ["dc_failover"]),
+    ("25", ["self-healing", "cascading", "grand finale"]),
+    ("26", ["cdc"]),
+    ("27", ["enableauditlog", "audit"]),
+    ("28", ["guardrail", "batch"]),
+    ("29", ["bad_model", "partition"]),
+    ("30", ["latency", "local_quorum", "consistency"]),
+    ("31", ["time-series", "time_series", "ttl", "windowed"]),
+    ("32", ["compaction", "STCS", "LCS"]),
+    ("33", ["compress", "LZ4", "Zstd"]),
+    ("34", ["failover", "load", "write"]),
+    ("35", ["conflict", "multi-dc", "timestamp"]),
+    ("36", ["rebuild", "datacenter"]),
+    ("37", ["snapshot", "backup"]),
+    ("38", ["rolling", "restart", "seed"]),
+    ("39", ["thread", "tpstats", "pool"]),
+    ("40", ["repair"]),
+    ("41", ["stress", "bloom", "insert"]),
+    ("42", ["role", "security"]),
+    ("43", ["endpoint", "geographic", "getendpoints"]),
+    ("44", ["tokenaware", "token-aware", "driver-demo"]),
+    ("45", ["speculative"]),
+    ("46", ["dc-failover", "failover"]),
+    ("47", ["retry", "fallthrough"]),
+    ("48", ["CHECKPOINT"]),
+    ("49", ["acid", "atomicity"]),
+    ("50", ["logged", "batchlog"]),
+    ("51", ["lost update", "compare-and-swap", "accounts"]),
+    ("52", ["bank", "payment"]),
+    ("53", ["saga", "compensat"]),
+    ("54", ["decision", "golden rules"]),
+    ("55", ["data api", "rest", "8181"]),
+    ("56", ["tenant", "isolation"]),
+    ("57", ["decommission", "removenode"]),
+    ("58", ["snapshot", "disaster", "restore"]),
+    ("59", ["corrupt", "verify", "scrub"]),
+    ("60", ["saga", "outbox", "compensat"]),
+    ("61", ["contention", "paxos"]),
+    ("62", ["merkle", "gc_grace", "zombie"]),
+    ("63", ["role", "rbac", "authenticator"]),
+    ("64", ["encrypt", "tde"]),
+    ("65", ["commitlog", "crash"]),
+    ("66", ["hint", "max_hint_window"]),
+    ("67", ["replication", "alter keyspace"]),
+    ("68", ["stream", "bootstrap", "netstats"]),
+    ("69", ["materialized", "view"]),
+    ("70", ["tablestats", "tpstats", "proxyhistograms"]),
+    ("71", ["disconnect", "cross-dc", "diverge", "partition"]),
+    ("72", ["bloom", "cache", "fp_chance"]),
+    ("73", ["dora", "ransomware"]),
+    ("74", ["snapshot", "worm", "integrity"]),
+    ("75", ["commitlog", "pitr", "archiv"]),
+    ("76", ["attack", "truncate", "ransom"]),
+    ("77", ["recovery", "restore", "worm"]),
+    ("78", ["failover", "disconnect", "datacenter", "partition"]),
+    ("79", ["k8ssandra", "kubernetes", "auto-heal"]),
+    ("80", ["counter", "increment", "non-idempotent"]),
+    ("81", ["prepared", "idempoten", "driver"]),
+    ("82", ["jvm", "heap", "gc", "compressedoops"]),
+    ("83", ["aggregat", "count", "sum", "avg"]),
+    ("84", ["frozen", "collection", "set", "map"]),
 ]
 
 
@@ -213,7 +214,7 @@ def test_module_content(module_id, keywords):
     )
 
 
-@pytest.mark.parametrize("module_id", [str(i) for i in range(84)])
+@pytest.mark.parametrize("module_id", [str(i) for i in range(85)])
 def test_individual_modules_dry(module_id):
     """Verify each individual module runs in dry-run mode."""
     result = run_demo("--dry-run", "--no-pause", module_id)
