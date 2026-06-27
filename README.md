@@ -1,12 +1,14 @@
 # HCD Docker Cluster
 
-This project provides a Dockerized environment for running a multi-node IBM HCD (Hyper-Converged Database) cluster. It is designed for development and testing purposes.
+This project provides a Dockerized environment for running a multi-node **IBM HCD 2.0** (Hyper-Converged Database) cluster. It is designed for development and testing purposes. HCD 2.0 is built on **Apache Cassandra 5.0** and runs on **Java 17**.
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) (Docker Desktop includes Compose v2)
+- A Docker-compatible engine:
+  - [Docker Desktop](https://docs.docker.com/get-docker/) (includes Compose v2), **or**
+  - [colima](https://github.com/abiosoft/colima) on macOS (Apple Silicon / MBP M3 Pro). Colima exposes a Docker socket, so `docker compose` works unchanged. Size the VM for a 6-node cluster: `colima start --cpu 4 --memory 8 --disk 60` (the compose limits sum to ~6 GiB RAM; the default 2 CPU / 2 GiB VM is too small).
 - [Docker Compose](https://docs.docker.com/compose/install/) (v1 `docker-compose` also supported)
-- **HCD Binary**: Place `hcd-1.2.3-bin.tar.gz` in the root directory. Obtain it from your IBM representative or internal artifact repository.
+- **HCD Binary**: Place `hcd-2.0.6-bin.tar.gz` in the root directory. Obtain it from IBM Passport Advantage (part number `M1442EN`) or your IBM representative.
 
 ## Quick Start
 
@@ -18,7 +20,7 @@ This project provides a Dockerized environment for running a multi-node IBM HCD 
     cp .env.example .env
     ```
 
-    *Note: Ensure `hcd-1.2.3-bin.tar.gz` is present in the root directory.*
+    *Note: Ensure `hcd-2.0.6-bin.tar.gz` is present in the root directory.*
 
 3.  **Build and start the 6-node cluster.**
     ```bash
@@ -59,8 +61,11 @@ Run `make help` for all targets. Key shortcuts:
 | `make demo` | Run the interactive entropy demo |
 | `make demo-dry` | Dry-run demo (no cluster needed) |
 | `make demo-full` | Build cluster + run full automated demo |
-| `make demo-score` | Validate all 85 modules (scorecard) |
-| `make demo-part P=N` | Run a specific part (1-10) |
+| `make demo-score` | Validate all 94 modules (scorecard) |
+| `make gen-certs` | Generate PEM CA + node/client certs (secure profile) |
+| `make up-secure` | Start cluster with HCD 2.0 secure profile (auth + CIDR + certs) |
+| `make demo-2.0` | Run HCD 2.0 innovation modules (Part 11: 85-93) |
+| `make demo-part P=N` | Run a specific part (1-11) |
 | `make demo-ransomware` | Run DORA ransomware demo (modules 73-79) |
 | `make minio` | Start MinIO WORM storage |
 | `make minio-down` | Stop MinIO |
@@ -229,4 +234,23 @@ The default heap is 512 MB per node within a 1024 MB container memory limit. A 6
 
 ## Review & Feedback
 
-85-module interactive demo in 10 parts covering distributed systems, Cassandra internals, enterprise operations, DORA ransomware resilience, and production essentials. Validate with `make demo-score` (85/85 modules) and `make test` (all tests green).
+94-module interactive demo in 11 parts covering distributed systems, Cassandra internals, enterprise operations, DORA ransomware resilience, production essentials, and HCD 2.0 innovations (Part 11: DDM, CIDR authorizer, DC-level RBAC, mTLS, Paxos v2, auth hardening, PEM SSL, audit 2.0, Java 17). Validate with `make demo-score` (94/94 modules) and `make test` (all tests green).
+
+### Secure profile (HCD 2.0 security features)
+
+Part 11 modules 86–92 demonstrate authentication, authorization, CIDR/IP allowlisting, datacenter-level RBAC, mTLS, and PEM TLS. These enforce only under the **secure profile**, which enables `PasswordAuthenticator` and friends:
+
+```bash
+make gen-certs        # generate ./certs (PEM CA + per-node + client identity certs)
+make up-secure        # compose base + secure overlay (auth, CIDR, certs)
+make wait             # wait for all 6 nodes to reach UN
+make secure-bootstrap # replicate system_auth across DCs (run once, after UN)
+make demo-2.0         # run the Part 11 innovation modules (85-93)
+```
+
+The default `make up` runs the **open profile** (no auth) so modules 0–85 work unchanged. The secure profile mounts `./certs` read-only into each node and appends `config/cassandra-secure.yaml.fragment` to the generated `cassandra.yaml` at startup.
+
+Notes on the secure profile:
+- All in-container `cqlsh` calls (healthcheck, seed-wait, every demo command) authenticate as the bootstrap superuser `cassandra/cassandra` via a baked `cqlshrc` — so the cluster forms and the demo runs under auth. This means CQL under the secure profile runs *as the superuser*; the profile is intended to exercise the Part 11 security features (86–92), not to re-run modules 0–85 against the RBAC model.
+- `make secure-bootstrap` raises `system_auth` from the default RF=1 to `NetworkTopologyStrategy {dc1:3, dc2:3}` and repairs it, so authentication survives node loss (the default RF=1 superuser is a known multi-DC bootstrap hazard).
+- The CIDR authorizer ships in **MONITOR** mode. Never switch it to **ENFORCE** in production before populating `system_auth.cidr_groups` and allowlisting your own source CIDR, or you can lock yourself out.

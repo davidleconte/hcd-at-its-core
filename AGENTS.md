@@ -84,7 +84,7 @@ Tests use `--dry-run` mode so they don't require a running cluster.
 
 ## Running the Demo
 
-The Entropy & Consistency demo is an interactive, didactic script (85 modules, 0-84) that explains HCD internals through hands-on scenarios, including a DORA ransomware resilience suite (modules 73-79) and production essentials (modules 80-84) with MinIO WORM backups.
+The Entropy & Consistency demo is an interactive, didactic script (94 modules, 0-93) that explains HCD internals through hands-on scenarios, including a DORA ransomware resilience suite (modules 73-79), production essentials (modules 80-84) with MinIO WORM backups, and a Part 11 HCD 2.0 innovations suite (modules 85-93: DDM, CIDR, DC-RBAC, mTLS, Paxos v2, auth hardening, PEM SSL, audit 2.0, Java 17 — modules 86-92 need `make up-secure`).
 
 *Focus areas: Entropy resolution, SAI composability, mutation-based write path, multi-DC failover (Module 23), CDC, audit logging, and guardrails.*
 
@@ -92,7 +92,7 @@ The Entropy & Consistency demo is an interactive, didactic script (85 modules, 0
 # Full interactive demo
 ./scripts/demo-entropy.sh
 
-# Run specific module (0-84)
+# Run specific module (0-93)
 ./scripts/demo-entropy.sh 3
 
 # Non-interactive mode (no pauses)
@@ -117,9 +117,8 @@ To add Module N to `demo-entropy.sh`:
        takeaway "Key learning point"
        ;;
    ```
-2. Update the validation regex in the script (adjust upper bound to include N)
-3. Update `TOTAL_MODULES` and `PART_NAMES` array in the script
-4. Update the main loop range: `for i in {0..N}`
-4. Add the module to `DEMO_ENTROPY.md` (overview list + body section)
-5. Update `tests/test_demo_entropy.py`: adjust `range(N+1)` in parametrize and full-run test
-6. Run `pytest tests/test_demo_entropy.py -v` to verify
+2. Update `TOTAL_MODULES` and add a `PART_NAMES` entry in the script. The run loop and scorecard derive from `TOTAL_MODULES` (`seq 0 $((TOTAL_MODULES - 1))`) — there is no separate `{0..N}` loop to edit.
+3. Update the input-validation regex in the script (it is hardcoded, not derived — adjust the upper bound to include N).
+4. Add the module to `DEMO_ENTROPY.md` (Part 11 overview table + body chapter + Appendix C).
+5. Update `tests/test_demo_entropy.py`: bump `range(N+1)` in the parametrize and full-run header checks, the boundary tests, the scorecard count, and add a `MODULE_CONTENT_EXPECTATIONS` row with a module-*specific* keyword.
+6. Update the count strings (Makefile/README/CLAUDE/AGENTS/DEMO_ENTROPY) and run `pytest tests/test_demo_entropy.py -v` + `./scripts/demo-entropy.sh --score` to verify.

@@ -16,8 +16,8 @@ def test_dry_run_execution():
     result = run_demo("--dry-run", "--no-pause")
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "[DRY-RUN]" in result.stdout
-    # Verify all 85 module headers appear
-    for i in range(85):
+    # Verify all 94 module headers appear
+    for i in range(94):
         assert f"Module {i}:" in result.stdout, f"Module {i} header missing from full run"
 
 
@@ -32,19 +32,19 @@ def test_invalid_module():
     """Verify the script handles invalid module numbers gracefully."""
     result = run_demo("--dry-run", "99")
     assert "Invalid module number" in result.stdout
-    assert "Valid: 0-84" in result.stdout
+    assert "Valid: 0-93" in result.stdout
 
 
 def test_boundary_module_valid():
-    """Verify module 84 is accepted."""
-    result = run_demo("--dry-run", "--no-pause", "84")
+    """Verify module 93 (last module, Part 11 Java 17) is accepted."""
+    result = run_demo("--dry-run", "--no-pause", "93")
     assert result.returncode == 0
-    assert "Module 84:" in result.stdout
+    assert "Module 93:" in result.stdout
 
 
 def test_boundary_module_invalid():
-    """Verify module 85 is rejected."""
-    result = run_demo("--dry-run", "85")
+    """Verify module 94 (one past the last) is rejected."""
+    result = run_demo("--dry-run", "94")
     assert "Invalid module number" in result.stdout
 
 
@@ -97,11 +97,11 @@ def test_combined_flags():
 
 
 def test_score_mode():
-    """Verify --score flag runs scorecard and reports 85/85 pass."""
+    """Verify --score flag runs scorecard and reports 94/94 pass."""
     result = run_demo("--score")
     assert result.returncode == 0
-    assert "85" in result.stdout and ("85/85" in result.stdout or "Score:  100%" in result.stdout), \
-        "Scorecard should report 85 modules with 85/85 pass or 100%"
+    assert "94" in result.stdout and ("94/94" in result.stdout or "Score:  100%" in result.stdout), \
+        "Scorecard should report 94 modules with 94/94 pass or 100%"
     assert "PASS" in result.stdout, "Scorecard should show PASS results"
     assert "100%" in result.stdout, "All modules should pass (100%)"
 
@@ -194,6 +194,15 @@ MODULE_CONTENT_EXPECTATIONS = [
     ("82", ["jvm", "heap", "gc", "compressedoops"]),
     ("83", ["aggregat", "count", "sum", "avg"]),
     ("84", ["frozen", "collection", "set", "map"]),
+    ("85", ["masking", "mask_inner", "unmask", "redact"]),
+    ("86", ["cidr", "allowlist", "access from cidrs"]),
+    ("87", ["datacenter", "access to datacenters", "network authorizer", "residency"]),
+    ("88", ["mtls", "identity", "spiffe", "certificate"]),
+    ("89", ["paxos", "consensus", "contention", "v2"]),
+    ("90", ["hashed password", "rate limit", "invalidate", "bulk"]),
+    ("91", ["pem", "encryption", "truststore", "internode"]),
+    ("92", ["audit", "auditlog", "worm", "categories"]),
+    ("93", ["java 17", "zgc", "netty", "supply-chain", "cve"]),
 ]
 
 
@@ -214,7 +223,7 @@ def test_module_content(module_id, keywords):
     )
 
 
-@pytest.mark.parametrize("module_id", [str(i) for i in range(85)])
+@pytest.mark.parametrize("module_id", [str(i) for i in range(94)])
 def test_individual_modules_dry(module_id):
     """Verify each individual module runs in dry-run mode."""
     result = run_demo("--dry-run", "--no-pause", module_id)

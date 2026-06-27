@@ -16,7 +16,10 @@ def _import_driver_demo():
     try:
         spec.loader.exec_module(mod)
     except SystemExit:
-        pytest.skip("cassandra-driver not installed — skipping driver_demo tests")
+        pytest.skip(
+            "cassandra-driver not installed — skipping driver_demo tests",
+            allow_module_level=True,
+        )
     return mod
 
 

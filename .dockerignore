@@ -43,3 +43,6 @@ __pycache__/
 
 # Brokk
 .brokk/
+
+# Generated TLS material (make gen-certs) — never bake private keys into the image
+certs/

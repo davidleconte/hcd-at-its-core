@@ -27,7 +27,7 @@ labels: bug
 - OS: <!-- e.g., macOS 14.5, Ubuntu 22.04 -->
 - Docker version: <!-- docker --version -->
 - Docker Compose version: <!-- docker compose version -->
-- HCD tarball version: <!-- e.g., hcd-1.2.3-bin.tar.gz -->
+- HCD tarball version: <!-- e.g., hcd-2.0.6-bin.tar.gz -->
 
 ## Relevant Logs
 

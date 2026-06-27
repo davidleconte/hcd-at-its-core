@@ -1,11 +1,14 @@
 # To pin by digest for reproducible builds, run: make pin-digests
 # This will update this file with the current digest automatically.
-# FORMAT: FROM eclipse-temurin:11-jre@sha256:<digest>
-FROM eclipse-temurin:11-jre
+# FORMAT: FROM eclipse-temurin:17-jre@sha256:<digest>
+# HCD 2.0 adds Java 17 support (release 2.0.6, on Apache Cassandra 5.0); the demo
+# standardizes on JDK 17 so Module 82 (JVM/GC) and the new Module 93 (Java 17/ZGC)
+# run on the supported runtime.
+FROM eclipse-temurin:17-jre
 
 LABEL maintainer="HCD Docker Cluster" \
-      description="IBM HCD multi-node cluster for development and demos" \
-      version="1.2.3" \
+      description="IBM HCD 2.0 multi-node cluster for development and demos" \
+      version="2.0.6" \
       org.opencontainers.image.title="HCD Docker Cluster" \
       org.opencontainers.image.description="IBM HCD (Hyper-Converged Database) - multi-node cluster for development, testing, and demos" \
       org.opencontainers.image.vendor="IBM" \
@@ -47,16 +50,25 @@ RUN groupadd -r cassandra --gid=999 && \
 
 # Install HCD from local tarball
 # We use a specific directory to avoid clobbering /opt
-COPY hcd-1.2.3-bin.tar.gz /tmp/hcd.tar.gz
+# NOTE: hcd-2.0.6-bin.tar.gz must be obtained from IBM Passport Advantage (part M1442EN)
+# and placed in the project root before building. See README.md Prerequisites.
+COPY hcd-2.0.6-bin.tar.gz /tmp/hcd.tar.gz
 RUN mkdir -p /opt/hcd && \
     tar -xzf /tmp/hcd.tar.gz -C /opt/hcd --strip-components=1 && \
     rm /tmp/hcd.tar.gz
 
-# Create wrapper scripts that set HCD_CONF for docker exec compatibility
-# Remove any symlinks the tarball may have installed first
+# Create wrapper scripts that set HCD_CONF for docker exec compatibility.
+# Resolve each command's REAL path: nodetool/cqlsh/hcd live in /opt/hcd/bin, but the
+# sstable* tools live under resources/cassandra/{bin,tools/bin} in Cassandra 5.0 — so
+# search candidate dirs instead of assuming /opt/hcd/bin (which would break sstabledump
+# used by Module 85's "masking is presentation-only" proof and Module 37's restore).
 RUN for cmd in nodetool cqlsh hcd sstableloader sstabledump sstablemetadata; do \
-        rm -f /usr/local/bin/$cmd && \
-        printf '#!/bin/bash\nexport HCD_CONF=/opt/hcd/resources/cassandra/conf\nexport CASSANDRA_CONF=/opt/hcd/resources/cassandra/conf\nexec /opt/hcd/bin/%s "$@"\n' "$cmd" > /usr/local/bin/$cmd && \
+        rm -f /usr/local/bin/$cmd; \
+        target="/opt/hcd/bin/$cmd"; \
+        for d in /opt/hcd/bin /opt/hcd/resources/cassandra/bin /opt/hcd/resources/cassandra/tools/bin; do \
+            if [ -x "$d/$cmd" ]; then target="$d/$cmd"; break; fi; \
+        done; \
+        printf '#!/bin/bash\nexport HCD_CONF=/opt/hcd/resources/cassandra/conf\nexport CASSANDRA_CONF=/opt/hcd/resources/cassandra/conf\nexec %s "$@"\n' "$target" > /usr/local/bin/$cmd; \
         chmod +x /usr/local/bin/$cmd; \
     done
 
@@ -78,14 +90,26 @@ ENV HCD_CONF=/opt/hcd/resources/cassandra/conf
 
 # Copy configuration template and entrypoint script
 COPY config/cassandra.yaml.template /opt/hcd/resources/cassandra/conf/cassandra.yaml.template
+# Secure-profile fragment (appended at runtime when HCD_SECURITY_PROFILE=secure) — Modules 86-92
+COPY config/cassandra-secure.yaml.fragment /opt/hcd/resources/cassandra/conf/cassandra-secure.yaml.fragment
 COPY --chmod=755 scripts/docker-entrypoint.sh /docker-entrypoint.sh
 COPY --chmod=755 scripts/generate-topology.py /usr/local/bin/generate-topology
 COPY --chmod=755 scripts/demo-entropy.sh /usr/local/bin/demo-entropy
 COPY --chmod=755 scripts/driver-demo.py /usr/local/bin/driver-demo
 
+# Default cqlsh credentials for the secure profile's bootstrap superuser.
+# CRITICAL for secure-profile cluster formation: under PasswordAuthenticator, the
+# Docker healthcheck (cqlsh -e ...) and the entrypoint seed-wait both connect with no
+# -u/-p and would fail, so the cluster would never go healthy and nodes 2-6 would never
+# join. A baked cqlshrc makes every in-container cqlsh authenticate as cassandra/cassandra.
+# Harmless under the open profile — AllowAllAuthenticator ignores supplied credentials.
+ENV HOME=/home/cassandra
+RUN mkdir -p /home/cassandra/.cassandra && \
+    printf '[authentication]\nusername = cassandra\npassword = cassandra\n' > /home/cassandra/.cassandra/cqlshrc
+
 # Ensure permissions for cassandra user
 RUN mkdir -p /var/lib/cassandra /var/log/cassandra && \
-    chown -R cassandra:cassandra /var/lib/cassandra /var/log/cassandra /opt/hcd /opt/venv /opt/python
+    chown -R cassandra:cassandra /var/lib/cassandra /var/log/cassandra /opt/hcd /opt/venv /opt/python /home/cassandra
 
 # Set default JVM Heap sizes (Lowered for demo/local laptop portability)
 ENV MAX_HEAP_SIZE="512M"

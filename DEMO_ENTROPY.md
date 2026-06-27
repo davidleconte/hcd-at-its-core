@@ -1,15 +1,15 @@
 # HCD Entropy & Consistency Didactic Demo
-> **Executive Summary:** An 85-module interactive demo proving that IBM HCD delivers zero-downtime resilience, automatic self-healing, and tunable consistency across datacenters — including a full DORA ransomware resilience scenario with WORM-protected backups. Designed for live stakeholder presentations and hands-on engineering onboarding.
+> **Executive Summary:** A 94-module interactive demo proving that IBM HCD 2.0 (on Apache Cassandra 5.0) delivers zero-downtime resilience, automatic self-healing, and tunable consistency across datacenters — including a full DORA ransomware resilience scenario with WORM-protected backups and a Part 11 showcase of the HCD 2.0 innovations (dynamic data masking, CIDR/mTLS/DC-level RBAC, Paxos v2). Designed for live stakeholder presentations and hands-on engineering onboarding.
 >
 > **Why this matters:** Unplanned database downtime costs enterprises $5,600-$9,000 per minute [1]. This demo proves — live, on your laptop — that HCD survives datacenter-level failures with zero data loss and zero application errors, eliminating the single largest source of availability risk in distributed data infrastructure.
 
 | | |
 |---|---|
-| **Modules** | 85 (0-84), organized in 10 parts |
+| **Modules** | 94 (0-93), organized in 11 parts |
 | **Cluster** | 6 nodes, 2 DCs, RF=3 per DC |
 | **Time (interactive)** | ~4-5 hours (full), ~20-35 min per part |
 | **Time (non-interactive)** | ~60-90 minutes |
-| **Prerequisites** | Docker, `hcd-1.2.3-bin.tar.gz` |
+| **Prerequisites** | Docker or colima, `hcd-2.0.6-bin.tar.gz` (IBM Passport part M1442EN) |
 
 ---
 
@@ -27,11 +27,11 @@ This handbook is for **database engineers, architects, SREs, and technical decis
 
 ### How to Use This Book
 
-This is a **hands-on lab manual**, not a reference text. Every concept is demonstrated with live commands against a real 6-node cluster running on your laptop. The 85 modules are organized in 10 parts of increasing complexity.
+This is a **hands-on lab manual**, not a reference text. Every concept is demonstrated with live commands against a real 6-node cluster running on your laptop. The 94 modules are organized in 11 parts of increasing complexity.
 
 **Three ways to use this material:**
 
-1. **Full sequential walkthrough** (~4-5 hours): Run all 85 modules in order. Best for first-time learners and comprehensive onboarding.
+1. **Full sequential walkthrough** (~5-6 hours): Run all 94 modules in order. Best for first-time learners and comprehensive onboarding.
 2. **Part-by-part sessions** (~20-35 min each): Work through one part per sitting. Suggested break points are marked in the demo roadmap.
 3. **Targeted deep-dives**: Jump to any module by number (`./demo-entropy.sh 23`). Modules > 1 auto-create required keyspaces.
 
@@ -71,7 +71,7 @@ By the end of this handbook, you will be able to:
     make demo                        # full interactive demo
     ./scripts/demo-entropy.sh 23     # jump to a specific module
     ./scripts/demo-entropy.sh --dry-run --no-pause  # dry-run, no cluster needed
-    ./scripts/demo-entropy.sh --score              # validate all 85 modules (scorecard)
+    ./scripts/demo-entropy.sh --score              # validate all 94 modules (scorecard)
     ```
     > **Single-module execution:** When jumping to Module N > 1, the script auto-creates the `rf_prod` keyspace via `ensure_rf_prod()` so prerequisites are satisfied.
 
@@ -307,8 +307,23 @@ This demo uses a 6-node, multi-DC cluster simulated in Docker.
 | 80 | Counter Columns | Non-idempotent counters, dedicated counter tables, increment/decrement, counter repair |
 | 81 | Prepared Statements & Driver Best Practices | Parse-once execute-many, connection pooling, idempotency flags, driver anti-patterns |
 | 82 | JVM & GC Tuning | Heap sizing rules, GC stats, compressed oops, off-heap memory, production tuning checklist |
-| 83 | CQL Aggregation & Analytics Functions | COUNT, SUM, AVG, MIN, MAX, GROUP BY, coordinator-side aggregation, UDA, Spark integration |
+| 83 | CQL Aggregation & Analytics Functions | COUNT, SUM, AVG, MIN, MAX, GROUP BY, coordinator-side aggregation, UDA, Spark integration, **HCD 2.0 scalar math functions** (abs/exp/log/log10/round) |
 | 84 | Collection Types Deep-Dive | SET, LIST, MAP, frozen vs non-frozen, partial updates, concurrent semantics, nested collections |
+
+#### Part 11 — HCD 2.0 Innovations (Modules 85-93)
+| Module | Title | Key Proof |
+|--------|-------|-----------|
+| 85 | Dynamic Data Masking (DDM) | Mask functions (mask_inner/outer/hash/replace/default/null), attached-column masks via `ALTER ... MASKED WITH`, presentation-only redaction (SSTable unchanged), role-gated UNMASK |
+| 86 | CIDR / IP Allowlist Authorizer | CIDR groups in system_auth, `ALTER ROLE ... ACCESS FROM CIDRS`, MONITOR→ENFORCE, source-IP rejection |
+| 87 | Datacenter-Level Role Restrictions | `CassandraNetworkAuthorizer`, `ACCESS TO DATACENTERS {dc1}`, dc2-coordinated query denied, `ACCESS TO ALL DATACENTERS` |
+| 88 | mTLS Authentication & External RBAC | `MutualTlsWithPasswordFallbackAuthenticator`, `ADD IDENTITY 'spiffe://...' TO ROLE`, passwordless cert login via SAN |
+| 89 | Paxos v2 Consensus (Benchmark) | Confirm `paxos_variant: v2`, re-run M61 contention, v1-vs-v2 A/B, `paxos_state_purging: repaired` |
+| 90 | Authentication Hardening | `HASHED PASSWORD`, bulk `GRANT ... ON KEYSPACE`, auth-cache invalidation, rate limiting |
+| 91 | PEM SSL & Cert-Based Internode Auth | PEM keystore/truststore (no JKS), `require_client_auth` mTLS, encrypted gossip, `nodetool --ssl` SAN-host (JDK 17 fix) |
+| 92 | Audit Logging 2.0 Hardening | Category/keyspace/role filtering, AUTH/DCL capture, WORM tamper-evident sink (DORA tie-in) |
+| 93 | Java 17 Runtime & Supply-Chain Posture | `java -version` = 17, ZGC sub-ms pauses vs G1, CVE remediation (Netty 4.1.133, Mina 2.2.7, ApacheDS 2.0.0.M27), JDK-17 nodetool --ssl SAN fix |
+
+> **Part 11 requires the secure profile** for live enforcement of modules 86–92: `make gen-certs && make up-secure` (or `make demo-2.0`). On the default open profile they render the commands but do not enforce. Modules 85 (DDM) and 93 (Java 17/supply-chain) run on either profile. See `docs/HCD_2.0_UPGRADE_DESIGN.md`.
 
 ## Cleanup
 
@@ -321,9 +336,9 @@ make destroy     # or: docker compose down -v
 
 ## Module 0: Introduction & Cluster Status
 
-The opening module verifies the cluster is healthy, introduces the 6-node, 2-DC topology, and presents a 10-part roadmap of the entire demo.
+The opening module verifies the cluster is healthy, introduces the 6-node, 2-DC topology, and presents an 11-part roadmap of the entire demo.
 
-### 10-Part Roadmap
+### 11-Part Roadmap
 - **Part 1 — Foundations** (Modules 0-13): Replication, consistency levels, hinted handoff, read repair, anti-entropy repair
 - **Part 2 — Advanced Failures** (Modules 14-25): Ghost rack, zombie node, network partition, SAI, JSON, vector search, DC kill
 - **Part 3 — Operations** (Modules 26-38): CDC, audit logging, guardrails, data modeling, compaction, compression, backup/restore
@@ -333,7 +348,8 @@ The opening module verifies the cluster is healthy, introduces the 6-node, 2-DC 
 - **Part 7 — Enterprise** (Modules 55-62): HCD Data API, multi-tenant isolation, node decommission, disaster recovery, silent data corruption, cross-service saga, LWT contention, repair deep-dive
 - **Part 8 — Operational Deep-Dives** (Modules 63-72): RBAC, encryption at rest, commitlog crash recovery, hint expiration, dynamic RF change, streaming, materialized views, nodetool ops, cross-DC consistency, bloom filter & cache tuning
 - **Part 9 — DORA Ransomware Resilience** (Modules 73-79): Kill chain, WORM backups (MinIO Object Lock), commitlog archiving, ransomware attack simulation, recovery from WORM, DC failover under attack, DORA compliance scorecard, K8ssandra auto-healing
-- **Part 10 — Production Essentials** (Modules 80-84): Counter columns, prepared statements, JVM/GC tuning, CQL aggregations, collection types deep-dive
+- **Part 10 — Production Essentials** (Modules 80-84): Counter columns, prepared statements, JVM/GC tuning, CQL aggregations (incl. HCD 2.0 math functions), collection types deep-dive
+- **Part 11 — HCD 2.0 Innovations** (Modules 85-93): Dynamic Data Masking, CIDR allowlist authorizer, datacenter-level RBAC, mTLS authentication, Paxos v2 benchmark, authentication hardening, PEM SSL, audit 2.0, Java 17 runtime & supply-chain posture
 
 ### What You'll Learn
 - How to verify cluster health with `nodetool status`
@@ -601,6 +617,8 @@ TRACING OFF;
 ## Module 12: Lightweight Transactions (LWT)
 
 LWT provides linearizable consistency using the Paxos protocol. Unlike normal writes (which are "last-write-wins"), LWT performs a read-before-write to ensure conditional updates.
+
+> **HCD 2.0:** this cluster runs **Paxos v2** by default (`paxos_variant: v2`), a wire-compatible rewrite that shaves a round trip on uncontended LWTs and lowers contention latency. Every LWT in this module already benefits; Part 11 measures the v1-vs-v2 delta directly.
 
 ```sql
 -- Book a seat only if not already taken (compare-and-set)
@@ -1745,7 +1763,7 @@ This ensures the driver encounters both timeout and unavailable exceptions, maki
 
 A visual recap of everything covered in the demo, presented as an ASCII dashboard showing:
 
-- **Total modules**: 85 (0-84)
+- **Total modules**: 94 (0-93)
 - **What was proved**: Zero data loss during node/DC failure, automatic self-healing, LWW conflict resolution, rolling restart with zero downtime, automatic driver DC failover, p99 latency masking, safe banking transfers, saga compensation
 - **Topics covered**: Core, Indexing (SAI), Write Path, Multi-DC, Ops, Security, Data Modeling, Driver Policies, Transactions (ACID, Batches, LWT, Sagas)
 - **Key production takeaways**: LOCAL_QUORUM, TokenAwarePolicy, used_hosts_per_remote_dc, weekly repair, partition key design, monitoring, PasswordAuthenticator
@@ -1787,6 +1805,8 @@ The most dangerous consistency bug demonstrated live:
 1. **Lost update**: Two concurrent updates to the same account balance — expected 180, actual 130 or 150
 2. **Fix with LWT**: IF conditions provide compare-and-swap (CAS). Second update gets `[applied]: False` with current value for retry
 3. **SERIAL vs LOCAL_SERIAL**: Global vs DC-local Paxos consistency for LWT reads
+
+> **HCD 2.0:** the CAS path here runs on **Paxos v2** (default in 2.0) — lower-latency than the v1 protocol HCD 1.x used. See Part 11 for the side-by-side benchmark.
 
 **What to look for:** The non-LWT parallel writes produce a lost update (one value overwrites the other). The LWT version rejects the stale write with `[applied]: False` and returns current values for retry. This is the foundation for Module 51's banking pattern.
 
@@ -1917,6 +1937,8 @@ Extends the saga pattern from Modules 51-52 across three simulated services (Ord
 ## Module 61: LWT Contention Under Load
 
 Demonstrates Paxos contention: single-writer baseline (10 sequential LWT updates, all succeed) then 5 concurrent writers targeting the same row — only 1 wins per round. Uses `TRACING ON` to compare the 4-phase Paxos round-trip against a normal write, proving 4-10x latency overhead. Covers mitigation strategies and explains why LWT is an anti-pattern for rate limiting.
+
+> **HCD 2.0:** contention here is handled by **Paxos v2** (default in 2.0), which reduces the per-round cost versus the v1 protocol. Part 11 re-runs this exact contention test on v1 vs v2 and charts the latency/throughput delta.
 
 **What to look for:** Single-writer: all 10 updates succeed with zero retries. Concurrent: only 1 of 5 wins per round. LWT trace shows Prepare, Promise, Propose, Commit phases. Total coordinator time is 4-10x higher than normal writes.
 
@@ -2197,7 +2219,7 @@ Covers the performance difference between simple and prepared CQL statements (pa
 
 ## Module 82: JVM & GC Tuning
 
-Inspects live JVM heap usage and GC statistics. Explains heap sizing rules (max 31 GB for CompressedOops), GC algorithm selection (G1 default, ZGC experimental), and off-heap memory components. Provides a production tuning checklist.
+Inspects live JVM heap usage and GC statistics. Explains heap sizing rules (max 31 GB for CompressedOops), GC algorithm selection (G1 default, ZGC production-ready on Java 17), and off-heap memory components. Provides a production tuning checklist. **HCD 2.0 runs on Java 17** (`eclipse-temurin:17-jre`) — the runtime and CVE posture are covered in Module 93.
 
 **What to look for:** `nodetool info` shows heap used/total and off-heap memory. `nodetool gcstats` shows GC interval and pause times. JVM options file reveals the configured GC algorithm.
 
@@ -2211,9 +2233,11 @@ Demonstrates COUNT, SUM, AVG, MIN, MAX within a partition (safe) and across part
 
 **What to look for:** Within-partition aggregation is fast and bounded. Cross-partition COUNT scans the entire cluster. GROUP BY must follow PRIMARY KEY column order.
 
-**Takeaway:** CQL aggregates work best within a single partition. For cross-partition analytics, use pre-aggregated counter tables, materialized views, or Apache Spark. Full-table aggregation is O(n) on the dataset — there is no global row count metadata.
+**HCD 2.0 / Cassandra 5.0:** the module now also demonstrates the new native **scalar math functions** — `abs`, `exp`, `log`, `log10`, `round` — which compute per-row analytics server-side (e.g. `SELECT round(revenue), abs(revenue - target), log10(revenue) FROM sales`) instead of pushing the arithmetic back to the application layer.
 
-**Key concepts:** Coordinator-side aggregation, partition-scoped queries, GROUP BY restrictions, user-defined aggregates (UDA), Spark integration.
+**Takeaway:** CQL aggregates work best within a single partition. For cross-partition analytics, use pre-aggregated counter tables, materialized views, or Apache Spark. Full-table aggregation is O(n) on the dataset — there is no global row count metadata. Scalar math functions run per row and are safe within partition-scoped queries.
+
+**Key concepts:** Coordinator-side aggregation, partition-scoped queries, GROUP BY restrictions, user-defined aggregates (UDA), scalar math functions (abs/exp/log/log10/round), Spark integration.
 
 ## Module 84: Collection Types Deep-Dive (Frozen vs Non-Frozen)
 
@@ -2224,6 +2248,175 @@ Demonstrates SET, LIST, and MAP collection types with both frozen and non-frozen
 **Takeaway:** Use non-frozen for element-level updates, frozen for atomic replacement or nesting. Prefer SETs over LISTs (lists have read-before-write anti-patterns). Keep collections small (< 64 KB) — for large datasets, model as separate tables.
 
 **Key concepts:** Frozen vs non-frozen storage, element-level LWW, nested collection requirements, LIST anti-patterns, collection size limits.
+
+---
+
+# Part 11 — HCD 2.0 Innovations
+
+This part showcases the capabilities that justify the HCD 2.0 release (built on Apache Cassandra 5.0). It grows across the upgrade: Module 85 (Dynamic Data Masking) ships first; the security-profile modules (86–93) — CIDR authorizer, datacenter-level RBAC, mTLS, the Paxos v2 benchmark, authentication hardening, PEM SSL, audit 2.0 hardening, and Java 17 / ZGC — follow with `docker-compose.secure.yml`. See `docs/HCD_2.0_UPGRADE_DESIGN.md` for the full plan.
+
+## Module 85: Dynamic Data Masking (DDM)
+
+HCD 2.0 introduces Dynamic Data Masking: sensitive columns are redacted **at SELECT time** for roles that lack the `UNMASK` permission, while the stored bytes remain untouched. Because it is a presentation-layer control, it composes cleanly with replication, repair, compaction, and backups — nothing is re-written on disk.
+
+The module works in two layers:
+
+1. **Masking functions (explicit).** The native scalar functions `mask_default`, `mask_inner`, `mask_outer`, `mask_hash`, `mask_replace`, and `mask_null` redact the value in the SELECT projection for any caller, so the redaction is visible even on the no-auth demo cluster. (Separately, a role *without* `UNMASK` cannot use a masked column in a `WHERE` clause unless granted `SELECT_MASKED` — that gating needs authentication.)
+   ```sql
+   SELECT mask_inner(ssn, 3, 0)        AS ssn_inner,   -- keep 3 leading chars
+          mask_inner(card, 0, 4)       AS card_last4,  -- keep only the last 4
+          mask_hash(email)             AS email_hash,  -- one-way hash
+          mask_replace(ssn, 'REDACTED') AS ssn_fixed,
+          mask_null(card)              AS card_nulled
+   FROM rf_prod.customers;
+   ```
+
+2. **Attached-column masks (automatic).** A mask bound to a column with DDL is applied automatically on every SELECT for any role without `UNMASK` — no application query change required:
+   ```sql
+   ALTER TABLE rf_prod.customers ALTER ssn  MASKED WITH mask_inner(3, 0);
+   ALTER TABLE rf_prod.customers ALTER card MASKED WITH mask_outer(0, 4);
+   ```
+
+**What to look for:** the explicit mask-function output redacts immediately. The attached-column masks appear in `system_schema.column_masks`. On this default (open) cluster the connection is an implicit superuser holding `UNMASK`, so a plain `SELECT *` still returns cleartext — to watch automatic masking enforced per role, bring up the **secure profile** (`make up-secure`) and `GRANT SELECT` (but not `UNMASK`) to an `analyst` role, who then sees `ssn = '123******'`.
+
+**Proof it is presentation-only:** after `nodetool flush`, an `sstabledump` of the table's `Data.db` still shows the original, unmasked `ssn` — masking never altered the persisted value.
+
+**Takeaway:** DDM gives column-level redaction without duplicating data or rewriting applications. Use mask functions for ad-hoc redaction and attached masks for policy-driven protection; gate cleartext behind the `UNMASK` permission. Full role-based enforcement requires authentication — see the secure profile and the Part 11 RBAC modules.
+
+**Key concepts:** Presentation-layer redaction, mask_inner/outer/hash/replace/default/null, `ALTER ... MASKED WITH`, `system_schema.column_masks`, `UNMASK` permission, on-disk value preservation.
+
+> **Modules 86–92 require the secure profile.** They enable authentication, so run `make gen-certs && make up-secure` first (or `make demo-2.0`). On the open profile they print the commands for study but do not enforce.
+
+## Module 86: CIDR / IP Allowlist Authorizer
+
+HCD 2.0 (Cassandra 5.0) can restrict a role's logins by the **source IP range** of the connection. The CIDR authorizer runs in **MONITOR** (logs violations, allows the connection — safe for rollout) or **ENFORCE** (rejects logins from CIDRs not allowed for the role). CIDR groups live in `system_auth.cidr_groups`; a role is bound with `ALTER ROLE ... WITH ACCESS FROM CIDRS { 'group' }`.
+
+```sql
+INSERT INTO system_auth.cidr_groups (cidr_group, cidrs) VALUES ('office', {('172.28.0.0', 24)});
+-- nodetool reloadcidrgroupscache
+CREATE ROLE app_user WITH PASSWORD = 'app' AND LOGIN = true;
+ALTER ROLE app_user WITH ACCESS FROM CIDRS {'office'};
+```
+
+**What to look for:** under ENFORCE, a login originating outside `172.28.0.0/24` is rejected with `Unauthorized`, while an in-range login succeeds. `nodetool getcidrgroupsofip 172.28.0.2` resolves to `office`.
+
+**Takeaway:** the CIDR authorizer adds a network dimension to RBAC. Roll out in MONITOR, validate the groups, then switch to ENFORCE. **Key concepts:** `system_auth.cidr_groups`, `ACCESS FROM CIDRS`, MONITOR vs ENFORCE, `reloadcidrgroupscache`.
+
+## Module 87: Datacenter-Level Role Restrictions
+
+The network authorizer (`CassandraNetworkAuthorizer`) confines a role to specific datacenters. A query for a DC-restricted role that is coordinated by an out-of-scope DC is **rejected**, not rerouted — supporting data residency and workload isolation.
+
+```sql
+CREATE ROLE dc1_only WITH PASSWORD = 'x' AND LOGIN = true AND ACCESS TO DATACENTERS {'dc1'};
+ALTER ROLE dc1_only WITH ACCESS TO ALL DATACENTERS;   -- widen later
+```
+
+**What to look for:** `dc1_only` connecting to node1 (dc1) works; connecting through node4 (dc2) returns `Unauthorized`.
+
+**Takeaway:** `ACCESS TO DATACENTERS {...}` pins a role to one or more DCs for residency and blast-radius control. **Key concepts:** `CassandraNetworkAuthorizer`, `ACCESS TO DATACENTERS`, `ACCESS TO ALL DATACENTERS`, data residency.
+
+## Module 88: mTLS Authentication & External RBAC
+
+HCD 2.0 supports mutual-TLS login: a client certificate's **SAN identity** maps to a database role, so no password is needed and the identity is issued by your external PKI/RBAC system. The authenticator is `MutualTlsWithPasswordFallbackAuthenticator` (cert **or** password during migration); identities are bound with `ADD IDENTITY`.
+
+```sql
+CREATE ROLE analyst WITH LOGIN = true;
+ADD IDENTITY 'spiffe://hcd/role/analyst' TO ROLE 'analyst';   -- matches analyst.pem SAN
+SELECT identity, role FROM system_auth.identity_to_role;
+```
+```bash
+cqlsh --ssl 172.28.0.2 --cert certs/analyst.crt --key certs/analyst.key -e 'SELECT role FROM system.local'
+```
+
+**What to look for:** the cert whose SAN is `spiffe://hcd/role/analyst` authenticates as `analyst` with no password. Under enforce, a password-only login for a cert-bound identity is rejected.
+
+**Takeaway:** mTLS is passwordless, PKI-driven authentication that integrates with externally managed RBAC. **Key concepts:** `MutualTlsWithPasswordFallbackAuthenticator`, `ADD IDENTITY`, SAN→role mapping, `SpiffeCertificateValidator`. Certs come from `scripts/gen-certs.sh`.
+
+## Module 89: Paxos v2 Consensus (Benchmark)
+
+HCD 2.0 makes **Paxos v2** the default LWT consensus protocol (`paxos_variant: v2`). v2 removes a round trip on uncontended operations and lowers contention latency; `paxos_state_purging: repaired` keeps `system.paxos` bounded. This module confirms the active variant and re-runs the Module 61 contention test for an A/B against v1.
+
+```sql
+SELECT name, value FROM system_views.settings WHERE name = 'paxos_variant';   -- v2
+```
+
+**What to look for:** with the same 5-writer contention as Module 61, v2 shows lower p99 coordinator latency and higher successful-CAS throughput than v1. To benchmark v1, set `paxos_variant: v1`, restart, and re-run.
+
+**Takeaway:** v2 is a transparent, wire-compatible upgrade that benefits every LWT (Modules 12/51/61). **Key concepts:** `paxos_variant`, `paxos_state_purging`, CAS round trips, contention latency, A/B benchmarking.
+
+## Module 90: Authentication Hardening
+
+HCD 2.0 brings Cassandra 5.0 auth-hardening: **pre-hashed password** creation (plaintext never reaches the server), **authentication rate limiting**, **auth-cache management**, and **bulk permission grants**.
+
+```sql
+CREATE ROLE svc WITH HASHED PASSWORD = '$2a$10$...' AND LOGIN = true;   -- bcrypt hash
+GRANT SELECT ON KEYSPACE rf_prod TO svc;                  -- bulk grant (all tables)
+```
+```bash
+nodetool invalidatecredentialscache && nodetool invalidatepermissionscache
+```
+
+**What to look for:** the `svc` role logs in with the hashed credential; bulk grant covers every table in the keyspace in one statement; repeated bad logins are throttled by the rate limiter.
+
+**Takeaway:** provision roles without transmitting secrets, grant in bulk, and refresh caches on change. **Key concepts:** `HASHED PASSWORD`, `GRANT ... ON KEYSPACE`, `invalidate*cache`, auth rate limiting.
+
+## Module 91: PEM SSL & Cert-Based Internode Auth
+
+HCD 2.0 consumes **PEM** key material directly — no JKS/keytool step. This module enables client and internode encryption with the `gen-certs.sh` PEM material and demonstrates the JDK-17 `nodetool --ssl` SAN requirement.
+
+```yaml
+client_encryption_options:
+    enabled: true
+    keystore: /opt/hcd/certs/${HOSTNAME}.pem
+    truststore: /opt/hcd/certs/ca.crt
+    require_client_auth: true            # mTLS
+server_encryption_options:
+    internode_encryption: all
+    keystore: /opt/hcd/certs/${HOSTNAME}.pem
+    truststore: /opt/hcd/certs/ca.crt
+    require_client_auth: true            # cert-based internode auth
+```
+
+**What to look for:** gossip is encrypted and internode connections present certs. On JDK 17, `nodetool --ssl -h hcd-node1 status` (SAN host) succeeds while `nodetool --ssl -h 172.28.0.2 status` (IP) fails hostname verification.
+
+**Takeaway:** PEM-native TLS removes the keytool step; `require_client_auth` gives mTLS on both client and internode channels. **Key concepts:** PEM keystore/truststore, `require_client_auth`, encrypted gossip, JDK-17 SAN verification.
+
+## Module 92: Audit Logging 2.0 Hardening
+
+HCD 2.0 hardens the audit log (cf. Module 27): **category, keyspace, and role filtering**, plus a **tamper-evident sink** that pairs with the DORA WORM storage (Part 9) for regulator-grade evidence.
+
+```bash
+nodetool enableauditlog --included-categories AUTH,DDL,DCL --excluded-keyspaces system,system_schema
+# ... run an audited operation (e.g. CREATE ROLE) ...
+nodetool disableauditlog
+```
+
+**What to look for:** the audit file under `/var/lib/cassandra/audit/` captures the AUTH/DCL events while excluding the noisy system keyspaces; shipping segments to WORM (Module 74) makes the trail immutable within the retention window.
+
+**Takeaway:** filtered auditing cuts noise and cost; WORM archival satisfies DORA Art. 9/12 evidence-integrity expectations. **Key concepts:** audit categories (AUTH/DDL/DCL), keyspace/role filters, WORM tamper-evidence, runtime enable/disable.
+
+## Module 93: Java 17 Runtime & Supply-Chain Posture
+
+The closing module proves the HCD 2.0 runtime and supply-chain story. HCD 2.0 adds **Java 17** support and refreshes security-sensitive dependencies; this image runs on `eclipse-temurin:17-jre`.
+
+```bash
+docker exec hcd-node1 java -version          # -> openjdk version "17.x"
+docker exec hcd-node1 nodetool gcstats       # ZGC max pause typically < 1ms vs 200-500ms (G1)
+```
+
+Java 17 makes **ZGC** production-ready (`-XX:+UseZGC`), delivering sub-millisecond pauses versus G1's 200–500 ms (the Module 82 baseline). HCD 2.0 also upgraded:
+
+| Component | Version | CVEs addressed |
+|---|---|---|
+| Netty | 4.1.133.Final | 7 |
+| Apache Mina (SSHD) | 2.2.7 | 4 |
+| Apache Directory (LDAP) | 2.0.0.M27 | security plugin library |
+
+Finally, HCD 2.0 fixed `nodetool --ssl` hostname verification on JDK 17+: connect by the certificate **SAN hostname**, not the IP (cf. Module 91).
+
+**What to look for:** `java -version` reports 17; `nodetool gcstats` under ZGC shows sub-millisecond max pauses; the bundled `netty-*` / `mina-*` jars match the versions above.
+
+**Takeaway:** HCD 2.0's runtime modernization (Java 17 + ZGC) and dependency refresh (Netty/Mina/ApacheDS) close real CVEs and unlock low-pause GC for latency-sensitive workloads. **Key concepts:** Java 17 runtime, ZGC, CVE remediation, supply-chain hygiene, JDK-17 SAN verification.
 
 ---
 
@@ -2486,6 +2679,39 @@ After completing this part, you will be able to:
 
 1. Create a counter table, perform 1000 increments, then query aggregated values. Verify counter accuracy after running `nodetool repair -pr`.
 2. Convert ad-hoc CQL in a Python script to use prepared statements. Benchmark 1000 executions with and without, and measure the p99 latency difference.
+
+---
+
+### Part 11 — HCD 2.0 Innovations (Modules 85-93)
+
+**Learning Objectives**
+
+After completing this part, you will be able to:
+- Explain Dynamic Data Masking as a presentation-layer (not storage) control and apply the mask functions
+- Restrict a role's logins by source IP range with the CIDR authorizer (MONITOR vs ENFORCE)
+- Confine a role to specific datacenters with the network authorizer (`ACCESS TO DATACENTERS`)
+- Authenticate passwordlessly via mTLS by binding a certificate SAN identity to a role (`ADD IDENTITY`)
+- Confirm Paxos v2 is active and reason about its latency advantage over v1
+- Provision roles with pre-hashed passwords, grant in bulk, and manage auth caches
+- Enable PEM-based TLS and cert-based internode auth, and connect `nodetool --ssl` by SAN host on JDK 17
+- Configure filtered (category/keyspace/role) audit logging with a WORM tamper-evident sink
+- Verify the Java 17 runtime, exercise ZGC, and read the HCD 2.0 dependency CVE-remediation posture
+
+**Review Questions**
+
+1. The CIDR authorizer in MONITOR mode: (a) Rejects out-of-range logins (b) Logs violations but allows the connection (c) Is disabled (d) Encrypts traffic
+2. `ACCESS TO DATACENTERS {'dc1'}` means a query coordinated by a dc2 node is: (a) Rerouted to dc1 (b) Rejected as Unauthorized (c) Allowed read-only (d) Queued
+3. In mTLS auth, the role is determined by: (a) The password (b) The client certificate's SAN identity (c) The source IP (d) The keyspace
+4. HCD 2.0's default LWT consensus protocol is: (a) Paxos v1 (b) Paxos v2 (c) Raft (d) 2PC
+5. `CREATE ROLE ... WITH HASHED PASSWORD` is preferred because: (a) It is faster to log in (b) The plaintext password never reaches the server (c) It disables caching (d) It bypasses the authorizer
+6. On JDK 17, `nodetool --ssl` must connect using: (a) The node IP (b) The cert SAN hostname (c) localhost only (d) An unencrypted fallback
+7. HCD 2.0 runs on which JVM, and which GC gives sub-millisecond pauses? (a) Java 11, CMS (b) Java 17, ZGC (c) Java 8, G1 (d) Java 21, Shenandoah
+
+**Hands-on Challenges**
+
+1. Attach `mask_inner(3, 0)` to an `ssn` column, then `nodetool flush` and `sstabledump` the SSTable to confirm the stored value is unmasked (Module 85).
+2. Under the secure profile, bind a CIDR group to a role, switch the authorizer to ENFORCE, and show an out-of-range login is rejected (Module 86).
+3. Generate certs with `make gen-certs`, `ADD IDENTITY` for `analyst`, and authenticate with `cqlsh --ssl --cert ... --key ...` with no password (Module 88).
 
 ---
 

@@ -1,4 +1,5 @@
 """Tests for shell scripts, config validation, and basic behavior."""
+import importlib.util
 import json
 import subprocess
 
@@ -10,7 +11,18 @@ SHELL_SCRIPTS = [
     "scripts/docker-entrypoint.sh",
     "scripts/demo-entropy.sh",
     "scripts/execute-full-demo.sh",
+    "scripts/gen-certs.sh",
 ]
+
+# driver-demo.py exits at import if cassandra-driver is absent (it's a runtime dep
+# used inside the container). Skip its --help tests cleanly when the driver is missing.
+_HAS_CASSANDRA_DRIVER = (
+    importlib.util.find_spec("cassandra") is not None
+)
+requires_driver = pytest.mark.skipif(
+    not _HAS_CASSANDRA_DRIVER,
+    reason="cassandra-driver not installed (runtime dep; provided inside the container)",
+)
 
 
 @pytest.mark.parametrize("script", SHELL_SCRIPTS)
@@ -51,6 +63,7 @@ def test_entrypoint_defaults():
     assert "RACK=rack1" in result.stdout
 
 
+@requires_driver
 def test_driver_demo_help():
     """Verify driver-demo.py shows help without errors."""
     result = subprocess.run(
@@ -65,6 +78,7 @@ def test_driver_demo_help():
     assert "retry-policies" in result.stdout
 
 
+@requires_driver
 def test_driver_demo_local_dc_flag():
     """Verify driver-demo.py accepts --local-dc flag in help."""
     result = subprocess.run(

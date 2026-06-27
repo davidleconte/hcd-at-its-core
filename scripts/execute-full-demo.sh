@@ -20,8 +20,8 @@ cleanup_on_error() {
 trap cleanup_on_error INT TERM EXIT
 
 # 1. Pre-flight checks
-if [ ! -f "hcd-1.2.3-bin.tar.gz" ]; then
-    log_error "hcd-1.2.3-bin.tar.gz not found in root directory."
+if [ ! -f "hcd-2.0.6-bin.tar.gz" ]; then
+    log_error "hcd-2.0.6-bin.tar.gz not found in root directory (IBM Passport Advantage part M1442EN)."
 fi
 
 if [ ! -f "scripts/demo-entropy.sh" ]; then

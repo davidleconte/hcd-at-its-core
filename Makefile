@@ -2,23 +2,48 @@
 # Detects 'docker compose' (v2) vs 'docker-compose' (v1) automatically.
 
 COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
+# Secure profile (HCD 2.0): base compose + secure overlay (auth, CIDR, mTLS certs).
+COMPOSE_SECURE := $(COMPOSE) -f docker-compose.yml -f docker-compose.secure.yml
 EXPECTED_NODES ?= 6
+
+# HCD 2.0 release artifacts. Single source of truth — bump these on a version change.
+HCD_VERSION ?= 2.0.6
+HCD_TARBALL ?= hcd-$(HCD_VERSION)-bin.tar.gz
+# Apache Cassandra base version HCD 2.0 is built on (asserted by `make verify-release`).
+EXPECTED_CASSANDRA_MAJOR ?= 5.0
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part minio minio-down check-prereqs test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down
+.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part demo-2.0 gen-certs up-secure down-secure secure-bootstrap minio minio-down check-prereqs verify-release test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down audit audit-tribunal audit-install-hook
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build container images
-	@test -f hcd-1.2.3-bin.tar.gz || (echo "ERROR: hcd-1.2.3-bin.tar.gz not found in project root. See README.md Prerequisites." >&2; exit 1)
+	@test -f $(HCD_TARBALL) || (echo "ERROR: $(HCD_TARBALL) not found in project root (IBM Passport Advantage part M1442EN). See README.md Prerequisites." >&2; exit 1)
 	$(COMPOSE) build
 
 up: ## Start the 6-node cluster (build if needed)
-	@test -f hcd-1.2.3-bin.tar.gz || (echo "ERROR: hcd-1.2.3-bin.tar.gz not found in project root. See README.md Prerequisites." >&2; exit 1)
+	@test -f $(HCD_TARBALL) || (echo "ERROR: $(HCD_TARBALL) not found in project root (IBM Passport Advantage part M1442EN). See README.md Prerequisites." >&2; exit 1)
 	$(COMPOSE) up -d --build
+
+gen-certs: ## Generate PEM CA + node/client certs for the secure profile (./certs)
+	./scripts/gen-certs.sh
+
+up-secure: ## Start the cluster with the HCD 2.0 secure profile (auth + CIDR + certs)
+	@test -f $(HCD_TARBALL) || (echo "ERROR: $(HCD_TARBALL) not found in project root (IBM Passport Advantage part M1442EN). See README.md Prerequisites." >&2; exit 1)
+	@test -d certs || (echo "ERROR: ./certs not found — run 'make gen-certs' first." >&2; exit 1)
+	$(COMPOSE_SECURE) up -d --build
+
+secure-bootstrap: ## Replicate system_auth across DCs after up-secure (run once cluster is UN)
+	@echo "Setting system_auth replication to NetworkTopologyStrategy (dc1:3, dc2:3)..."
+	docker exec hcd-node1 cqlsh -e "ALTER KEYSPACE system_auth WITH replication = {'class':'NetworkTopologyStrategy','dc1':3,'dc2':3};"
+	@for n in 1 2 3 4 5 6; do docker exec hcd-node$$n nodetool repair -- system_auth || true; done
+	@echo "Done. The default superuser is now replicated; auth is resilient to node loss."
+
+down-secure: ## Stop the secure-profile cluster (preserve volumes)
+	$(COMPOSE_SECURE) down
 
 down: ## Stop the cluster (preserve volumes)
 	$(COMPOSE) down
@@ -46,13 +71,16 @@ demo-dry: ## Run the demo in dry-run mode (no cluster needed)
 demo-full: ## Build cluster + run full automated demo
 	./scripts/execute-full-demo.sh
 
-demo-score: ## Validate all 85 modules (dry-run scorecard)
+demo-score: ## Validate all 94 modules (dry-run scorecard)
 	./scripts/demo-entropy.sh --score
+
+demo-2.0: ## Run the HCD 2.0 innovation modules (Part 11: 85-93)
+	@for m in $$(seq 85 93); do ./scripts/demo-entropy.sh $$m; done
 
 demo-ransomware: ## Run DORA ransomware demo (modules 73-79)
 	@for m in 73 74 75 76 77 78 79; do ./scripts/demo-entropy.sh $$m; done
 
-demo-part: ## Run a demo part (1-10): make demo-part P=3
+demo-part: ## Run a demo part (1-11): make demo-part P=3
 	@case "$(P)" in \
 		1) for m in $$(seq 0 13);  do ./scripts/demo-entropy.sh $$m; done ;; \
 		2) for m in $$(seq 14 25); do ./scripts/demo-entropy.sh $$m; done ;; \
@@ -64,9 +92,11 @@ demo-part: ## Run a demo part (1-10): make demo-part P=3
 		8) for m in $$(seq 63 72); do ./scripts/demo-entropy.sh $$m; done ;; \
 		9) for m in $$(seq 73 79); do ./scripts/demo-entropy.sh $$m; done ;; \
 		10) for m in $$(seq 80 84); do ./scripts/demo-entropy.sh $$m; done ;; \
-		*) echo "Usage: make demo-part P=N (where N is 1-10)" >&2; \
+		11) for m in $$(seq 85 93); do ./scripts/demo-entropy.sh $$m; done ;; \
+		*) echo "Usage: make demo-part P=N (where N is 1-11)" >&2; \
 		   echo "  1=Foundations   2=Failures    3=Operations  4=Performance  5=Drivers" >&2; \
-		   echo "  6=Transactions  7=Enterprise  8=Deep-Dives  9=DORA        10=Production" >&2; exit 1 ;; \
+		   echo "  6=Transactions  7=Enterprise  8=Deep-Dives  9=DORA        10=Production" >&2; \
+		   echo "  11=HCD 2.0 Innovations (DDM, CIDR, DC-RBAC, mTLS, Paxos v2, auth, PEM SSL, audit)" >&2; exit 1 ;; \
 	esac
 
 minio: ## Start MinIO WORM storage (S3-compatible)
@@ -97,7 +127,32 @@ check-prereqs: ## Verify all prerequisites are installed
 	@python3 -c "import yaml" 2>/dev/null && echo "  [OK] pyyaml" || echo "  [MISSING] pyyaml (pip install pyyaml)"
 	@command -v shellcheck >/dev/null 2>&1 && echo "  [OK] shellcheck" || echo "  [OPTIONAL] shellcheck (for linting)"
 	@command -v ruff >/dev/null 2>&1 && echo "  [OK] ruff" || echo "  [OPTIONAL] ruff (for Python linting)"
-	@test -f hcd-1.2.3-bin.tar.gz && echo "  [OK] hcd-1.2.3-bin.tar.gz" || echo "  [MISSING] hcd-1.2.3-bin.tar.gz (place in project root)"
+	@test -f $(HCD_TARBALL) && echo "  [OK] $(HCD_TARBALL)" || echo "  [MISSING] $(HCD_TARBALL) (IBM Passport Advantage part M1442EN; place in project root)"
+	@# Colima runtime check (MBP M3 Pro): a 6-node cluster needs the VM sized up.
+	@# Compose limits sum to ~6 GB RAM + 3 CPU; default colima VM (2 CPU/2 GB) is too small.
+	@if command -v colima >/dev/null 2>&1; then \
+		if colima status >/dev/null 2>&1; then \
+			cpu=$$(colima status 2>&1 | grep -iE 'cpu' | grep -oE '[0-9]+' | head -1); \
+			mem=$$(colima status 2>&1 | grep -iE 'mem|memory' | grep -oE '[0-9]+' | head -1); \
+			echo "  [OK] colima running (cpu=$${cpu:-?} mem=$${mem:-?}GiB) — recommend >=4 CPU / >=8 GiB for 6 nodes"; \
+		else \
+			echo "  [INFO] colima installed but not running — start with: colima start --cpu 4 --memory 8 --disk 60"; \
+		fi; \
+	else \
+		echo "  [INFO] colima not found (using Docker Desktop?) — either runtime is fine"; \
+	fi
+
+verify-release: ## Assert the running cluster is HCD 2.0 (Cassandra 5.0 base)
+	@echo "Verifying HCD release ($(HCD_VERSION), Cassandra base $(EXPECTED_CASSANDRA_MAJOR))..."
+	@rv=$$(docker exec hcd-node1 cqlsh -e "SELECT release_version FROM system.local" 2>/dev/null | sed -n '4p' | tr -d ' '); \
+	echo "  release_version reported: $${rv:-<none>}"; \
+	case "$$rv" in \
+		$(EXPECTED_CASSANDRA_MAJOR)*) echo "  [OK] Cassandra $(EXPECTED_CASSANDRA_MAJOR).x base confirmed (HCD 2.0)";; \
+		"") echo "  [FAIL] No release_version — is the cluster up? (make up && make wait)" >&2; exit 1;; \
+		*) echo "  [FAIL] Expected $(EXPECTED_CASSANDRA_MAJOR).x, got '$$rv' — wrong HCD binary?" >&2; exit 1;; \
+	esac
+	@jv=$$(docker exec hcd-node1 java -version 2>&1 | head -1); echo "  runtime: $$jv"; \
+	echo "$$jv" | grep -qE '"17' && echo "  [OK] Java 17 runtime confirmed" || echo "  [WARN] Expected Java 17 — got: $$jv"
 
 test: ## Run all pytest tests (dry-run, no cluster needed)
 	pytest tests/ -v
@@ -114,12 +169,12 @@ validate: ## Validate docker-compose.yml syntax
 
 pin-digests: ## Pin Dockerfile base images by SHA256 digest for reproducibility
 	@echo "Pulling images and extracting digests..."
-	@BASE_DIGEST=$$(docker pull -q eclipse-temurin:11-jre >/dev/null && docker inspect --format='{{index .RepoDigests 0}}' eclipse-temurin:11-jre | sed 's/.*@//'); \
+	@BASE_DIGEST=$$(docker pull -q eclipse-temurin:17-jre >/dev/null && docker inspect --format='{{index .RepoDigests 0}}' eclipse-temurin:17-jre | sed 's/.*@//'); \
 	UV_DIGEST=$$(docker pull -q ghcr.io/astral-sh/uv:0.5.14 >/dev/null && docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/astral-sh/uv:0.5.14 | sed 's/.*@//'); \
 	if [ -n "$$BASE_DIGEST" ]; then \
-		sed -i.bak "s|FROM eclipse-temurin:11-jre.*|FROM eclipse-temurin:11-jre@$$BASE_DIGEST|" Dockerfile && rm -f Dockerfile.bak; \
+		sed -i.bak "s|FROM eclipse-temurin:17-jre.*|FROM eclipse-temurin:17-jre@$$BASE_DIGEST|" Dockerfile && rm -f Dockerfile.bak; \
 		echo "  [OK] Base image pinned: $$BASE_DIGEST"; \
-	else echo "  [SKIP] Could not resolve eclipse-temurin:11-jre digest"; fi; \
+	else echo "  [SKIP] Could not resolve eclipse-temurin:17-jre digest"; fi; \
 	if [ -n "$$UV_DIGEST" ]; then \
 		sed -i.bak "s|COPY --from=ghcr.io/astral-sh/uv:0.5.14|COPY --from=ghcr.io/astral-sh/uv:0.5.14@$$UV_DIGEST|" Dockerfile && rm -f Dockerfile.bak; \
 		echo "  [OK] uv image pinned: $$UV_DIGEST"; \
@@ -136,3 +191,28 @@ wait: ## Wait until all nodes are UN (Up/Normal)
 clean: ## Remove dangling images and build cache
 	docker image prune -f
 	docker builder prune -f
+
+# ─── Adversarial audit arena ────────────────────────────────────────────────────
+audit: ## Run the deterministic audit Oracle + render courtroom.html
+	python3 audit_arena/bin/arena.py repomap
+	python3 audit_arena/bin/arena.py oracle 1
+	python3 audit_arena/bin/arena.py render
+	@echo "Open: audit_arena/courtroom.html"
+
+audit-tribunal: ## Show how to run the LLM tribunal rounds (Mode A subagents / Mode B external)
+	@echo "Tribunal (per round R):"
+	@echo "  1. python3 audit_arena/bin/arena.py repomap"
+	@echo "  2. Prosecutor (this Claude session / subagents) -> audit_arena/state/findings_rR.json"
+	@echo "  3. python3 audit_arena/bin/arena.py excerpts audit_arena/state/findings_rR.json > /tmp/exc.md"
+	@echo "  4. Defender:  ARENA_MODE_B=1 audit_arena/bin/llm.sh defender <prompt>  (needs ZAI_API_KEY)  OR subagent (Mode A)"
+	@echo "  5. python3 audit_arena/bin/arena.py oracle R"
+	@echo "  6. Judge:     ARENA_MODE_B=1 audit_arena/bin/llm.sh judge <prompt>     (needs GEMINI_API_KEY) OR subagent (Mode A)"
+	@echo "     (Mode B is opt-in: without ARENA_MODE_B=1 it refuses to call out and you use Mode A.)"
+	@echo "  7. python3 audit_arena/bin/arena.py converge && render"
+
+audit-install-hook: ## Install the deterministic pre-merge gate (git pre-push)
+	@chmod +x audit_arena/bin/pre-merge-hook.sh
+	@hookdir="$$(git rev-parse --git-path hooks)"; \
+	printf '#!/usr/bin/env bash\nexec "$$(git rev-parse --show-toplevel)/audit_arena/bin/pre-merge-hook.sh" "$$@"\n' > "$$hookdir/pre-push"; \
+	chmod +x "$$hookdir/pre-push"; \
+	echo "Installed pre-push gate -> $$hookdir/pre-push (bypass once: git push --no-verify)"

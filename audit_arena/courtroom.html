@@ -1,0 +1,156 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="refresh" content="6">
+<title>HCD audit arena — adversarial tribunal</title><style>
+:root{color-scheme:dark}
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0c1418;color:#e6eef0}
+header{padding:14px 22px;background:#0f1d22;border-bottom:1px solid #1d3640;position:sticky;top:0}
+header h1{margin:0;font-size:18px} header .sub{color:#7fa6b0;font-size:13px}
+.wrap{padding:18px 22px;max-width:1480px;margin:auto}
+.panel{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:18px}
+.col{background:#0f1d22;border:1px solid #1d3640;border-radius:10px;padding:12px}
+.col h3{margin:0 0 8px;font-size:14px} .col .big{font-size:22px;font-weight:700}
+.prosecutor{border-top:3px solid #c0392b} .defender{border-top:3px solid #2e86c1}
+.judge{border-top:3px solid #8e44ad} .oracle{border-top:3px solid #16a085}
+table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #16323c;vertical-align:top}
+th{color:#7fa6b0;font-weight:600} code{background:#13262d;padding:1px 5px;border-radius:4px;font-size:11.5px}
+.verdict{background:#15121f;border:1px solid #33294a;border-radius:10px;padding:14px 18px;margin-bottom:18px}
+.oneline{font-size:16px;font-weight:600;color:#d7c7f0}
+.lenses{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.lens{background:#1c1530;border-radius:8px;padding:10px} .lens h3{margin:0 0 6px;font-size:13px;color:#bfa3e6}
+pre{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;border:1px solid #16323c;border-radius:8px;padding:14px;max-height:55vh;overflow:auto}
+</style></head><body>
+<header><h1>🛡️ HCD audit arena — adversarial tribunal (HCD 2.0 / Cassandra 5.0)</h1>
+<div class="sub">Prosecutor <b style="color:#e57373">refute-by-default</b> · Defender <b style="color:#6fb6e0">kills false positives</b> · Judge <b style="color:#b18ad6">SRE / committer / security</b> · Oracle <b style="color:#34c3a0">runs ground truth</b> — auto-refresh /6s</div></header>
+<div class="wrap"><div class="panel">
+<div class="col prosecutor"><h3>🔴 Prosecutor</h3><div class="big">14</div><div>findings filed</div></div>
+<div class="col defender"><h3>🔵 Defender</h3><div class="big">11</div><div>survived · 3 false positive(s)</div></div>
+<div class="col judge"><h3>🟣 Judge</h3><div class="big">1</div><div>tri-lens verdict(s)</div></div>
+<div class="col oracle"><h3>🟢 Oracle</h3><div class="big">7/7</div><div>checks PASS · 3 deferred (need live cluster)</div></div>
+</div>
+<div class="verdict"><h2>⚖️ Judge verdict (round 1)</h2>
+<p class="oneline">Strong, well-tested demo with sound architecture, but the secure profile as first built could not form a cluster and Part 11 shipped three CQL statements that error live — all now fixed and oracle-confirmed; CONDITIONAL-SHIP pending a live run on the 2.0.6 binary.</p><div class="lenses">
+<div class="lens"><h3>SRE / Operations</h3><p>{&quot;disposition&quot;: &quot;CONDITIONAL-SHIP&quot;, &quot;page_at_3am&quot;: &quot;make up-secure forming only a 1-node cluster because the anonymous healthcheck can&#x27;t authenticate (fixed via baked cqlshrc; verify live).&quot;, &quot;confidence&quot;: &quot;Medium — open profile is solid; secure profile needs a live boot to confirm.&quot;}</p></div>
+<div class="lens"><h3>Cassandra committer / Correctness</h3><p>{&quot;grade&quot;: &quot;B+ (was D pre-fix)&quot;, &quot;cql_that_would_error_live&quot;: 0, &quot;gap_to_A+&quot;: &quot;Live-run every Part 11 CQL statement against Cassandra 5.0 once the tarball is staged; confirm LIST IDENTITIES replacement and CIDR group insert end-to-end.&quot;}</p></div>
+<div class="lens"><h3>Security / Compliance</h3><p>{&quot;decision&quot;: &quot;conditions&quot;, &quot;top_obligation_gap&quot;: &quot;system_auth must be replicated (make secure-bootstrap) and the CIDR ENFORCE lockout caveat must be honoured before any non-demo use; key material is correctly mounted-not-baked and git-ignored.&quot;}</p></div>
+</div></div>
+<h2>Oracle — deterministic ground truth</h2>
+<table><tr><th>Check</th><th>Dim</th><th>Status</th><th>Detail</th></tr>
+<tr><td>bash -n (all scripts)</td><td>D3</td><td style="color:#1e8449;font-weight:600">PASS</td><td><code></code></td></tr><tr><td>shellcheck -S error</td><td>D3</td><td style="color:#1e8449;font-weight:600">PASS</td><td><code></code></td></tr><tr><td>make demo-score (dry 94/94)</td><td>D4</td><td style="color:#1e8449;font-weight:600">PASS</td><td><code>  [1;32mALL MODULES PASSED. Demo is ready for presentation.[0m</code></td></tr><tr><td>pytest (no fail)</td><td>D4</td><td style="color:#1e8449;font-weight:600">PASS</td><td><code>253 passed, 20 skipped in 26.36s</code></td></tr><tr><td>combined config: no duplicate keys</td><td>D2</td><td style="color:#1e8449;font-weight:600">PASS</td><td><code></code></td></tr><tr><td>compose secure overlay merges</td><td>D2</td><td style="color:#1e8449;font-weight:600">PASS</td><td><code>OK</code></td></tr><tr><td>count consistency (TOTAL_MODULES vs docs)</td><td>D5</td><td style="color:#1e8449;font-weight:600">PASS</td><td><code>OK</code></td></tr><tr><td>D1 secure cluster forms (6x UN)</td><td>D6</td><td style="color:#b7950b;font-weight:600">DEFERRED</td><td><code>no live cluster (make up / make up-secure first)</code></td></tr><tr><td>D1 release == Cassandra 5.0 + Java 17</td><td>D1</td><td style="color:#b7950b;font-weight:600">DEFERRED</td><td><code>no live cluster (make up / make up-secure first)</code></td></tr><tr><td>D1 Part 11 DDM CQL executes (no error)</td><td>D1</td><td style="color:#b7950b;font-weight:600">DEFERRED</td><td><code>no live cluster (make up / make up-secure first)</code></td></tr></table>
+<h2>Findings register</h2>
+<table><tr><th>ID</th><th>Sev</th><th>Dim</th><th>Finding</th><th>Citation</th><th>Defender</th><th>Oracle</th></tr>
+<tr>
+<td><code>R1-01</code></td>
+<td><b style="color:#c0392b">BLOCKER</b></td>
+<td>D1</td>
+<td>SELECT mask_keyspace, mask_function FROM system_schema.column_masks — those columns do not exist in Cassandra 5.0 (real cols: function_keyspace, function_name). Errors live. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>scripts/demo-entropy.sh:10189</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-02</code></td>
+<td><b style="color:#c0392b">BLOCKER</b></td>
+<td>D1</td>
+<td>mask_outer(value,b,e) masks the first b and last e chars (keeps the middle). mask_outer(card,0,4) masks the LAST 4 — inverse of the claim. Need mask_inner(card,0,4). <b style="color:#16a085">[FIXED]</b></td>
+<td><code>scripts/demo-entropy.sh:10174</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-03</code></td>
+<td><b style="color:#c0392b">BLOCKER</b></td>
+<td>D1</td>
+<td>No &#x27;ALL TABLES IN KEYSPACE&#x27; resource exists in CQL GRANT grammar — syntax error live. Keyspace grant already cascades to tables. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>scripts/demo-entropy.sh:10350</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-04</code></td>
+<td><b style="color:#d35400">HIGH</b></td>
+<td>D1</td>
+<td>LIST IDENTITIES is not confirmable in CEP-34 or the CQL docs; if absent it errors. Use system_auth.identity_to_role. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>scripts/demo-entropy.sh:10290</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-05</code></td>
+<td><b style="color:#7f8c8d">LOW</b></td>
+<td>D1</td>
+<td>Netty 4.1.133.Final, Mina 2.2.7, ApacheDS 2.0.0.M27, Java 17, release 2026-06-17, built on Cassandra 5.0 — all verbatim correct vs the release notes. No defect.</td>
+<td><code>scripts/demo-entropy.sh:10455-10457</code></td>
+<td style="color:#7f8c8d;font-weight:600">FALSE_POSITIVE</td>
+<td style="color:#1e8449;font-weight:600">PASS</td>
+</tr><tr>
+<td><code>R1-06</code></td>
+<td><b style="color:#d35400">HIGH</b></td>
+<td>D2</td>
+<td>sstabledump/sstableloader/sstablemetadata live under resources/cassandra/{bin,tools/bin}, not /opt/hcd/bin — wrappers exec a non-existent path; Module 85 sstabledump proof and Module 37 restore break. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>Dockerfile:62</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-07</code></td>
+<td><b style="color:#7f8c8d">LOW</b></td>
+<td>D2</td>
+<td>Alleged merge hazard. FALSE: verified with docker-compose config — environment MERGES (base CASSANDRA_* kept + HCD_SECURITY_PROFILE added), volumes CONCATENATE (data volume kept + certs added).</td>
+<td><code>docker-compose.secure.yml:15</code></td>
+<td style="color:#7f8c8d;font-weight:600">FALSE_POSITIVE</td>
+<td style="color:#1e8449;font-weight:600">PASS</td>
+</tr><tr>
+<td><code>R1-08</code></td>
+<td><b style="color:#c0392b">BLOCKER</b></td>
+<td>D6</td>
+<td>Under the secure profile (PasswordAuthenticator), the Docker healthcheck and entrypoint seed-wait call cqlsh with NO credentials -&gt; node1 never healthy -&gt; depends_on blocks nodes 2-6. The 6-node secure cluster never forms. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>docker-compose.yml:36; scripts/docker-entrypoint.sh:149</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-09</code></td>
+<td><b style="color:#d35400">HIGH</b></td>
+<td>D6</td>
+<td>system_auth is left at SimpleStrategy RF=1; on a 6-node 2-DC cluster the default-superuser QUORUM path is fragile — auth stalls if the single replica&#x27;s node is down/joining. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>config/cassandra-secure.yaml.fragment:14</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-10</code></td>
+<td><b style="color:#d35400">HIGH</b></td>
+<td>D6</td>
+<td>Module 92 (audit) is not gated by require_secure_profile yet hard-codes cqlsh -u/-p CREATE ROLE; CREATE ROLE needs CassandraRoleManager (secure only) -&gt; fails on the open profile. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>scripts/demo-entropy.sh:10413</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-11</code></td>
+<td><b style="color:#d35400">HIGH</b></td>
+<td>D5</td>
+<td>DEMO_ENTROPY.md prerequisite still names hcd-1.2.3-bin.tar.gz while the build and every other doc moved to 2.0.6 — a reader stages the wrong binary and the build fails. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>DEMO_ENTROPY.md:12</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-12</code></td>
+<td><b style="color:#b7950b">MED</b></td>
+<td>D5</td>
+<td>Duplicate step number (two &#x27;4.&#x27;) and a step pointing at a non-existent &#x27;for i in {0..N}&#x27; loop; the run loop derives from TOTAL_MODULES. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>AGENTS.md:122</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-13</code></td>
+<td><b style="color:#d35400">HIGH</b></td>
+<td>D4</td>
+<td>gen-certs.sh, the secure fragment, the compose overlay, the entrypoint gating, and the 2 Grafana panels had ZERO automated tests — all are testable without Docker. <b style="color:#16a085">[FIXED]</b></td>
+<td><code>tests/</code></td>
+<td style="color:#1e8449;font-weight:600">CONFIRMED</td>
+<td style="color:#16a085;font-weight:600">FIXED</td>
+</tr><tr>
+<td><code>R1-14</code></td>
+<td><b style="color:#7f8c8d">LOW</b></td>
+<td>D3</td>
+<td>Audited cases 85-93 + require_secure_profile: bash -n clean, shellcheck-error clean, dry-run/score safe, escaped literals render, PART_NAMES has exactly 94 entries, regex accepts 0-93. No CRITICAL/HIGH shell defect.</td>
+<td><code>scripts/demo-entropy.sh:384-396</code></td>
+<td style="color:#7f8c8d;font-weight:600">FALSE_POSITIVE</td>
+<td style="color:#1e8449;font-weight:600">PASS</td>
+</tr></table>
+<h2>Court transcript</h2><pre>*(awaiting prosecution)*</pre>
+</div></body></html>

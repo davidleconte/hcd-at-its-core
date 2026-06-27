@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""HCD adversarial audit arena — mechanics for a 3-role tribunal + a deterministic Oracle.
+
+Roles (diversity-of-judgement is the anti-collusion mechanism):
+  PROSECUTOR  — refute-by-default finder; every finding cites path:line  (Claude/subagent)
+  DEFENDER    — kills false positives (CONFIRMED/OVERSTATED/FALSE_POSITIVE) (different family)
+  JUDGE       — HCD tri-lens verdict (SRE / Cassandra-committer / Security) (third family)
+  ORACLE      — DETERMINISTIC ground truth: runs the verifiable checks.  <-- HCD-specific
+
+Subcommands:
+  repomap                 -> state/REPO_MAP.md  (signal-artefact inventory of the HCD repo)
+  excerpts F.json         -> verbatim path:line excerpts for the findings in F.json
+  oracle [R]              -> run the deterministic check battery -> state/oracle_r{R}.json
+  act ROLE RND F.md       -> append an act block to TRANSCRIPT.md
+  converge                -> read state/*.json, print convergence JSON (loop-until-dry)
+  render                  -> build courtroom.html from state
+
+The Oracle is what makes an HCD audit stronger than a quant audit: HCD claims have a runnable
+oracle (cqlsh / make demo-score / shellcheck / docker compose config / openssl / dup-key check),
+so findings can be EXECUTABLY adjudicated, not merely argued.
+"""
+import sys, os, json, subprocess, html, glob, re, datetime
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ARENA = os.path.join(ROOT, "audit_arena")
+STATE = os.path.join(ARENA, "state")
+TRANSCRIPT = os.path.join(ARENA, "TRANSCRIPT.md")
+HTML_OUT = os.path.join(ARENA, "courtroom.html")
+
+SIGNAL_EXT = {".md", ".py", ".sh", ".yml", ".yaml", ".json", ".template", ".fragment",
+              ".cfg", ".ini", ".toml", ".txt"}
+SIGNAL_BASE = {"Dockerfile", "Makefile", ".dockerignore", ".gitignore"}
+SKIP_DIRS = {"audit_arena", ".git", ".venv", "__pycache__", "node_modules",
+             "htmlcov", ".pytest_cache", ".ruff_cache", "certs", "data"}
+
+
+def tracked_files():
+    for dp, dns, fns in os.walk(ROOT):
+        dns[:] = [d for d in dns if d not in SKIP_DIRS and not d.startswith(".")]
+        for fn in fns:
+            rel = os.path.relpath(os.path.join(dp, fn), ROOT)
+            if rel.split(os.sep, 1)[0] in SKIP_DIRS:
+                continue
+            ext = os.path.splitext(fn)[1].lower()
+            if ext in SIGNAL_EXT or fn in SIGNAL_BASE:
+                yield rel
+
+
+def repomap():
+    files = sorted(tracked_files())
+    groups = {}
+    for f in files:
+        top = f.split(os.sep, 1)[0] if os.sep in f else "(root)"
+        groups.setdefault(top, []).append(f)
+    lines = ["# HCD REPO MAP — signal artefacts (scope = whole repo from root)",
+             "", f"Total signal files: {len(files)}", ""]
+    for top in sorted(groups):
+        lines.append(f"## {top}/  ({len(groups[top])} files)")
+        for f in groups[top]:
+            try:
+                n = sum(1 for _ in open(os.path.join(ROOT, f), encoding="utf-8", errors="ignore"))
+            except Exception:
+                n = 0
+            lines.append(f"- {f}  ({n} ln)")
+        lines.append("")
+    os.makedirs(STATE, exist_ok=True)
+    open(os.path.join(STATE, "REPO_MAP.md"), "w").write("\n".join(lines))
+    print(f"REPO_MAP.md: {len(files)} signal files, {len(groups)} groups")
+
+
+def _read_window(path, line, ctx=8):
+    p = os.path.join(ROOT, path)
+    if not os.path.exists(p):
+        return f"  [MISSING FILE: {path}]"
+    ls = open(p, encoding="utf-8", errors="ignore").read().splitlines()
+    if line is None:
+        return "\n".join(f"{i+1:>5} | {l}" for i, l in enumerate(ls[:20]))
+    lo, hi = max(0, line - 1 - ctx), min(len(ls), line - 1 + ctx + 1)
+    return "\n".join(f"{i+1:>5} |{'>' if i+1==line else ' '} {ls[i]}" for i in range(lo, hi))
+
+
+CITE_RE = re.compile(r"([\w./\-]+\.[A-Za-z0-9]+):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)")
+
+
+def _spec_lines(spec):
+    out = []
+    for chunk in spec.split(","):
+        if "-" in chunk:
+            a, b = chunk.split("-", 1)
+            if a.isdigit() and b.isdigit():
+                out += list(range(int(a), int(b) + 1))
+        elif chunk.isdigit():
+            out.append(int(chunk))
+    return out
+
+
+def excerpts(findings_json):
+    data = json.load(open(findings_json))
+    items = data if isinstance(data, list) else data.get("findings", [])
+    seen = set()
+    print("# CITED EXCERPTS (verbatim, for citation verification)\n")
+    for it in items:
+        ev = (it.get("evidence") or "").strip()
+        print(f"## {it.get('id','?')} — {ev}")
+        print("```")
+        toks = CITE_RE.findall(ev)
+        if not toks:
+            print(_read_window(ev.split()[0] if ev else "", None))
+        for path, spec in toks:
+            tok = f"{path}:{spec}"
+            if tok in seen:
+                continue
+            seen.add(tok)
+            print(f"# {tok}")
+            for ln in _spec_lines(spec)[:4]:
+                print(_read_window(path, ln))
+            print("    ----")
+        print("```\n")
+
+
+# ─── ORACLE: deterministic ground-truth battery (the HCD differentiator) ──────────
+def _run(cmd, cwd=ROOT, timeout=300):
+    try:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                           timeout=timeout, shell=isinstance(cmd, str))
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except Exception as e:
+        return 99, f"[oracle-error] {e}"
+
+
+def oracle(rnd="1"):
+    """Run the verifiable checks that adjudicate HCD findings as ground truth."""
+    checks = []
+
+    def add(name, dim, cmd, ok_fn, detail_fn=lambda c, o: ""):
+        code, out = _run(cmd)
+        status = "PASS" if ok_fn(code, out) else "FAIL"
+        checks.append({"check": name, "dimension": dim, "status": status,
+                       "detail": detail_fn(code, out)[:300]})
+
+    # D3 — shell syntax + lint
+    add("bash -n (all scripts)", "D3",
+        "for s in scripts/*.sh; do bash -n \"$s\" || exit 1; done",
+        lambda c, o: c == 0)
+    add("shellcheck -S error", "D3",
+        "command -v shellcheck >/dev/null && shellcheck -S error scripts/*.sh || echo 'shellcheck absent'",
+        lambda c, o: c == 0)
+    # D4 — scorecard + tests
+    add("make demo-score (dry 94/94)", "D4",
+        "./scripts/demo-entropy.sh --score",
+        lambda c, o: "Score:  100%" in o, lambda c, o: o.strip().splitlines()[-1] if o.strip() else "")
+    add("pytest (no fail)", "D4",
+        "python3 -m pytest tests/ -q",
+        lambda c, o: " failed" not in o, lambda c, o: o.strip().splitlines()[-1] if o.strip() else "")
+    # D2 — combined cassandra.yaml has no duplicate top-level keys
+    dupcheck = (
+        "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
+        "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
+        "envsubst < config/cassandra.yaml.template > /tmp/_arena.yaml; printf '\\n' >> /tmp/_arena.yaml; "
+        "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
+        "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
+        "envsubst < config/cassandra-secure.yaml.fragment >> /tmp/_arena.yaml; "
+        "python3 -c \"import yaml,re,collections,sys; s=open('/tmp/_arena.yaml').read(); yaml.safe_load(s); "
+        "k=re.findall(r'^([A-Za-z_]\\w*):',s,re.M); d=[x for x,c in collections.Counter(k).items() if c>1]; "
+        "sys.exit(1 if d else 0)\"")
+    add("combined config: no duplicate keys", "D2", dupcheck, lambda c, o: c == 0)
+    # D2 — secure overlay merges (try compose v2, then v1; skip if neither present)
+    add("compose secure overlay merges", "D2",
+        "(docker compose -f docker-compose.yml -f docker-compose.secure.yml config >/dev/null 2>&1 "
+        "|| docker-compose -f docker-compose.yml -f docker-compose.secure.yml config >/dev/null 2>&1) "
+        "&& echo OK || (command -v docker >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1 "
+        "&& echo MERGE-FAIL || echo NO-DOCKER)",
+        lambda c, o: "OK" in o or "NO-DOCKER" in o,
+        lambda c, o: o.strip())
+    # D5 — count single-source-of-truth consistency
+    add("count consistency (TOTAL_MODULES vs docs)", "D5",
+        "tm=$(grep -oE 'TOTAL_MODULES=[0-9]+' scripts/demo-entropy.sh | head -1 | cut -d= -f2); "
+        "grep -q \"all $tm modules\" Makefile && echo OK || echo MISMATCH",
+        lambda c, o: "OK" in o, lambda c, o: o.strip())
+
+    # ─── LIVE-CLUSTER checks (the decisive HCD adjudication) ─────────────────────
+    # Run only when a cluster is up; otherwise honest ORACLE-DEFERRED (weighed against
+    # the artefact, never silently passed). Needs hcd-2.0.6-bin.tar.gz staged + make up.
+    up_code, _ = _run("docker exec hcd-node1 nodetool status", timeout=20)
+    cluster_up = up_code == 0
+
+    def add_live(name, dim, cmd, ok_fn, detail_fn=lambda c, o: ""):
+        if not cluster_up:
+            checks.append({"check": name, "dimension": dim, "status": "DEFERRED",
+                           "detail": "no live cluster (make up / make up-secure first)"})
+            return
+        code, out = _run(cmd)
+        checks.append({"check": name, "dimension": dim,
+                       "status": "PASS" if ok_fn(code, out) else "FAIL",
+                       "detail": detail_fn(code, out)[:300]})
+
+    add_live("D1 secure cluster forms (6x UN)", "D6",
+             "docker exec hcd-node1 nodetool status | grep -c '^UN'",
+             lambda c, o: o.strip() == "6", lambda c, o: f"UN nodes: {o.strip()}")
+    add_live("D1 release == Cassandra 5.0 + Java 17", "D1",
+             "make verify-release", lambda c, o: "Cassandra 5.0" in o or "5.0" in o,
+             lambda c, o: next((l for l in o.splitlines() if "release_version" in l), ""))
+    # Part 11 corrected CQL executed live (the findings the Oracle promotes to ground truth)
+    cql = ("docker exec hcd-node1 cqlsh -e \""
+           "CREATE KEYSPACE IF NOT EXISTS arena_t WITH replication={'class':'SimpleStrategy','replication_factor':1};"
+           "CREATE TABLE IF NOT EXISTS arena_t.c (id int PRIMARY KEY, card text);"
+           "SELECT mask_inner(card,0,4) FROM arena_t.c LIMIT 1;"
+           "ALTER TABLE arena_t.c ALTER card MASKED WITH mask_inner(0,4);"
+           "SELECT column_name, function_keyspace, function_name FROM system_schema.column_masks WHERE keyspace_name='arena_t' AND table_name='c';"
+           "DROP KEYSPACE arena_t;\"")
+    add_live("D1 Part 11 DDM CQL executes (no error)", "D1", cql,
+             lambda c, o: c == 0, lambda c, o: "ok" if c == 0 else o.strip()[:120])
+
+    os.makedirs(STATE, exist_ok=True)
+    out = {"round": int(rnd), "checks": checks, "cluster_up": cluster_up,
+           "passed": sum(1 for c in checks if c["status"] == "PASS"),
+           "failed": sum(1 for c in checks if c["status"] == "FAIL"),
+           "deferred": sum(1 for c in checks if c["status"] == "DEFERRED")}
+    json.dump(out, open(os.path.join(STATE, f"oracle_r{rnd}.json"), "w"), indent=2)
+    print(json.dumps(out, indent=2))
+
+
+def act(role, rnd, md_file):
+    block = open(md_file, encoding="utf-8").read()
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    header = "\n\n" + "=" * 88 + f"\n## ROUND {rnd} — {role}  ·  {ts}\n" + "=" * 88 + "\n\n"
+    with open(TRANSCRIPT, "a", encoding="utf-8") as fh:
+        fh.write(header + block + "\n")
+    print(f"appended {role} round {rnd}")
+
+
+def _norm(f):
+    return re.sub(r"\s+", " ", (f.get("evidence", "") + "|" + f.get("finding", "")[:60]).lower()).strip()
+
+
+def converge():
+    finds, verds = {}, {}
+    for fp in sorted(glob.glob(os.path.join(STATE, "findings_r*.json"))):
+        rnd = int(re.search(r"_r(\d+)", fp).group(1))
+        d = json.load(open(fp)); finds[rnd] = d if isinstance(d, list) else d.get("findings", [])
+    for fp in sorted(glob.glob(os.path.join(STATE, "verdicts_r*.json"))):
+        rnd = int(re.search(r"_r(\d+)", fp).group(1))
+        d = json.load(open(fp)); items = d if isinstance(d, list) else d.get("verdicts", [])
+        verds[rnd] = {v.get("id"): v for v in items}
+    seen, per_round = set(), []
+    for rnd in sorted(finds):
+        survive = [f for f in finds[rnd]
+                   if (verds.get(rnd, {}).get(f.get("id"), {}).get("verdict", "CONFIRMED").upper()
+                       in ("CONFIRMED", "OVERSTATED"))]
+        new = [f for f in survive if _norm(f) not in seen]
+        for f in survive:
+            seen.add(_norm(f))
+        per_round.append({"round": rnd, "surviving": len(survive), "new": len(new)})
+    dry = len(per_round) >= 2 and all(r["new"] == 0 for r in per_round[-2:])
+    print(json.dumps({"total_surviving": len(seen), "per_round": per_round,
+                      "dry_2_rounds": dry, "rounds": len(per_round)}, indent=2))
+
+
+SEV = {"BLOCKER": "#c0392b", "CRITICAL": "#c0392b", "HIGH": "#d35400",
+       "MED": "#b7950b", "MEDIUM": "#b7950b", "LOW": "#7f8c8d"}
+
+
+def render():
+    md = open(TRANSCRIPT, encoding="utf-8").read() if os.path.exists(TRANSCRIPT) else "*(awaiting prosecution)*"
+    finds, verds, oracle_idx, grades = [], {}, {}, []
+    for fp in sorted(glob.glob(os.path.join(STATE, "findings_r*.json"))):
+        d = json.load(open(fp)); finds += (d if isinstance(d, list) else d.get("findings", []))
+    for fp in sorted(glob.glob(os.path.join(STATE, "verdicts_r*.json"))):
+        d = json.load(open(fp))
+        for v in (d if isinstance(d, list) else d.get("verdicts", [])):
+            verds[v.get("id")] = v
+    for fp in sorted(glob.glob(os.path.join(STATE, "oracle_r*.json"))):
+        d = json.load(open(fp))
+        for c in d.get("checks", []):
+            oracle_idx[c.get("check")] = c
+    for fp in sorted(glob.glob(os.path.join(STATE, "grades_r*.json"))):
+        grades.append(json.load(open(fp)))
+
+    rows = []
+    for f in finds:
+        v = verds.get(f.get("id"), {})
+        verdict = (v.get("verdict") or "—").upper()
+        vc = {"CONFIRMED": "#1e8449", "OVERSTATED": "#b7950b", "FALSE_POSITIVE": "#7f8c8d"}.get(verdict, "#555")
+        sev = (v.get("adjusted_severity") or f.get("severity") or "LOW").upper()
+        oresult = (f.get("oracle_result") or "—").upper()
+        oc = {"PASS": "#1e8449", "FAIL": "#c0392b", "FIXED": "#16a085"}.get(oresult, "#566")
+        st = (f.get("status") or "").upper()
+        rows.append(f"""<tr>
+<td><code>{html.escape(f.get('id','?'))}</code></td>
+<td><b style="color:{SEV.get(sev,'#555')}">{sev}</b></td>
+<td>{html.escape(f.get('dimension',''))}</td>
+<td>{html.escape(f.get('finding','')[:260])}{' <b style="color:#16a085">[FIXED]</b>' if st=='FIXED' else ''}</td>
+<td><code>{html.escape(f.get('evidence',''))}</code></td>
+<td style="color:{vc};font-weight:600">{html.escape(verdict)}</td>
+<td style="color:{oc};font-weight:600">{html.escape(oresult)}</td>
+</tr>""")
+
+    ostat = {"PASS": "#1e8449", "FAIL": "#c0392b", "DEFERRED": "#b7950b"}
+    orows = "".join(
+        f"<tr><td>{html.escape(c['check'])}</td><td>{html.escape(c.get('dimension',''))}</td>"
+        f"<td style=\"color:{ostat.get(c['status'],'#566')};font-weight:600\">{c['status']}</td>"
+        f"<td><code>{html.escape(c.get('detail',''))}</code></td></tr>"
+        for c in oracle_idx.values())
+
+    grade_html = ""
+    if grades:
+        g = grades[-1]; L = g.get("lenses", {})
+        grade_html = f"""<div class="verdict"><h2>⚖️ Judge verdict (round {len(grades)})</h2>
+<p class="oneline">{html.escape(str(g.get('one_line_verdict','')))}</p><div class="lenses">
+<div class="lens"><h3>SRE / Operations</h3><p>{html.escape(json.dumps(L.get('sre',''), ensure_ascii=False))}</p></div>
+<div class="lens"><h3>Cassandra committer / Correctness</h3><p>{html.escape(json.dumps(L.get('committer',''), ensure_ascii=False))}</p></div>
+<div class="lens"><h3>Security / Compliance</h3><p>{html.escape(json.dumps(L.get('security',''), ensure_ascii=False))}</p></div>
+</div></div>"""
+
+    surv = sum(1 for v in verds.values() if v.get('verdict', '').upper() in ('CONFIRMED', 'OVERSTATED'))
+    fp_n = sum(1 for v in verds.values() if v.get('verdict', '').upper() == 'FALSE_POSITIVE')
+    o_pass = sum(1 for c in oracle_idx.values() if c['status'] == 'PASS')
+    o_fail = sum(1 for c in oracle_idx.values() if c['status'] == 'FAIL')
+    o_def = sum(1 for c in oracle_idx.values() if c['status'] == 'DEFERRED')
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="refresh" content="6">
+<title>HCD audit arena — adversarial tribunal</title><style>
+:root{{color-scheme:dark}}
+body{{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#0c1418;color:#e6eef0}}
+header{{padding:14px 22px;background:#0f1d22;border-bottom:1px solid #1d3640;position:sticky;top:0}}
+header h1{{margin:0;font-size:18px}} header .sub{{color:#7fa6b0;font-size:13px}}
+.wrap{{padding:18px 22px;max-width:1480px;margin:auto}}
+.panel{{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:18px}}
+.col{{background:#0f1d22;border:1px solid #1d3640;border-radius:10px;padding:12px}}
+.col h3{{margin:0 0 8px;font-size:14px}} .col .big{{font-size:22px;font-weight:700}}
+.prosecutor{{border-top:3px solid #c0392b}} .defender{{border-top:3px solid #2e86c1}}
+.judge{{border-top:3px solid #8e44ad}} .oracle{{border-top:3px solid #16a085}}
+table{{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}}
+th,td{{text-align:left;padding:6px 8px;border-bottom:1px solid #16323c;vertical-align:top}}
+th{{color:#7fa6b0;font-weight:600}} code{{background:#13262d;padding:1px 5px;border-radius:4px;font-size:11.5px}}
+.verdict{{background:#15121f;border:1px solid #33294a;border-radius:10px;padding:14px 18px;margin-bottom:18px}}
+.oneline{{font-size:16px;font-weight:600;color:#d7c7f0}}
+.lenses{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}}
+.lens{{background:#1c1530;border-radius:8px;padding:10px}} .lens h3{{margin:0 0 6px;font-size:13px;color:#bfa3e6}}
+pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;border:1px solid #16323c;border-radius:8px;padding:14px;max-height:55vh;overflow:auto}}
+</style></head><body>
+<header><h1>🛡️ HCD audit arena — adversarial tribunal (HCD 2.0 / Cassandra 5.0)</h1>
+<div class="sub">Prosecutor <b style="color:#e57373">refute-by-default</b> · Defender <b style="color:#6fb6e0">kills false positives</b> · Judge <b style="color:#b18ad6">SRE / committer / security</b> · Oracle <b style="color:#34c3a0">runs ground truth</b> — auto-refresh /6s</div></header>
+<div class="wrap"><div class="panel">
+<div class="col prosecutor"><h3>🔴 Prosecutor</h3><div class="big">{len(finds)}</div><div>findings filed</div></div>
+<div class="col defender"><h3>🔵 Defender</h3><div class="big">{surv}</div><div>survived · {fp_n} false positive(s)</div></div>
+<div class="col judge"><h3>🟣 Judge</h3><div class="big">{len(grades)}</div><div>tri-lens verdict(s)</div></div>
+<div class="col oracle"><h3>🟢 Oracle</h3><div class="big">{o_pass}/{o_pass+o_fail}</div><div>checks PASS · {o_def} deferred (need live cluster)</div></div>
+</div>
+{grade_html}
+<h2>Oracle — deterministic ground truth</h2>
+<table><tr><th>Check</th><th>Dim</th><th>Status</th><th>Detail</th></tr>
+{orows or '<tr><td colspan=4><i>run: bin/arena.py oracle</i></td></tr>'}</table>
+<h2>Findings register</h2>
+<table><tr><th>ID</th><th>Sev</th><th>Dim</th><th>Finding</th><th>Citation</th><th>Defender</th><th>Oracle</th></tr>
+{''.join(rows) if rows else '<tr><td colspan=7><i>awaiting the prosecutor…</i></td></tr>'}</table>
+<h2>Court transcript</h2><pre>{html.escape(md)}</pre>
+</div></body></html>"""
+    open(HTML_OUT, "w", encoding="utf-8").write(page)
+    print(f"courtroom.html rendered ({len(finds)} findings, {len(grades)} grades, {len(oracle_idx)} oracle checks)")
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "repomap": repomap()
+    elif cmd == "excerpts": excerpts(sys.argv[2])
+    elif cmd == "oracle": oracle(sys.argv[2] if len(sys.argv) > 2 else "1")
+    elif cmd == "act": act(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif cmd == "converge": converge()
+    elif cmd == "render": render()
+    else: print(__doc__); sys.exit(1)

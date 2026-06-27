@@ -65,6 +65,23 @@ if [ ! -s "$CONF_OUTPUT" ]; then
     exit 1
 fi
 
+# HCD 2.0 secure profile (Modules 86-92): append the security fragment when requested.
+# Default 'open' leaves AllowAllAuthenticator; modules 86-92 enforce only under 'secure'.
+: "${HCD_SECURITY_PROFILE:=open}"
+SECURE_FRAGMENT="/opt/hcd/resources/cassandra/conf/cassandra-secure.yaml.fragment"
+if [ "$HCD_SECURITY_PROFILE" = "secure" ]; then
+    if [ -f "$SECURE_FRAGMENT" ]; then
+        echo "HCD_SECURITY_PROFILE=secure -> appending security configuration (auth, authz, CIDR)."
+        printf '\n' >> "$CONF_OUTPUT"
+        envsubst < "$SECURE_FRAGMENT" >> "$CONF_OUTPUT"
+    else
+        echo "ERROR: HCD_SECURITY_PROFILE=secure but fragment not found: $SECURE_FRAGMENT" >&2
+        exit 1
+    fi
+else
+    echo "HCD_SECURITY_PROFILE=open (default) -> no authentication enforced."
+fi
+
 # Generate cassandra-rackdc.properties if GossipingPropertyFileSnitch is used
 if [ "$CASSANDRA_ENDPOINT_SNITCH" = "GossipingPropertyFileSnitch" ]; then
     echo "dc=$CASSANDRA_DC" > /opt/hcd/resources/cassandra/conf/cassandra-rackdc.properties

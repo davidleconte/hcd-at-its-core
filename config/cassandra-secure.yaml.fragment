@@ -1,0 +1,50 @@
+# ───────────────────────────────────────────────────────────────────────────────
+# HCD 2.0 SECURE PROFILE  (appended to cassandra.yaml when HCD_SECURITY_PROFILE=secure)
+# ───────────────────────────────────────────────────────────────────────────────
+# This fragment turns on authentication, authorization, datacenter-level role
+# restrictions, and the CIDR allowlist authorizer (in non-blocking MONITOR mode).
+# It deliberately does NOT enable TLS/mTLS so the cluster still boots without
+# certificates — Modules 88 (mTLS) and 91 (PEM SSL) demonstrate enabling encryption
+# using the material from scripts/gen-certs.sh.
+#
+# Base keys (authenticator/authorizer/...) are COMMENTED in cassandra.yaml.template,
+# so appending the uncommented versions here introduces no duplicate YAML keys.
+
+# Module 90 — password authentication (default superuser: cassandra / cassandra)
+authenticator: PasswordAuthenticator
+# Module 42/63/90 — permission model
+authorizer: CassandraAuthorizer
+role_manager: CassandraRoleManager
+# Module 87 — datacenter-level role restrictions (CREATE ROLE ... ACCESS TO DATACENTERS)
+network_authorizer: CassandraNetworkAuthorizer
+
+# Auth caches (Module 90) — short validity so demo grants/revokes take effect fast.
+roles_validity: 2000ms
+permissions_validity: 2000ms
+credentials_validity: 2000ms
+
+# IMPORTANT (post-boot): with auth enabled, system_auth is created at SimpleStrategy
+# RF=1, which is fragile on a multi-DC cluster (the default-superuser query uses
+# QUORUM). After `make up-secure`, run `make secure-bootstrap` to set
+#   ALTER KEYSPACE system_auth WITH replication =
+#     {'class':'NetworkTopologyStrategy','dc1':3,'dc2':3};  + nodetool repair system_auth
+# This cannot be set in cassandra.yaml — it must be applied via CQL once the cluster is up.
+#
+# Module 86 — CIDR / IP allowlist authorizer.
+# Start in MONITOR (logs violations, allows the connection); Module 86 flips it to
+# ENFORCE at runtime to prove rejection of out-of-range source IPs.
+# CAUTION (production): never switch to ENFORCE before populating system_auth.cidr_groups
+# and allowlisting your own source CIDR — you can lock yourself (and cqlsh) out.
+cidr_authorizer:
+    class_name: CassandraCIDRAuthorizer
+    parameters:
+        cidr_authorizer_mode: MONITOR
+        cidr_groups_cache_refresh_interval: 5
+
+# Module 88 — mTLS authentication (commented; enabled per-node in the module).
+# Requires client encryption with optional client auth and the PEM material from
+# gen-certs.sh; identities are bound with: ADD IDENTITY 'spiffe://...' TO ROLE x;
+# authenticator:
+#     class_name: org.apache.cassandra.auth.MutualTlsWithPasswordFallbackAuthenticator
+#     parameters:
+#         validator_class_name: org.apache.cassandra.auth.SpiffeCertificateValidator

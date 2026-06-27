@@ -1,0 +1,31 @@
+# HCD 2.0 secure-profile overlay.
+#
+# Usage:
+#   make gen-certs        # generate ./certs (PEM CA + node/client certs)
+#   make up-secure        # docker compose -f docker-compose.yml -f docker-compose.secure.yml up -d --build
+#
+# Merged on top of docker-compose.yml: it sets HCD_SECURITY_PROFILE=secure on every
+# node (the entrypoint then appends config/cassandra-secure.yaml.fragment) and mounts
+# the generated PEM material read-only at /opt/hcd/certs for Modules 88 and 91.
+# Environment maps merge and volume lists concatenate across compose files, so the
+# data volume and base env from docker-compose.yml are preserved.
+
+x-secure-overrides: &secure
+  environment:
+    HCD_SECURITY_PROFILE: secure
+  volumes:
+    - ./certs:/opt/hcd/certs:ro
+
+services:
+  hcd-node1:
+    <<: *secure
+  hcd-node2:
+    <<: *secure
+  hcd-node3:
+    <<: *secure
+  hcd-node4:
+    <<: *secure
+  hcd-node5:
+    <<: *secure
+  hcd-node6:
+    <<: *secure

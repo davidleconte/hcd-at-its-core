@@ -54,6 +54,16 @@ cas_contention_timeout_in_ms: 1000
 request_timeout_in_ms: 10000
 cross_node_timeout: true
 
+# Paxos / LWT consensus — HCD 2.0 (Apache Cassandra 5.0)
+# HCD 2.0 ships Paxos v2, a wire-compatible rewrite of the LWT consensus path that
+# cuts a round trip on uncontended operations and lowers contention latency. It is
+# the default here so every existing LWT module (12, 51, 61) transparently runs on
+# v2; Part 11 measures the v1-vs-v2 delta directly.
+#   paxos_state_purging: repaired  → purge Paxos state once ranges are repaired
+#   (recommended companion to v2; avoids unbounded system.paxos growth).
+paxos_variant: v2
+paxos_state_purging: repaired
+
 # CDC (Change Data Capture) - Module 26
 cdc_enabled: true
 
@@ -69,6 +79,12 @@ audit_logging_options:
     block: true
     max_queue_weight: 268435456
     max_log_size: 17179869184
+
+# Dynamic Data Masking (DDM) — Module 85 (HCD 2.0 / Apache Cassandra 5.0)
+# Presentation-layer redaction: masked columns return obfuscated values on SELECT
+# unless the querying role holds the UNMASK permission. Stored bytes are unchanged.
+# Disabled by default in Cassandra 5.0; enabled here so Module 85 can attach masks.
+dynamic_data_masking_enabled: true
 
 # Guardrails - Module 28
 # Protect the database from common anti-patterns
@@ -90,11 +106,15 @@ read_before_write_list_operations_enabled: true
 
 # Authentication & Authorization — Modules 42, 63
 # Uncomment to enable RBAC. Default: AllowAllAuthenticator (no auth required).
+# For the full HCD 2.0 secure profile (auth + CIDR + DC-RBAC) use `make up-secure`,
+# which appends config/cassandra-secure.yaml.fragment instead of these lines.
+# NOTE: Cassandra 5.0 uses unit-suffixed durations — use `roles_validity: 2000ms`,
+# NOT the legacy `roles_validity_in_ms`. Mixing old+new key names refuses startup.
 # authenticator: PasswordAuthenticator
 # authorizer: CassandraAuthorizer
 # role_manager: CassandraRoleManager
-# roles_validity_in_ms: 2000
-# permissions_validity_in_ms: 2000
+# roles_validity: 2000ms
+# permissions_validity: 2000ms
 
 # Internode Encryption — Module 64
 # Uncomment to enable TLS between nodes. Requires keystore/truststore setup.

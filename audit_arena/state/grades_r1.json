@@ -1,0 +1,23 @@
+{
+  "one_line_verdict": "Strong, well-tested demo with sound architecture, but the secure profile as first built could not form a cluster and Part 11 shipped three CQL statements that error live — all now fixed and oracle-confirmed; CONDITIONAL-SHIP pending a live run on the 2.0.6 binary.",
+  "surviving_findings": [
+    {"id": "R1-08", "severity": "BLOCKER", "why_it_matters": "Secure cluster never forms — the headline Part 11 feature is unrunnable until the cqlshrc fix."},
+    {"id": "R1-01", "severity": "BLOCKER", "why_it_matters": "DDM metadata query errors live, undermining the masking demo's credibility."},
+    {"id": "R1-02", "severity": "BLOCKER", "why_it_matters": "Inverted masking would teach the wrong redaction to every viewer."},
+    {"id": "R1-03", "severity": "BLOCKER", "why_it_matters": "Invalid GRANT grammar errors during the auth-hardening demo."},
+    {"id": "R1-09", "severity": "HIGH", "why_it_matters": "RF=1 system_auth is fragile on multi-DC; auth flakes under node churn."},
+    {"id": "R1-06", "severity": "HIGH", "why_it_matters": "sstabledump proof in Module 85 and restore in Module 37 break."}
+  ],
+  "lenses": {
+    "sre": {"disposition": "CONDITIONAL-SHIP", "page_at_3am": "make up-secure forming only a 1-node cluster because the anonymous healthcheck can't authenticate (fixed via baked cqlshrc; verify live).", "confidence": "Medium — open profile is solid; secure profile needs a live boot to confirm."},
+    "committer": {"grade": "B+ (was D pre-fix)", "cql_that_would_error_live": 0, "gap_to_A+": "Live-run every Part 11 CQL statement against Cassandra 5.0 once the tarball is staged; confirm LIST IDENTITIES replacement and CIDR group insert end-to-end."},
+    "security": {"decision": "conditions", "top_obligation_gap": "system_auth must be replicated (make secure-bootstrap) and the CIDR ENFORCE lockout caveat must be honoured before any non-demo use; key material is correctly mounted-not-baked and git-ignored."}
+  },
+  "recommendations": {
+    "must_fix_before_ship": ["Stage hcd-2.0.6-bin.tar.gz and run make up-secure + make wait to prove the cluster forms", "Live-execute the Part 11 CQL battery via cqlsh"],
+    "strategic": ["Wire the Oracle's live-cluster checks (cqlsh per-statement) into CI once a runner has Docker", "Derive the input-validation regex from TOTAL_MODULES to remove the last manual count site"],
+    "moonshots": ["Run the arena as a true 3-family tribunal (Claude prosecutor / GLM defender / Gemini judge) on every PR via a pre-merge hook"]
+  },
+  "unresolved": ["All Part 11 CQL is verified against Cassandra 5.0 docs/source but not yet executed on a live HCD 2.0 cluster (tarball not staged)."],
+  "integrated_disposition": "The adversarial pass converted a confident-but-flawed delivery into a defensible one: 12 confirmed findings (4 BLOCKER) were fixed and oracle-confirmed, 2 prosecution claims were killed as false positives. Disposition: CONDITIONAL-SHIP — green offline, pending one live boot."
+}

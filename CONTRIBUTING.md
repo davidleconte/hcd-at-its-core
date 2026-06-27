@@ -2,7 +2,7 @@
 
 ## Getting Started
 
-1. Clone the repo and place `hcd-1.2.3-bin.tar.gz` in the project root
+1. Clone the repo and place `hcd-2.0.6-bin.tar.gz` in the project root
 2. Run `make up` to start the cluster
 3. Run `make test` to verify everything works (requires `pytest` and `pyyaml`)
 

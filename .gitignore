@@ -49,3 +49,8 @@ build/
 venv/
 .venv/
 .pytest_cache/
+
+# Generated TLS material (make gen-certs) — never commit private keys
+certs/
+htmlcov/
+.ruff_cache/

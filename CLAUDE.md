@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dockerized multi-node IBM HCD (Hyper-Converged Database) cluster for development, testing, and demos. Runs a 6-node cluster across 2 datacenters (dc1: nodes 1-3, dc2: nodes 4-6) on a single machine using Docker Compose with static IPs on a `172.28.0.0/24` bridge network.
 
-**Prerequisite:** `hcd-1.2.3-bin.tar.gz` must be placed in the project root before building.
+**Prerequisite:** `hcd-2.0.6-bin.tar.gz` (IBM HCD 2.0, Passport Advantage part `M1442EN`) must be placed in the project root before building. HCD 2.0 is built on Apache Cassandra 5.0 and requires the Java 17 runtime (the image base is `eclipse-temurin:17-jre`).
+
+**Runtime:** Works against any Docker-compatible engine. On macOS (Apple Silicon, e.g. MBP M3 Pro) **colima** is supported — it exposes a Docker socket so `docker compose` is unchanged; size the VM for 6 nodes with `colima start --cpu 4 --memory 8 --disk 60`. Run `make verify-release` after `make up` to assert the Cassandra 5.0 base and Java 17 runtime.
 
 ## Common Commands
 
@@ -20,7 +22,10 @@ make cqlsh           # open CQL shell on node1
 make demo            # interactive entropy demo
 make demo-dry        # dry-run (no cluster needed)
 make demo-full       # build cluster + run full demo
-make demo-score      # validate all 85 modules (scorecard)
+make demo-score      # validate all 94 modules (scorecard)
+make gen-certs       # generate PEM CA + node/client certs (secure profile)
+make up-secure       # start cluster with HCD 2.0 secure profile (auth + CIDR + certs)
+make demo-2.0        # run HCD 2.0 innovation modules (Part 11: 85-93)
 make demo-ransomware # run DORA ransomware demo (modules 73-79)
 make minio           # start MinIO WORM storage
 make minio-down      # stop MinIO
@@ -36,9 +41,9 @@ make wait            # wait until all nodes are UN
 # Direct commands (equivalent)
 docker compose up -d --build
 docker exec hcd-node1 nodetool status
-./scripts/demo-entropy.sh 3              # run specific module (0-84)
+./scripts/demo-entropy.sh 3              # run specific module (0-93)
 ./scripts/demo-entropy.sh --dry-run      # dry-run mode
-./scripts/demo-entropy.sh --score        # automated 85-module scorecard
+./scripts/demo-entropy.sh --score        # automated 94-module scorecard
 
 # Generate topology for different cluster sizes
 python3 scripts/generate-topology.py -i                        # interactive
@@ -55,13 +60,17 @@ pytest tests/test_topology_unit.py       # topology generator unit tests
 
 ## Architecture
 
-- **Dockerfile** - Single image based on `eclipse-temurin:11-jre`. Installs HCD from local tarball, sets up Python 3.11 via `uv`, creates wrapper scripts for `nodetool`/`cqlsh`/etc. that set `HCD_CONF` paths. Runs as non-root `cassandra` user (UID/GID 999).
+- **Dockerfile** - Single image based on `eclipse-temurin:17-jre` (Java 17, required by HCD 2.0). Installs HCD 2.0.6 from local tarball, sets up Python 3.11 via `uv`, creates wrapper scripts for `nodetool`/`cqlsh`/etc. that set `HCD_CONF` paths. Runs as non-root `cassandra` user (UID/GID 999).
 - **docker-compose.yml** - Defines 6 services using YAML anchors (`x-hcd-common`). Node 1 is the primary seed; nodes 2-6 depend on node 1's health. Seeds are nodes 1 and 4 (one per DC). Port 9042 bound to localhost on node 1. Hardened with `cap_drop: ALL`, `no-new-privileges`, ulimits (`nofile: 100000`, `memlock: unlimited`), and CPU/memory limits.
 - **config/cassandra.yaml.template** - Cassandra config template using `${ENV_VAR}` substitution, processed by `envsubst` at container startup. Includes CDC, audit logging, and guardrails configuration for modules 26-28.
 - **scripts/docker-entrypoint.sh** - Generates `cassandra.yaml` from template, writes rack/DC properties, waits for seed node with exponential backoff before starting HCD.
 - **Makefile** - Developer shortcuts with auto-detection of `docker compose` (v2) vs `docker-compose` (v1).
 - **scripts/generate-topology.py** - Generates `docker-compose.yml` for arbitrary cluster sizes and multi-DC configurations. Uses atomic file writes and validates DC node count consistency.
-- **scripts/demo-entropy.sh** - Interactive 85-module demo (modules 0-84) in 10 parts. Parts 1-6 cover entropy, consistency, SAI, vector search, CDC, audit logging, guardrails, data modeling, compaction, compression, DC expansion (with chaos test), backup/restore, rolling restart, repair, stress testing, security (RBAC + TLS), GDPR data sovereignty, driver policies, ACID model, batches, LWT, sagas, and consistency decision framework. Part 7 (Enterprise, modules 55-62) adds: HCD Data API (REST/JSON via HTTP), multi-tenant isolation, node decommission, disaster recovery, silent data corruption, cross-service saga, LWT contention, and repair deep-dive. Part 8 (Ops Deep-Dives, modules 63-72) adds: live RBAC demo, encryption at rest (TDE), commitlog crash recovery, hint expiration & data gaps, dynamic RF change, streaming & bootstrap monitoring, materialized views, nodetool ops deep-dive, cross-DC consistency window, and bloom filter & cache tuning. Part 9 (DORA Ransomware, modules 73-79) adds: kill chain overview, WORM backup to MinIO Object Lock, commitlog archiving to WORM, ransomware attack simulation (TRUNCATE + snapshot wipe), recovery from WORM backups, DC failover under attack, and DORA compliance scorecard with K8ssandra auto-healing. Part 10 (Production Essentials, modules 80-84) adds: counter columns, prepared statements & driver best practices, JVM & GC tuning, CQL aggregation functions, and collection types deep-dive (frozen vs non-frozen). Supports `--dry-run`, `--no-pause`, and `--score` flags. Progress bar and counter `[mod/84]` in every module header (85 modules numbered 0-84).
+- **scripts/demo-entropy.sh** - Interactive 94-module demo (modules 0-93) in 11 parts. Parts 1-6 cover entropy, consistency, SAI, vector search, CDC, audit logging, guardrails, data modeling, compaction, compression, DC expansion (with chaos test), backup/restore, rolling restart, repair, stress testing, security (RBAC + TLS), GDPR data sovereignty, driver policies, ACID model, batches, LWT, sagas, and consistency decision framework. Part 7 (Enterprise, modules 55-62) adds: HCD Data API (REST/JSON via HTTP), multi-tenant isolation, node decommission, disaster recovery, silent data corruption, cross-service saga, LWT contention, and repair deep-dive. Part 8 (Ops Deep-Dives, modules 63-72) adds: live RBAC demo, encryption at rest (TDE), commitlog crash recovery, hint expiration & data gaps, dynamic RF change, streaming & bootstrap monitoring, materialized views, nodetool ops deep-dive, cross-DC consistency window, and bloom filter & cache tuning. Part 9 (DORA Ransomware, modules 73-79) adds: kill chain overview, WORM backup to MinIO Object Lock, commitlog archiving to WORM, ransomware attack simulation (TRUNCATE + snapshot wipe), recovery from WORM backups, DC failover under attack, and DORA compliance scorecard with K8ssandra auto-healing. Part 10 (Production Essentials, modules 80-84) adds: counter columns, prepared statements & driver best practices, JVM & GC tuning, CQL aggregation functions (now including HCD 2.0 / Cassandra 5.0 scalar math functions in module 83), and collection types deep-dive (frozen vs non-frozen). Part 11 (HCD 2.0 Innovations, modules 85-93) adds: Dynamic Data Masking (85), CIDR/IP allowlist authorizer (86), datacenter-level role restrictions (87), mTLS authentication & external RBAC (88), Paxos v2 consensus benchmark (89), authentication hardening — pre-hashed passwords/rate limiting/bulk grants (90), PEM SSL & cert-based internode auth (91), audit logging 2.0 hardening (92), and Java 17 runtime & supply-chain/CVE posture (93). Modules 86-92 require the **secure profile** (`make gen-certs && make up-secure`); on the default open profile they render the commands but do not enforce (modules 85 and 93 run on either profile). Supports `--dry-run`, `--no-pause`, and `--score` flags. Progress bar and counter `[mod/93]` in every module header (94 modules numbered 0-93).
+
+- **docker-compose.secure.yml** - Overlay that sets `HCD_SECURITY_PROFILE=secure` on every node and mounts `./certs` read-only at `/opt/hcd/certs`. Merged via `docker compose -f docker-compose.yml -f docker-compose.secure.yml` (the `make up-secure` target).
+- **config/cassandra-secure.yaml.fragment** - Appended to the generated `cassandra.yaml` by the entrypoint when `HCD_SECURITY_PROFILE=secure`. Enables `PasswordAuthenticator`, `CassandraAuthorizer`, `CassandraNetworkAuthorizer`, and the CIDR authorizer (MONITOR). Base auth keys stay commented in the template so there are no duplicate YAML keys. TLS stays off here (Modules 88/91 enable it) so the cluster boots without certs.
+- **scripts/gen-certs.sh** - Generates a PEM CA, per-node server certs (SAN = hostname + container IP), and client identity certs (SAN = `spiffe://hcd/role/<name>`) into `./certs/` for Modules 88 and 91. Portable across OpenSSL/LibreSSL.
 - **config/prometheus.yml** - Prometheus scrape config for JMX exporter metrics on all 6 nodes (port 9404).
 - **config/jmx-exporter.yml** - JMX-to-Prometheus metric mapping for Cassandra thread pools, latencies, compaction, hints, and caches.
 - **config/grafana/** - Grafana provisioning (datasource + dashboard). Pre-built dashboard shows write/read p99, thread pool activity, compaction pending, dropped messages, and hints.

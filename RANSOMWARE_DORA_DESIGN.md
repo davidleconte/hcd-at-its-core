@@ -1784,7 +1784,7 @@ Each scenario and deep-dive section produces DORA compliance evidence. The full 
    - Module 77: Recovery from WORM Backups (integrity verify, restore, cross-DC consistency)
    - Module 78: DC Failover Under Attack (network partition, LOCAL_QUORUM, repair convergence)
    - Module 79: DORA Compliance Scorecard & K8s Auto-Healing (article matrix, recovery paths, K8ssandra CRD)
-2. **DORA scorecard** — `--score` mode validates all 85 modules (85/85)
+2. **DORA scorecard** — `--score` mode validates all 94 modules (94/94)
 3. **DEMO_ENTROPY.md** — Part 9 documentation added (overview table + module body sections)
 4. **Tests** — all tests pass (content tests for modules 73-79 included); validate with `make test`
 5. **MinIO WORM** — docker-compose.yml service under `ransomware` profile; `ensure_minio()` helper in script

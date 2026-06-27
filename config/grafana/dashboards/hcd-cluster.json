@@ -1,5 +1,7 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -8,10 +10,15 @@
   "liveNow": false,
   "panels": [
     {
-      "title": "Client Request Latency (p99) — Write",
+      "title": "Client Request Latency (p99) \u2014 Write",
       "type": "timeseries",
       "datasource": "Prometheus",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
       "targets": [
         {
           "expr": "cassandra_client_request_latency_99thpercentile{scope=\"Write\"}",
@@ -20,16 +27,24 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "µs",
-          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+          "unit": "\u00b5s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
         }
       }
     },
     {
-      "title": "Client Request Latency (p99) — Read",
+      "title": "Client Request Latency (p99) \u2014 Read",
       "type": "timeseries",
       "datasource": "Prometheus",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
       "targets": [
         {
           "expr": "cassandra_client_request_latency_99thpercentile{scope=\"Read\"}",
@@ -38,16 +53,24 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "µs",
-          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+          "unit": "\u00b5s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
         }
       }
     },
     {
-      "title": "Thread Pool — MutationStage Active",
+      "title": "Thread Pool \u2014 MutationStage Active",
       "type": "timeseries",
       "datasource": "Prometheus",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
       "targets": [
         {
           "expr": "cassandra_threadpool_request_activetasks{pool=\"MutationStage\"}",
@@ -55,14 +78,24 @@
         }
       ],
       "fieldConfig": {
-        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 20 } }
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20
+          }
+        }
       }
     },
     {
-      "title": "Thread Pool — MutationStage Pending",
+      "title": "Thread Pool \u2014 MutationStage Pending",
       "type": "timeseries",
       "datasource": "Prometheus",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
       "targets": [
         {
           "expr": "cassandra_threadpool_request_pendingtasks{pool=\"MutationStage\"}",
@@ -71,23 +104,40 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "custom": { "drawStyle": "line", "fillOpacity": 20 },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 5 },
-              { "color": "red", "value": 25 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
             ]
           }
         }
       }
     },
     {
-      "title": "Thread Pool — ReadStage Active",
+      "title": "Thread Pool \u2014 ReadStage Active",
       "type": "timeseries",
       "datasource": "Prometheus",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 8
+      },
       "targets": [
         {
           "expr": "cassandra_threadpool_request_activetasks{pool=\"ReadStage\"}",
@@ -95,14 +145,24 @@
         }
       ],
       "fieldConfig": {
-        "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 20 } }
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20
+          }
+        }
       }
     },
     {
-      "title": "Compaction — Pending Tasks",
+      "title": "Compaction \u2014 Pending Tasks",
       "type": "stat",
       "datasource": "Prometheus",
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 16 },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 16
+      },
       "targets": [
         {
           "expr": "cassandra_compaction_pendingtasks",
@@ -114,7 +174,12 @@
       "title": "Dropped Messages (Total)",
       "type": "stat",
       "datasource": "Prometheus",
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 16 },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 16
+      },
       "targets": [
         {
           "expr": "sum(cassandra_dropped_dropped) by (instance)",
@@ -126,22 +191,83 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
             ]
           }
         }
       }
     },
     {
-      "title": "Hints — Stored Count",
+      "title": "Hints \u2014 Stored Count",
       "type": "stat",
       "datasource": "Prometheus",
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 16 },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 16
+      },
       "targets": [
         {
           "expr": "cassandra_hints_hints_created",
           "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "title": "LWT (CAS) Latency p99 \u2014 Paxos v2 (Module 89)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "expr": "cassandra_client_request_latency_99thpercentile{scope=\"CASWrite\"}",
+          "legendFormat": "CAS write p99 \u2014 {{instance}}",
+          "refId": "A"
+        },
+        {
+          "expr": "cassandra_client_request_latency_99thpercentile{scope=\"CASRead\"}",
+          "legendFormat": "CAS read p99 \u2014 {{instance}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "\u00b5s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10
+          }
+        }
+      }
+    },
+    {
+      "title": "Connected Native Clients (auth load)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "targets": [
+        {
+          "expr": "cassandra_client_request_latency_count{scope=\"CASWrite\"}",
+          "legendFormat": "CAS ops/s \u2014 {{instance}}",
+          "refId": "A"
         }
       ]
     }
@@ -149,12 +275,21 @@
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["hcd", "cassandra", "demo"],
-  "templating": { "list": [] },
-  "time": { "from": "now-15m", "to": "now" },
+  "tags": [
+    "hcd",
+    "cassandra",
+    "demo"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "",
-  "title": "HCD Cluster — Demo Dashboard",
+  "title": "HCD Cluster \u2014 Demo Dashboard",
   "uid": "hcd-demo",
   "version": 1
 }

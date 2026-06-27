@@ -1,0 +1,20 @@
+{"verdicts": [
+  {"id": "R1-01", "verdict": "CONFIRMED", "adjusted_severity": "BLOCKER", "counter_evidence": "cassandra-5.0 SchemaKeyspace.java (column_masks cols)", "reasoning": "Source confirms function_keyspace/function_name; mask_keyspace/mask_function do not exist."},
+  {"id": "R1-02", "verdict": "CONFIRMED", "adjusted_severity": "BLOCKER", "counter_evidence": "cassandra.apache.org DDM docs", "reasoning": "mask_outer keeps the middle and masks the ends; the demo's intent is inverted."},
+  {"id": "R1-03", "verdict": "CONFIRMED", "adjusted_severity": "BLOCKER", "counter_evidence": "CQL GRANT grammar", "reasoning": "No ALL TABLES IN KEYSPACE resource; statement is a syntax error."},
+  {"id": "R1-04", "verdict": "CONFIRMED", "adjusted_severity": "HIGH", "counter_evidence": "CEP-34", "reasoning": "ADD/DROP IDENTITY documented; LIST IDENTITIES not found — treat as defect until verified."},
+  {"id": "R1-05", "verdict": "FALSE_POSITIVE", "adjusted_severity": "LOW", "counter_evidence": "HCD 2.0 release notes", "reasoning": "Every version fact matches the release notes verbatim — no defect."},
+  {"id": "R1-06", "verdict": "CONFIRMED", "adjusted_severity": "HIGH", "counter_evidence": "1.2.3 tarball layout; C5.0 tools/bin", "reasoning": "sstable* tools are not under /opt/hcd/bin; wrappers would fail."},
+  {"id": "R1-07", "verdict": "FALSE_POSITIVE", "adjusted_severity": "LOW", "counter_evidence": "docker-compose config (v1)", "reasoning": "Overlay merge keeps env + data volume and adds the certs mount; no hazard."},
+  {"id": "R1-08", "verdict": "CONFIRMED", "adjusted_severity": "BLOCKER", "counter_evidence": "docker-compose.yml:90-92 depends_on", "reasoning": "Anonymous healthcheck cannot pass under PasswordAuthenticator; nodes 2-6 never start."},
+  {"id": "R1-09", "verdict": "CONFIRMED", "adjusted_severity": "HIGH", "counter_evidence": "Cassandra auth bootstrap semantics", "reasoning": "RF=1 system_auth is the classic multi-DC auth fragility; real but mitigable post-boot."},
+  {"id": "R1-10", "verdict": "CONFIRMED", "adjusted_severity": "HIGH", "counter_evidence": "fragment:17 (role_manager secure-only)", "reasoning": "CREATE ROLE requires CassandraRoleManager, absent on the open profile."},
+  {"id": "R1-11", "verdict": "CONFIRMED", "adjusted_severity": "HIGH", "counter_evidence": "README.md:11 (2.0.6)", "reasoning": "Lab manual contradicts the build; reader stages the wrong tarball."},
+  {"id": "R1-12", "verdict": "CONFIRMED", "adjusted_severity": "MED", "counter_evidence": "AGENTS.md:122-123", "reasoning": "Duplicate step number and a loop construct that does not exist in the script."},
+  {"id": "R1-13", "verdict": "CONFIRMED", "adjusted_severity": "HIGH", "counter_evidence": "tests/ (no secure-profile test pre-fix)", "reasoning": "The riskiest new code (security infra) shipped untested."},
+  {"id": "R1-14", "verdict": "FALSE_POSITIVE", "adjusted_severity": "LOW", "counter_evidence": "shellcheck 0.10 clean on new regions", "reasoning": "No CRITICAL/HIGH shell defect; the new code paths are sound."}
+],
+"missed_strengths": [
+  {"point": "The require_secure_profile gate correctly returns early in dry-run/score so the scorecard stays 94/94 honest.", "evidence": "scripts/demo-entropy.sh:384-396"},
+  {"point": "Combined template+fragment was engineered with base auth keys commented, so the append introduces zero duplicate keys.", "evidence": "config/cassandra.yaml.template:109-113"}
+]}
