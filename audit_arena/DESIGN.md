@@ -406,7 +406,7 @@ audit_arena/
 ├── contract/               # the Definition-of-Done as versioned data
 │   └── contract.v1.json    #   dimensions + invariants (HCD-I1..I7) + severity scale, content-hashed
 ├── state/                  # per-round artefacts (see §5); courtroom.html renders from here
-├── acts/                   # plaidoiries + crossvendor_r3.md
+├── acts/                   # plaidoiries + crossvendor_r3.md + vendor_panel_r3.md
 ├── reference_facts.json    # pinned HCD-2.0/C5.0 version facts for HCD-I7
 ├── README.md               # usage + status legend
 ├── DESIGN.md               # ← this document
