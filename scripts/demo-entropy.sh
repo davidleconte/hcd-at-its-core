@@ -10530,11 +10530,15 @@ if [ "$SCORE_MODE" = true ]; then
     echo ""
     if [ "$SCORE_PCT" -eq 100 ]; then
         echo -e "  ${C_GREEN}ALL MODULES PASSED. Demo is ready for presentation.${C_RESET}"
-    else
-        echo -e "  ${C_YELLOW}Some modules failed. Review the output above.${C_RESET}"
+        echo ""
+        exit 0
     fi
+    # R3-01: the scorecard is self-gating — a non-zero exit on any module regression so the bare
+    # `bash demo-entropy.sh --score` in CI's `test` job (and `make demo-score`) actually goes red,
+    # instead of relying solely on the `arena` job's grep backstop.
+    echo -e "  ${C_YELLOW}Some modules failed. Review the output above.${C_RESET}"
     echo ""
-    exit 0
+    exit 1
 fi
 
 # ══════════════════════════════════════════════════════════════════

@@ -1,0 +1,17 @@
+{
+  "verdicts": [
+    {
+      "id": "R3-01",
+      "verdict": "CONFIRMED",
+      "adjusted_severity": "MED",
+      "counter_evidence": "audit_arena/bin/pre-merge-hook.sh:33-34",
+      "reasoning": "scripts/demo-entropy.sh:10537 confirms the unconditional `exit 0`, and .github/workflows/ci.yml:41 confirms the bare `bash ... --score` step cannot fail on a module regression — both halves of the finding hold. However the `arena` CI job is a genuine blocking backstop: pre-merge-hook.sh:33-34 captures scorecard stdout to a file and greps for `Score:  100%`, setting fail=1 and exiting 1 on mismatch, and arena.py:551 independently gates on the same substring — so a <100% result will block the PR via the `arena` job, keeping MED severity correct."
+    }
+  ],
+  "missed_strengths": [
+    {
+      "point": "The pre-merge hook's decision to capture stdout to a temp file rather than pipe directly is deliberate and documented defensive coding: it avoids a SIGPIPE false-failure under `set -o pipefail` that would have caused the scorecard to spuriously report FAIL on a 100% run — a subtle correctness subtlety the Prosecutor did not credit.",
+      "evidence": "audit_arena/bin/pre-merge-hook.sh:31-34"
+    }
+  ]
+}

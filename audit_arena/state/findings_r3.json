@@ -1,0 +1,18 @@
+{
+  "findings": [
+    {
+      "id": "R3-01",
+      "dimension": "D4",
+      "invariant": "HCD-I6",
+      "claim_under_attack": "The CI `test` job step 'Demo scorecard (dry-run validation of all 94 modules)' validates all 94 modules and fails CI if any module breaks.",
+      "finding": "scripts/demo-entropy.sh ends its --score block with an unconditional `exit 0` (line 10537), regardless of SCORE_FAIL/SCORE_PCT. The CI `test` job (.github/workflows/ci.yml:40-41) runs it as a bare step `run: bash scripts/demo-entropy.sh --score`, which fails the job only on a non-zero exit code. Because the scorecard always exits 0 even when modules FAIL (SCORE_PCT<100 only changes a printed message, not the exit status), this named CI step can NEVER fail on a module regression \u2014 it is a check that always passes. The arena/Oracle paths correctly compensate by capturing stdout and grepping for the literal `Score:  100%` (audit_arena/bin/pre-merge-hook.sh:33-34, audit_arena/bin/arena.py:296,551) precisely because the exit code is uninformative; the CI `test` job does not, so its scorecard step is decorative.",
+      "severity": "MED",
+      "evidence": "scripts/demo-entropy.sh:10537",
+      "strongest_rebuttal": "The separate `arena` CI job (ci.yml:87-90) runs the deterministic gate which DOES grep `Score:  100%` and blocks on failure, so a broken module is still caught at the PR level \u2014 the `test` job's scorecard step is redundant, not the sole guard.",
+      "survives_rebuttal": true,
+      "what_would_resolve_it": "Either make the --score block `exit $([ \"$SCORE_PCT\" -eq 100 ] && echo 0 || echo 1)` so the exit code reflects the result, or change the CI step to `bash scripts/demo-entropy.sh --score | tee /dev/stderr | grep -q 'Score:  100%'` so the step fails on <100%. Today the step's green status is independent of the scorecard outcome.",
+      "oracle_cmd": "python3 -c \"import re,sys; s=open('scripts/demo-entropy.sh').read(); m=re.search(r'SCORE_PCT. -eq 100.*?\\nfi', s, re.S); sys.exit(0 if (m and 'exit 1' in m.group(0)) else 1)\"",
+      "charter_gap": false
+    }
+  ]
+}

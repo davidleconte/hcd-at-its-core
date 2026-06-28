@@ -1,0 +1,24 @@
+{
+  "one_line_verdict": "R3-01 SURVIVES at LOW: the test-job scorecard step is decorative (unconditional exit 0), but the parallel arena CI job greps 'Score:  100%' and blocks a <100% regression on master, so the gap is redundancy/clarity, not an exploitable hole — the audit has effectively converged.",
+  "surviving_findings": [
+    {
+      "id": "R3-01",
+      "severity": "LOW",
+      "disposition": "Make the --score block exit non-zero on SCORE_PCT!=100 (exit $([ \"$SCORE_PCT\" -eq 100 ] && echo 0 || echo 1)); this fixes the decorative test-job step at the source and lets the bare CI step become load-bearing. Backstop already in place via the arena job, so non-urgent."
+    }
+  ],
+  "dropped": [],
+  "lenses": {
+    "sre": "No 3am page from this. R3-01 is a CI signal-quality defect, not a runtime defect: it does not touch make up / make up-secure, cluster formation, or the demo. The only operational risk is misplaced trust — a green 'test' job does NOT prove the scorecard passed — but the 'arena' job in the same workflow does enforce 100%, so a real module regression still fails the PR. Disposition: SHIP. The thing most likely to mislead (not page) an operator is reading the green 'test' check as scorecard-validated when it is the arena job doing that work.",
+    "committer": "Grade A. No live CQL or cassandra.yaml is implicated by R3-01 — it is a shell exit-code / CI-wiring issue. Zero CQL/config statements would error live on account of this finding. The script itself is bash -n / shellcheck -S error clean. Gap to A+: the unconditional 'exit 0' makes the named CI step structurally incapable of failing, which a strict committer would flag as a self-deceiving check (a test that cannot go red) even though a sibling job compensates; reflect the result in the exit code so the check earns its name.",
+    "security": "accept. No auth/RBAC/CIDR/mTLS/TLS, secret-handling, or DORA/WORM obligation is touched by R3-01. There is no security-relevant gate that depends on this exit code; the compliance backstops are unaffected. Top (minor) obligation gap: defense-in-depth on the supply-chain/CI integrity story would prefer every named gate to be genuinely fail-capable, so an auditor reviewing the pipeline does not have to discover that one gate is decorative and another is the real one."
+  },
+  "recommendations": [
+    "Fix at source: change scripts/demo-entropy.sh:10537 to exit non-zero when SCORE_PCT != 100, so the bare CI 'test' step becomes a real gate.",
+    "Optionally also harden the CI step itself: bash scripts/demo-entropy.sh --score | tee /dev/stderr | grep -q 'Score:  100%' (note: this risks the SIGPIPE-under-pipefail false-fail the arena hook deliberately avoids by capturing to a file — prefer the exit-code fix above).",
+    "Add a one-line comment at the test-job step pointing to the arena job as the authoritative scorecard gate, until the exit-code fix lands, so reviewers do not mistake the decorative step for the real one.",
+    "Optionally add a unit test asserting that 'demo-entropy.sh --score' returns non-zero when a module is forced to FAIL, locking the fix in place (this is the R2-02-class weak-assertion lesson applied to the scorecard's own exit contract)."
+  ],
+  "unresolved": [],
+  "convergence": "YES — the tribunal has effectively converged. The finding count fell 14 -> 5 -> 1, a steep monotonic decline, and the qualitative character of the survivors collapsed in lockstep: round 1 hit live-breaking CQL/config defects (non-existent column_masks columns, inverted mask_outer, bogus GRANT grammar, a secure cluster that never forms), round 2 hit observability/correctness gaps (dead alert metric names, weak tests), and round 3 surfaces a single CI-quality redundancy gap on code hardened three times. R3-01 is not a live defect, not a CQL/config error, and not a security or compliance hole — it is a decorative check that is already fully backstopped by a parallel blocking CI job (ci.yml:72-88 -> pre-merge-hook.sh:33-34 grepping 'Score:  100%') plus invariant HCD-I6. A sole surviving LOW that is a defense-in-depth clarity issue, with no BLOCKER/HIGH and no unresolved item requiring a live cluster, is the textbook signature of convergence. Recommend closing the arena after the one-line source fix; a further round is unlikely to be cost-justified."
+}
