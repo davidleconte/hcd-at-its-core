@@ -5,33 +5,39 @@
 ```
 ├── config/                 # Configuration templates
 │   ├── cassandra.yaml.template
+│   ├── cassandra-secure.yaml.fragment  # appended in the secure profile (auth/CIDR)
 │   ├── prometheus.yml      # Prometheus scrape config for JMX metrics
-│   ├── alerts.yml          # Prometheus alerting rules (8 production alerts)
+│   ├── alerts.yml          # Prometheus alerting rules
 │   ├── jmx-exporter.yml   # JMX-to-Prometheus metric mapping
 │   └── grafana/            # Grafana provisioning (datasource + dashboard)
-│       ├── provisioning/
-│       └── dashboards/
 ├── scripts/               # Automation scripts
 │   ├── docker-entrypoint.sh
 │   ├── generate-topology.py
 │   ├── demo-entropy.sh
 │   ├── driver-demo.py
+│   ├── gen-certs.sh        # PEM CA + node/client certs for the secure profile
 │   └── execute-full-demo.sh
 ├── tests/                 # Pytest test suites
-│   ├── test_demo_entropy.py
-│   ├── test_topology.py
-│   ├── test_topology_unit.py
-│   ├── test_scripts.py
-│   └── test_driver_demo.py
-├── .env.example           # Environment variable template
-├── docker-compose.yml     # Multi-node cluster definition (1024M per node)
-├── Dockerfile             # Container image definition
-├── Makefile               # Developer shortcuts (make up/down/demo/test)
-├── DEMO_ENTROPY.md        # Didactic demo documentation
-├── RANSOMWARE_DORA_DESIGN.md  # DORA ransomware resilience design doc
-├── CLAUDE.md              # Claude Code guidance
-├── AGENTS.md              # Development guidelines
-└── README.md              # Project documentation
+│   ├── test_demo_entropy.py · test_topology.py · test_topology_unit.py
+│   ├── test_scripts.py · test_driver_demo.py · test_integration.py
+│   ├── test_secure_profile.py  # gen-certs / fragment / overlay / entrypoint / grafana
+│   └── test_arena.py           # audit-arena invariants / manifest / harden / isolation
+├── audit_arena/           # Adversarial audit engine (Prosecutor/Defender/Judge/Oracle)
+│   ├── bin/arena.py       # plumbing: oracle, invariants, manifest, harden, verify-fix, render
+│   ├── prompts/           # role charters (_preamble, prosecutor, defender, judge, proposer, redteam_fix)
+│   ├── state/             # seed findings/verdicts/grades (generated outputs gitignored)
+│   └── DESIGN_*.md        # design docs for each pass
+├── .github/workflows/ci.yml    # CI: lint · pytest · docker-validate · audit-arena gate
+├── environment.yml             # conda + uv dev env (Python 3.11)
+├── requirements-dev.txt        # uv-managed dev tooling; requirements-driver.txt (optional driver)
+├── docker-compose.yml          # Multi-node cluster definition
+├── docker-compose.secure.yml   # secure-profile overlay (HCD_SECURITY_PROFILE + certs mount)
+├── Dockerfile                  # Container image (eclipse-temurin:17-jre, HCD 2.0)
+├── Makefile                    # Developer shortcuts (up/down/demo/test/audit/env/secure)
+├── DEMO_ENTROPY.md             # Didactic demo documentation (94 modules)
+├── RANSOMWARE_DORA_DESIGN.md   # DORA ransomware resilience design doc
+├── docs/HCD_2.0_UPGRADE_DESIGN.md  # the HCD 1.2.3 -> 2.0.6 upgrade design
+├── CLAUDE.md · AGENTS.md · README.md   # guidance / dev guidelines / project docs
 ```
 
 ## Code Style

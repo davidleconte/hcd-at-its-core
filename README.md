@@ -94,6 +94,19 @@ Run `make help` for all targets. Key shortcuts:
 | `make validate` | Validate docker-compose.yml syntax |
 | `make wait` | Wait until all nodes are Up/Normal |
 | `make clean` | Remove dangling images and build cache |
+| `make demo-part P=N` | Run a single demo part (1-11) |
+| `make verify-release` | Assert the running cluster is HCD 2.0 / Cassandra 5.0 + Java 17 |
+| `make down-secure` | Stop the secure-profile cluster |
+| `make env` / `make test-env` | Create the conda+uv dev env / run tests inside it |
+| `make check-prereqs` | Verify host prerequisites (docker, conda, python deps) |
+| `make audit` | Run the audit-arena Oracle + render `audit_arena/courtroom.html` |
+| `make verify-fix FIX=…` | Verify a fix patch in an isolated worktree (see `audit_arena/`) |
+
+> The full audit-arena target family (`audit-tribunal`, `audit-harden`, `audit-install-hook`) and the engine's design are documented in [`audit_arena/README.md`](audit_arena/README.md).
+
+## Continuous integration
+
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push/PR: **lint** (shellcheck + ruff), **pytest** (with `cassandra-driver`, + the 94-module dry-run scorecard), **docker-validate** (compose base + secure overlay + hadolint), and the **audit-arena gate** — the deterministic Oracle battery that blocks the PR on failure and publishes the manifest + `courtroom.html` as build artifacts. The same gate installs locally as a git pre-push hook via `make audit-install-hook`.
 
 ## Connecting to the Cluster
 
