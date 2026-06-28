@@ -947,6 +947,179 @@ def remediate_record(finding_id, patch_file, verdict_file, rnd="1"):
     print(f"recorded remediation for {finding_id}: {v.get('status')}")
 
 
+# ─── T2 / G1 GENERATIVE FORGE BATTLE: DESIGN a new artefact against a contract, Oracle-adjudicated ───
+# verify-fix REPAIRS a cited defect; forge DESIGNS a new compliant artefact. Same isolation + Oracle, but
+# the acceptance is a per-artefact CONTRACT of executable predicates. The contract is the trust root, so a
+# machine-stubbed one is PROVISIONAL until a human SIGNS it (the judge-brief-severity-strip discipline
+# applied to the grader). See DESIGN_v2_roadmap.md T2/G1.
+FORGE = os.path.join(ARENA, "forge")          # tracked: the contracts (human-signed trust root)
+FORGE_STATE = os.path.join(STATE, "forge")    # gitignored: per-run verdicts + round records
+
+
+def _forge_contract_path(fid):
+    return os.path.join(FORGE, f"{fid}.contract.json")
+
+
+def _acceptance_digest(contract):
+    import hashlib
+    body = {"target_paths": contract.get("target_paths"), "acceptance": contract.get("acceptance"),
+            "must_not_regress": contract.get("must_not_regress")}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _forge_validate(contract):
+    """Errors for a degenerate/unsafe contract: every accept_cmd must EXERCISE a target_path (no vacuous
+    `true`), must NOT touch the verification harness (no testing its own grader), and must_not_regress
+    must name real invariants."""
+    errs = []
+    tps = contract.get("target_paths") or []
+    acc = contract.get("acceptance") or []
+    if not tps:
+        errs.append("target_paths is empty — a contract must name the artefact it designs")
+    if not acc:
+        errs.append("acceptance is empty — a contract needs at least one executable clause")
+    for a in acc:
+        cmd, name = a.get("accept_cmd", ""), a.get("clause", "?")
+        if not cmd:
+            errs.append(f"clause {name!r}: missing accept_cmd")
+            continue
+        if not any(tp in cmd for tp in tps):
+            errs.append(f"clause {name!r}: accept_cmd references no target_path — a vacuous predicate "
+                        f"cannot certify the artefact")
+        if any(h in cmd for h in _HARNESS):
+            errs.append(f"clause {name!r}: accept_cmd references the verification harness {_HARNESS} — "
+                        f"a contract must not test its own grader")
+    valid_inv = {i["id"] for i in INVARIANTS}
+    for mnr in contract.get("must_not_regress", []):
+        if mnr not in valid_inv:
+            errs.append(f"must_not_regress {mnr!r} is not a known invariant {sorted(valid_inv)}")
+    return errs
+
+
+def _forge_status(signed, tainted, regressed, all_pass):
+    """The verdict decision, factored out (pure) so the human-freeze logic is testable without a worktree:
+    UNTRUSTED if the candidate touches the harness; REJECTED on any failed/regressed predicate; PROVISIONAL
+    if it passes but the contract is NOT human-signed; ACCEPTED only when it passes AND is signed."""
+    if tainted:
+        return "UNTRUSTED"
+    if regressed or not all_pass:
+        return "REJECTED"
+    if not signed:
+        return "PROVISIONAL"
+    return "ACCEPTED"
+
+
+def forge_contract(fid):
+    """Validate a forge contract + report its human-freeze status (PROVISIONAL until `forge-sign`)."""
+    p = _forge_contract_path(fid)
+    if not os.path.exists(p):
+        print(f"FORGE CONTRACT MISSING — {os.path.relpath(p, ROOT)}")
+        sys.exit(1)
+    c = json.load(open(p))
+    errs = _forge_validate(c)
+    if errs:
+        print("FORGE CONTRACT INVALID:\n  - " + "\n  - ".join(errs))
+        sys.exit(1)
+    signed = bool(c.get("human_signed"))
+    stale = signed and c.get("signed_sha256") != _acceptance_digest(c)
+    state = "SIGNED" if (signed and not stale) else ("SIGNATURE STALE — re-sign" if stale else "PROVISIONAL (unsigned)")
+    print(f"FORGE CONTRACT OK — {fid}: {len(c['acceptance'])} clause(s), "
+          f"must_not_regress {c.get('must_not_regress') or '—'} · {state}")
+    return c
+
+
+def forge_sign(fid):
+    """HUMAN-FREEZE — a human vouches for the contract's acceptance predicates (only a human runs this).
+    Pins signed_sha256 over the acceptance block so any later edit invalidates the signature."""
+    p = _forge_contract_path(fid)
+    c = json.load(open(p))
+    errs = _forge_validate(c)
+    if errs:
+        print("refusing to sign an INVALID contract:\n  - " + "\n  - ".join(errs))
+        sys.exit(1)
+    c["human_signed"] = True
+    c["signed_sha256"] = _acceptance_digest(c)
+    c["signed_at"] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    json.dump(c, open(p, "w"), indent=2)
+    print(f"SIGNED {fid} — acceptance frozen @ {c['signed_sha256'][:16]}. A human now vouches for these predicates.")
+
+
+def forge_verify(fid, candidate_patch):
+    """Generalize verify_fix to DESIGN: apply the candidate in a throwaway worktree, run the same Oracle
+    battery + harness check, THEN run the contract's acceptance predicates IN the worktree. ACCEPTED iff
+    it applies, no must_not_regress invariant FAILs, every clause exits-0, no harness touch, AND the
+    contract is human-SIGNED — else PROVISIONAL/REJECTED/UNTRUSTED. Never touches the user's tree."""
+    p = _forge_contract_path(fid)
+    if not os.path.exists(p):
+        print(json.dumps({"error": f"no contract {fid}"}))
+        return
+    c = json.load(open(p))
+    if _git(["rev-parse", "--is-inside-work-tree"]).stdout.strip() != "true":
+        print(json.dumps({"error": "not a git repo — refusing to run"}))
+        return
+    signed = bool(c.get("human_signed")) and c.get("signed_sha256") == _acceptance_digest(c)
+    mnr = set(c.get("must_not_regress") or [])
+    wt = tempfile.mkdtemp(prefix="hcd-arena-forge-")
+    os.rmdir(wt)
+    add = _git(["worktree", "add", "--detach", wt, "HEAD"])
+    if add.returncode != 0:
+        print(json.dumps({"error": "worktree add failed", "detail": add.stderr[:300]}))
+        return
+    tainted = _patch_touches_harness(candidate_patch)
+    verdict = {"contract": fid, "candidate": candidate_patch, "contract_signed": signed, "harness_touched": tainted}
+    try:
+        a = _git(["apply", os.path.abspath(candidate_patch)], cwd=wt)
+        verdict["applies"] = a.returncode == 0
+        if a.returncode != 0:
+            verdict["status"] = "REJECTED"
+            verdict["detail"] = a.stderr[:200]
+        else:
+            battery = _battery_in(wt)
+            verdict["oracle"] = battery
+            regressed = sorted(mnr & set(battery.get("invariant_fail", [])))
+            verdict["must_not_regress_failed"] = regressed
+            clauses = []
+            for cl in c.get("acceptance", []):
+                r = subprocess.run(cl["accept_cmd"], cwd=wt, shell=True, capture_output=True, text=True, timeout=120)
+                clauses.append({"clause": cl.get("clause"), "status": "PASS" if r.returncode == 0 else "FAIL"})
+            verdict["acceptance"] = clauses
+            all_pass = bool(clauses) and all(cl["status"] == "PASS" for cl in clauses)
+            verdict["status"] = _forge_status(signed, tainted, regressed, all_pass)
+            if verdict["status"] == "PROVISIONAL":
+                verdict["reason"] = "all predicates pass but the contract is not human-signed (run forge-sign)"
+    finally:
+        _git(["worktree", "remove", "--force", wt])
+        import shutil
+        shutil.rmtree(wt, ignore_errors=True)
+    print(json.dumps(verdict, indent=2))
+    return verdict
+
+
+def forge_record(fid, candidate_patch, verdict_file, rnd="1"):
+    v = json.load(open(verdict_file))
+    os.makedirs(FORGE_STATE, exist_ok=True)
+    open_defects = (sum(1 for cl in v.get("acceptance", []) if cl["status"] == "FAIL")
+                    + len(v.get("must_not_regress_failed", [])))
+    rec = {"contract": fid, "round": int(rnd), "candidate": candidate_patch, "status": v.get("status"),
+           "open_defects": open_defects, "acceptance": v.get("acceptance", [])}
+    json.dump(rec, open(os.path.join(FORGE_STATE, f"{fid}_r{rnd}.json"), "w"), indent=2)
+    print(f"recorded forge {fid} round {rnd}: {v.get('status')} ({open_defects} open defect(s))")
+
+
+def forge_converge(fid):
+    """ACCEPTED iff the last 2 consecutive rounds are ACCEPTED with zero open defects — the forge analog
+    of K=2 convergence, gated on the ACCEPTANCE predicate (not converge()'s new==0 heuristic)."""
+    recs = sorted(glob.glob(os.path.join(FORGE_STATE, f"{fid}_r*.json")), key=_round_of)
+    rounds = [json.load(open(r)) for r in recs]
+    last2 = rounds[-2:]
+    converged = len(last2) == 2 and all(r.get("status") == "ACCEPTED" and r.get("open_defects", 1) == 0 for r in last2)
+    out = {"contract": fid, "rounds": len(rounds), "converged": converged,
+           "last_status": rounds[-1].get("status") if rounds else None,
+           "open_defects": rounds[-1].get("open_defects") if rounds else None}
+    print(json.dumps(out, indent=2))
+    return out
+
+
 SEV = CONTRACT["severity_scale"]  # severity->colour, from the contract spine (single source of truth)
 
 
@@ -1165,6 +1338,28 @@ def render():
         rem_html = ("<h2>Remediation — verified-in-isolation fixes</h2>"
                     "<table><tr><th>Finding</th><th>Status</th><th>Oracle (worktree)</th><th>Patch</th></tr>"
                     + rrows + "</table>")
+    # Forge panel — generative artefacts designed against a signed contract (T2/G1). PROVISIONAL (machine-
+    # stubbed contract) badged amber; ACCEPTED only on a human-signed contract.
+    forge_html = ""
+    forge_contracts = sorted(glob.glob(os.path.join(FORGE, "*.contract.json")))
+    if forge_contracts:
+        fc = {"ACCEPTED": "#1e8449", "PROVISIONAL": "#b7950b", "REJECTED": "#c0392b", "UNTRUSTED": "#d35400"}
+        frows = ""
+        for cp in forge_contracts:
+            c = json.load(open(cp))
+            fid = c.get("id", "?")
+            signed = bool(c.get("human_signed")) and c.get("signed_sha256") == _acceptance_digest(c)
+            recs = sorted(glob.glob(os.path.join(FORGE_STATE, f"{fid}_r*.json")), key=_round_of)
+            last = json.load(open(recs[-1])) if recs else {}
+            st = (last.get("status") or "—").upper()
+            frows += (f"<tr><td><code>{html.escape(fid)}</code></td>"
+                      f"<td>{'🔏 signed' if signed else '⚠ provisional (unsigned)'}</td>"
+                      f"<td>{len(c.get('acceptance', []))}</td>"
+                      f"<td style=\"color:{fc.get(st, '#566')};font-weight:600\">{html.escape(st)}</td>"
+                      f"<td>{last.get('open_defects', '—') if recs else '—'}</td></tr>")
+        forge_html = ("<h2>Forge — artefacts designed against a contract</h2>"
+                      "<table><tr><th>Contract</th><th>Human-freeze</th><th>Clauses</th>"
+                      "<th>Last verdict</th><th>Open defects</th></tr>" + frows + "</table>")
     # Honesty banner — lead with the BINDING verdict (Oracle reconciliation), never the advisory score.
     # This is the anti-score-theatre UI move: a high judge opinion over a DEFERRED live invariant reads
     # AMBER (not green); a judge that ships over an Oracle FAIL reads RED. See DESIGN_honesty_guardrails.md.
@@ -1242,6 +1437,7 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
 <table><tr><th>Check</th><th>Dim</th><th>Status</th><th>Detail</th></tr>
 {orows or '<tr><td colspan=4><i>run: bin/arena.py oracle</i></td></tr>'}</table>
 {rem_html}
+{forge_html}
 <h2>Findings register</h2>
 <table><tr><th>ID</th><th>Sev</th><th>Dim</th><th>Finding</th><th>Citation</th><th>Defender</th><th>Oracle</th><th>Inv</th></tr>
 {''.join(rows) if rows else '<tr><td colspan=8><i>awaiting the prosecutor…</i></td></tr>'}</table>
@@ -1437,6 +1633,12 @@ if __name__ == "__main__":
     elif cmd == "remediate-clean": remediate_clean()
     elif cmd == "remediate-record": remediate_record(sys.argv[2], sys.argv[3], sys.argv[4],
                                                       sys.argv[5] if len(sys.argv) > 5 else "1")
+    elif cmd == "forge-contract": forge_contract(sys.argv[2])
+    elif cmd == "forge-sign": forge_sign(sys.argv[2])
+    elif cmd == "forge-verify": forge_verify(sys.argv[2], sys.argv[3])
+    elif cmd == "forge-record": forge_record(sys.argv[2], sys.argv[3], sys.argv[4],
+                                             sys.argv[5] if len(sys.argv) > 5 else "1")
+    elif cmd == "forge-converge": forge_converge(sys.argv[2])
     elif cmd == "render": render()
     elif cmd == "mode-b": mode_b(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "1")
     elif cmd == "vendor-panel": vendor_panel(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "1")

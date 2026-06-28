@@ -250,6 +250,12 @@ audit-vendor-panel: ## Multi-vendor advisory panel for a role (egress-gated): ma
 verify-fix: ## Verify a fix patch in an ISOLATED worktree (never touches your tree): make verify-fix FIX=p.diff [BASE=b.diff]
 	python3 audit_arena/bin/arena.py verify-fix $(FIX) $(BASE)
 
+forge: ## Generative forge battle for a contract (Oracle-adjudicated): make forge ID=example-version-pin CAND=cand.diff
+	python3 audit_arena/bin/arena.py forge-contract $(ID)
+	@echo "Tribunal (per round R): Proposer (prompts/forge_proposer.md) -> cand.diff; Red-team (forge_redteam.md);"
+	@echo "  then: arena.py forge-verify $(ID) cand.diff > v.json && forge-record $(ID) cand.diff v.json R && forge-converge $(ID)"
+	python3 audit_arena/bin/arena.py forge-verify $(ID) $(CAND)
+
 audit-harden: ## Self-harden the prosecutor charter from confirmed charter_gap lessons (deliberate)
 	python3 audit_arena/bin/arena.py harden
 	@echo "Review the AUTO-HARDENED block in audit_arena/prompts/_preamble.md (git diff) and commit it."

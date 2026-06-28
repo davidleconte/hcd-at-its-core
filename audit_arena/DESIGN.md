@@ -113,6 +113,10 @@ does). Subcommands:
 | `verify-fix <fix.diff> [base.diff]` | Apply a patch in a throwaway worktree, run the battery, never touch the tree |
 | `remediate-worktree` / `-clean` | Manual remediation-worktree plumbing (create / remove a throwaway worktree) |
 | `remediate-record <id> <patch> <verdict> [round]` | Record a `verify-fix` verdict into `state/remediation_rN.json` |
+| `forge-contract <id>` | Validate a forge contract (`forge/<id>.contract.json`) — non-degenerate, harness-free acceptance predicates — + report its human-freeze status (v2 Tier 2/G1) |
+| `forge-sign <id>` | **Human-freeze**: a human vouches for the contract's acceptance predicates (pins a digest; only a human runs this) |
+| `forge-verify <id> <cand.diff>` | Apply a candidate in a throwaway worktree, run the battery + the contract's acceptance predicates; ACCEPTED only on a **signed** contract, else PROVISIONAL/REJECTED/UNTRUSTED |
+| `forge-record` / `forge-converge <id>` | Record a forge verdict / converge (2 ACCEPTED rounds, 0 open defects) |
 | `mode-b <defender\|judge> <round>` | Drive a role with an external model family (egress-gated) |
 | `render` | Build `courtroom.html` from all `state/` artefacts |
 

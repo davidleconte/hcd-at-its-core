@@ -1,0 +1,13 @@
+{
+  "id": "example-version-pin",
+  "title": "Example forge contract — the README pins the HCD 2.0.6 / Cassandra 5.0 / Java 17 facts",
+  "target_paths": ["README.md"],
+  "acceptance": [
+    {"clause": "README pins the HCD tarball version 2.0.6", "accept_cmd": "grep -q '2.0.6' README.md", "expect": "exit0"},
+    {"clause": "README states the Cassandra 5.0 base", "accept_cmd": "grep -q 'Cassandra 5.0' README.md", "expect": "exit0"},
+    {"clause": "README states the Java 17 runtime", "accept_cmd": "grep -q 'Java 17' README.md", "expect": "exit0"}
+  ],
+  "must_not_regress": ["HCD-I7"],
+  "human_signed": false,
+  "signed_sha256": null
+}

@@ -919,3 +919,69 @@ def test_vendor_variance_handles_verdict_without_id():
     part = [{"vendor": "glm", "view": arena._vendor_view("defender", [{"verdict": "CONFIRMED"}])}]
     v = arena._vendor_variance("defender", part)  # must not raise
     assert v["findings_compared"] == 0 and v["agree"] is True
+
+
+# ─── T2 / G1 generative forge battle (DESIGN_v2_roadmap.md Tier 2) ─────────────────────────────────
+def test_forge_contract_rejects_degenerate_and_harness_predicates():
+    """A contract's acceptance predicates must EXERCISE a target_path (no vacuous `true`) and must NOT
+    test the verification harness (no grading its own grader). The committed example is well-formed."""
+    arena = _load_arena()
+    deg = {"target_paths": ["README.md"], "acceptance": [{"clause": "v", "accept_cmd": "true"}]}
+    har = {"target_paths": ["README.md"], "acceptance": [{"clause": "h", "accept_cmd": "grep x tests/test_arena.py"}]}
+    assert any("vacuous" in e for e in arena._forge_validate(deg)), "vacuous predicate must be rejected"
+    assert any("harness" in e for e in arena._forge_validate(har)), "harness predicate must be rejected"
+    ex = json.load(open(os.path.join(REPO, "audit_arena/forge/example-version-pin.contract.json")))
+    assert arena._forge_validate(ex) == [], "the committed example contract must be well-formed"
+
+
+def test_forge_status_enforces_human_freeze():
+    """The human-freeze: a machine-stubbed (unsigned) contract NEVER auto-promotes to ACCEPTED, even when
+    every predicate passes — it caps at PROVISIONAL. ACCEPTED requires signed + pass + clean."""
+    arena = _load_arena()
+    assert arena._forge_status(True, [], [], True) == "ACCEPTED"
+    assert arena._forge_status(False, [], [], True) == "PROVISIONAL"  # unsigned -> never ACCEPTED
+    assert arena._forge_status(True, ["audit_arena/x"], [], True) == "UNTRUSTED"  # touches harness
+    assert arena._forge_status(True, [], ["HCD-I1"], True) == "REJECTED"  # regressed an invariant
+    assert arena._forge_status(True, [], [], False) == "REJECTED"  # a clause failed
+
+
+def test_forge_signature_detects_acceptance_tamper():
+    """Signing pins a digest over the acceptance block; editing acceptance changes the digest, so the
+    signature goes stale (a signed contract whose predicates were altered cannot pass as signed)."""
+    arena = _load_arena()
+    c = {"target_paths": ["README.md"], "acceptance": [{"clause": "a", "accept_cmd": "grep x README.md"}],
+         "must_not_regress": []}
+    d = arena._acceptance_digest(c)
+    c2 = json.loads(json.dumps(c))
+    c2["acceptance"].append({"clause": "b", "accept_cmd": "grep y README.md"})
+    assert arena._acceptance_digest(c2) != d, "editing acceptance must invalidate the signature digest"
+
+
+def test_forge_converge_requires_two_accepted_rounds():
+    """forge-converge is the K=2 analog gated on the ACCEPTANCE predicate: ACCEPTED iff the last 2 rounds
+    are ACCEPTED with zero open defects — not converge()'s new==0 heuristic."""
+    arena = _load_arena()
+    fd = arena.FORGE_STATE
+    os.makedirs(fd, exist_ok=True)
+    fid = "test-converge-probe"
+    f1, f2 = os.path.join(fd, f"{fid}_r1.json"), os.path.join(fd, f"{fid}_r2.json")
+    try:
+        json.dump({"contract": fid, "round": 1, "status": "ACCEPTED", "open_defects": 0}, open(f1, "w"))
+        json.dump({"contract": fid, "round": 2, "status": "REJECTED", "open_defects": 1}, open(f2, "w"))
+        assert arena.forge_converge(fid)["converged"] is False, "a rejected last round must not converge"
+        json.dump({"contract": fid, "round": 2, "status": "ACCEPTED", "open_defects": 0}, open(f2, "w"))
+        assert arena.forge_converge(fid)["converged"] is True, "2 consecutive ACCEPTED + 0 defects converges"
+    finally:
+        for f in (f1, f2):
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_forge_state_gitignored_but_contracts_tracked():
+    """Per-run forge state is gitignored; the contracts (the human-signed TRUST ROOT) are tracked."""
+    r1 = subprocess.run(["git", "check-ignore", "audit_arena/state/forge/x_r1.json"],
+                        cwd=REPO, capture_output=True, text=True)
+    assert r1.returncode == 0, "audit_arena/state/forge must be gitignored"
+    r2 = subprocess.run(["git", "check-ignore", "audit_arena/forge/example-version-pin.contract.json"],
+                        cwd=REPO, capture_output=True, text=True)
+    assert r2.returncode != 0, "forge contracts (trust root) must be TRACKED, not ignored"
