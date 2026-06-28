@@ -64,7 +64,7 @@ jobs:
       - name: Validate secure-profile overlay merge
         run: docker compose -f docker-compose.yml -f docker-compose.secure.yml config --quiet
       - name: Lint Dockerfile with hadolint
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: Dockerfile
           failure-threshold: warning
