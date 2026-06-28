@@ -1,0 +1,6 @@
+# Host dev/test toolchain for hcd-at-its-core — installed by uv inside the conda env.
+# Pure-Python, no native deps. Pinned compatible-release; for a hard lock run:
+#   uv pip compile requirements-dev.txt -o requirements-dev.lock
+pytest~=9.1
+pyyaml~=6.0
+ruff~=0.15

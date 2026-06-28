@@ -1,0 +1,20 @@
+# Conda + uv hybrid env for hcd-at-its-core (host dev/test tooling).
+#
+# Conda provides the interpreter (Python 3.11, matching the container) and the `uv`
+# binary; uv manages the actual Python packages (see requirements-dev.txt). This keeps
+# host resolution identical to the Dockerfile (which also uses uv) while staying
+# consistent with the conda-primary convention across the other repos.
+#
+#   conda env create -f environment.yml      # first time
+#   make env                                 # create/update + uv-install dev tooling
+#   conda activate hcd-at-its-core
+#
+# For a hard, cross-platform lock, add conda-lock: `conda-lock -f environment.yml`.
+name: hcd-at-its-core
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11   # matches the container (Dockerfile: uv venv --python 3.11)
+  - uv            # uv manages the Python packages; conda-forge provides the binary
+  - pip

@@ -33,7 +33,9 @@ make api             # start Data API (http://localhost:8181)
 make api-down        # stop Data API
 make monitoring      # start Prometheus + Grafana (http://localhost:3000)
 make monitoring-down # stop Prometheus + Grafana
+make env             # create/update conda env (Python 3.11 + uv) + uv-install dev tooling
 make test            # run all pytest tests
+make test-env        # run pytest inside the conda env (no activation needed)
 make lint            # shellcheck + ruff
 make validate        # validate docker-compose.yml syntax
 make wait            # wait until all nodes are UN

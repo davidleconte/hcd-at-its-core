@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -67,7 +68,7 @@ def test_entrypoint_defaults():
 def test_driver_demo_help():
     """Verify driver-demo.py shows help without errors."""
     result = subprocess.run(
-        ["python3", "scripts/driver-demo.py", "--help"],
+        [sys.executable, "scripts/driver-demo.py", "--help"],
         capture_output=True,
         text=True,
     )
@@ -82,7 +83,7 @@ def test_driver_demo_help():
 def test_driver_demo_local_dc_flag():
     """Verify driver-demo.py accepts --local-dc flag in help."""
     result = subprocess.run(
-        ["python3", "scripts/driver-demo.py", "--help"],
+        [sys.executable, "scripts/driver-demo.py", "--help"],
         capture_output=True,
         text=True,
     )

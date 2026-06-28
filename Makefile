@@ -5,6 +5,8 @@ COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compos
 # Secure profile (HCD 2.0): base compose + secure overlay (auth, CIDR, mTLS certs).
 COMPOSE_SECURE := $(COMPOSE) -f docker-compose.yml -f docker-compose.secure.yml
 EXPECTED_NODES ?= 6
+# Conda + uv hybrid dev env (host tooling). Override with: make env ENV_NAME=foo
+ENV_NAME ?= hcd-at-its-core
 
 # HCD 2.0 release artifacts. Single source of truth — bump these on a version change.
 HCD_VERSION ?= 2.0.6
@@ -14,7 +16,7 @@ EXPECTED_CASSANDRA_MAJOR ?= 5.0
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part demo-2.0 gen-certs up-secure down-secure secure-bootstrap minio minio-down check-prereqs verify-release test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down audit audit-tribunal audit-install-hook
+.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part demo-2.0 gen-certs up-secure down-secure secure-bootstrap minio minio-down check-prereqs verify-release env test-env test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down audit audit-tribunal audit-install-hook
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -123,8 +125,10 @@ check-prereqs: ## Verify all prerequisites are installed
 	@docker compose version >/dev/null 2>&1 && echo "  [OK] docker compose $$(docker compose version --short 2>/dev/null || echo 'v2')" || \
 		(command -v docker-compose >/dev/null 2>&1 && echo "  [OK] docker-compose (v1)" || echo "  [MISSING] docker compose")
 	@command -v python3 >/dev/null 2>&1 && echo "  [OK] python3 $$(python3 --version | cut -d' ' -f2)" || echo "  [MISSING] python3"
-	@python3 -c "import pytest" 2>/dev/null && echo "  [OK] pytest" || echo "  [MISSING] pytest (pip install pytest)"
-	@python3 -c "import yaml" 2>/dev/null && echo "  [OK] pyyaml" || echo "  [MISSING] pyyaml (pip install pyyaml)"
+	@command -v conda >/dev/null 2>&1 && echo "  [OK] conda $$(conda --version | cut -d' ' -f2)" || echo "  [OPTIONAL] conda (for 'make env' hybrid dev env)"
+	@conda env list 2>/dev/null | grep -qE "^$(ENV_NAME)\b" && echo "  [OK] conda env '$(ENV_NAME)' exists" || echo "  [INFO] conda env '$(ENV_NAME)' not created — run 'make env'"
+	@python3 -c "import pytest" 2>/dev/null && echo "  [OK] pytest" || echo "  [MISSING] pytest (run 'make env' or pip install pytest)"
+	@python3 -c "import yaml" 2>/dev/null && echo "  [OK] pyyaml" || echo "  [MISSING] pyyaml (run 'make env' or pip install pyyaml)"
 	@command -v shellcheck >/dev/null 2>&1 && echo "  [OK] shellcheck" || echo "  [OPTIONAL] shellcheck (for linting)"
 	@command -v ruff >/dev/null 2>&1 && echo "  [OK] ruff" || echo "  [OPTIONAL] ruff (for Python linting)"
 	@test -f $(HCD_TARBALL) && echo "  [OK] $(HCD_TARBALL)" || echo "  [MISSING] $(HCD_TARBALL) (IBM Passport Advantage part M1442EN; place in project root)"
@@ -153,6 +157,17 @@ verify-release: ## Assert the running cluster is HCD 2.0 (Cassandra 5.0 base)
 	esac
 	@jv=$$(docker exec hcd-node1 java -version 2>&1 | head -1); echo "  runtime: $$jv"; \
 	echo "$$jv" | grep -qE '"17' && echo "  [OK] Java 17 runtime confirmed" || echo "  [WARN] Expected Java 17 — got: $$jv"
+
+env: ## Create/update the conda env (Python 3.11 + uv) and uv-install dev tooling
+	@command -v conda >/dev/null 2>&1 || { echo "ERROR: conda not on PATH. Activate your conda shell first." >&2; exit 1; }
+	conda env update -n $(ENV_NAME) -f environment.yml --prune
+	conda run --no-capture-output -n $(ENV_NAME) uv pip install -r requirements-dev.txt
+	@conda run --no-capture-output -n $(ENV_NAME) uv pip install -r requirements-driver.txt \
+		|| echo "  [note] cassandra-driver not installed (no wheel?) — driver tests will skip."
+	@echo "Done. Activate with: conda activate $(ENV_NAME)   then: make test / make lint"
+
+test-env: ## Run the test suite inside the conda env (no activation needed)
+	conda run --no-capture-output -n $(ENV_NAME) pytest tests/ -q
 
 test: ## Run all pytest tests (dry-run, no cluster needed)
 	pytest tests/ -v

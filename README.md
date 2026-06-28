@@ -10,6 +10,22 @@ This project provides a Dockerized environment for running a multi-node **IBM HC
 - [Docker Compose](https://docs.docker.com/compose/install/) (v1 `docker-compose` also supported)
 - **HCD Binary**: Place `hcd-2.0.6-bin.tar.gz` in the root directory. Obtain it from IBM Passport Advantage (part number `M1442EN`) or your IBM representative.
 
+## Development environment (host tooling)
+
+Host-side tooling (pytest, pyyaml, ruff) is light and pure-Python. A **conda + uv hybrid** env keeps the interpreter pinned to **Python 3.11** (matching the container) while `uv` manages the packages — identical resolution to the Dockerfile, consistent with a conda-primary workflow.
+
+```bash
+make env                         # create/update conda env 'hcd-at-its-core' + uv-install dev deps
+conda activate hcd-at-its-core
+make test                        # or, without activating: make test-env
+```
+
+- `environment.yml` — conda env: `python=3.11` + `uv` (conda-forge).
+- `requirements-dev.txt` — uv-managed dev tooling (pytest, pyyaml, ruff).
+- `requirements-driver.txt` — optional `cassandra-driver` (matches the container; un-skips the driver tests, installed best-effort).
+
+Nothing here is required just to run the cluster (`make up`); it's for running the test suite and the audit gate reproducibly. For a hard cross-platform lock, add `conda-lock -f environment.yml`.
+
 ## Quick Start
 
 1.  **Clone the repository.**
