@@ -104,6 +104,7 @@ does). Subcommands:
 | `act <role> <round> <md>` | Append a role's plaidoirie to the court transcript |
 | `converge` | Convergence verdict (2 dry rounds ∧ no blocking invariant) → `convergence.json` |
 | `reconcile` | Honesty reconciler — cross-join advisory grades vs binding oracle+invariants → `reconciliation.json` (GREEN/AMBER/RED); REJECT (exit 2) any grades wiring a numeric score. See [DESIGN_honesty_guardrails.md](DESIGN_honesty_guardrails.md) |
+| `contract` | Validate the contract spine `contract/contract.v1.json` (semver + content_sha256 integrity + invariant well-formedness). The Definition-of-Done is loaded from it, not hardcoded |
 | `gate` | Exit non-zero on any FAILing Oracle check / invariant (what makes the gate *gate*) |
 | `harden` | Fold confirmed `charter_gap` lessons into the prosecutor charter (idempotent) |
 | `verify-fix <fix.diff> [base.diff]` | Apply a patch in a throwaway worktree, run the battery, never touch the tree |
@@ -131,7 +132,9 @@ cluster, never blocks) · **TIMEOUT** (amber, a check couldn't finish — see §
 ### 4.3 Invariants — the Definition-of-Done (`HCD-I1..I7`)
 Formal, per-dimension invariants the demo must satisfy. Each has either an `offline_cmd`, or a
 `live_cmd` + `proxy_cmd` pair (the proxy can *demote* to FAIL on broken wiring offline but can only
-**confirm** PASS live — burden on the artefact).
+**confirm** PASS live — burden on the artefact). Since v2 (F2) these are **loaded from the contract
+spine** `contract/contract.v1.json` — a versioned, content-hashed Definition-of-Done — rather than
+hardcoded in `arena.py`; `arena.py contract` validates its integrity and `make audit` runs it first.
 
 | Id | Dim | Statement | Mode |
 |----|-----|-----------|------|
@@ -333,11 +336,15 @@ audit_arena/
 │   └── pre-merge-hook.sh   # git pre-push gate + courtroom auto-refresh
 ├── prompts/                # role charters: _preamble, prosecutor, defender, judge, oracle,
 │                           #   proposer, redteam_fix (the hardened charter lives in _preamble.md)
+├── contract/               # the Definition-of-Done as versioned data
+│   └── contract.v1.json    #   dimensions + invariants (HCD-I1..I7) + severity scale, content-hashed
 ├── state/                  # per-round artefacts (see §5); courtroom.html renders from here
 ├── acts/                   # plaidoiries + crossvendor_r3.md
 ├── reference_facts.json    # pinned HCD-2.0/C5.0 version facts for HCD-I7
 ├── README.md               # usage + status legend
 ├── DESIGN.md               # ← this document
+├── DESIGN_v2_roadmap.md    # v2 improvement roadmap (learnings from adl-aqt2/pupitre)
+├── DESIGN_honesty_guardrails.md  # the binding honesty contract (G1-G4 + DO-NOT-ADOPT)
 ├── DESIGN_invariants_manifest.md
 ├── DESIGN_selfhardening_convergence.md
 └── DESIGN_remediation_mode.md

@@ -44,6 +44,32 @@ STATE = os.path.join(ARENA, "state")
 TRANSCRIPT = os.path.join(ARENA, "TRANSCRIPT.md")
 HTML_OUT = os.path.join(ARENA, "courtroom.html")
 
+# ─── CONTRACT SPINE: the Definition-of-Done as versioned data (v2 Tier 0 / F2) ──────────────────────
+# arena.py LOADS the contract rather than hardcoding the invariants / severity scale / dimensions, so
+# the Definition-of-Done is one auditable, content-hashed source of truth. See DESIGN_v2_roadmap.md §2.
+_CONTRACT_PATH = os.path.join(ARENA, "contract", "contract.v1.json")
+
+
+def _load_contract():
+    return json.load(open(_CONTRACT_PATH, encoding="utf-8"))
+
+
+def _contract_digest(contract):
+    """sha256 over the canonical contract body (everything except meta.content_sha256) — recomputed
+    identically here and at generation time so the manifest/contract-check can verify integrity."""
+    import hashlib
+    body = {k: v for k, v in contract.items() if k != "meta"}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+CONTRACT = _load_contract()
+
+
+def invariant_records():
+    """Python-importable parsed view of the contract's invariants (id/dim/statement/mode + commands).
+    Tests and callers bind to these records, not to the raw JSON file."""
+    return CONTRACT["invariants"]
+
 SIGNAL_EXT = {".md", ".py", ".sh", ".yml", ".yaml", ".json", ".template", ".fragment",
               ".cfg", ".ini", ".toml", ".txt"}
 SIGNAL_BASE = {"Dockerfile", "Makefile", ".dockerignore", ".gitignore"}
@@ -284,69 +310,14 @@ def oracle(rnd="1"):
 
 
 # ─── HCD invariants (the formal Definition-of-Done) ───────────────────────────────
-# Each finding and Oracle check maps to one. offline_cmd -> PASS/FAIL offline.
-# live_cmd -> PASS/FAIL on a live cluster; offline it falls back to proxy_cmd, which can
-# DEMOTE to FAIL (broken wiring) but never CONFIRM (status caps at DEFERRED) — burden on
-# the artefact, mirroring the Oracle's honesty.
-_DUPKEY = (
-    # fail CLOSED if envsubst is missing or the rendered file is empty (else 0 keys -> false PASS)
-    "command -v envsubst >/dev/null || exit 2; "
-    "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
-    "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
-    "envsubst < config/cassandra.yaml.template > /tmp/_inv.yaml || exit 2; printf '\\n' >> /tmp/_inv.yaml; "
-    "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
-    "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
-    "envsubst < config/cassandra-secure.yaml.fragment >> /tmp/_inv.yaml || exit 2; "
-    "[ -s /tmp/_inv.yaml ] || exit 2; "
-    "python3 -c \"import yaml,re,collections,sys; s=open('/tmp/_inv.yaml').read(); "
-    "sys.exit(2) if not s.strip() else None; yaml.safe_load(s); "
-    "k=re.findall(r'^([A-Za-z_]\\w*):',s,re.M); sys.exit(1 if [x for x,c in collections.Counter(k).items() if c>1] else 0)\"")
-_CQL_BATTERY = ("docker exec hcd-node1 cqlsh -e \""
-    "CREATE KEYSPACE IF NOT EXISTS arena_i WITH replication={'class':'SimpleStrategy','replication_factor':1};"
-    "CREATE TABLE IF NOT EXISTS arena_i.c (id int PRIMARY KEY, card text);"
-    "ALTER TABLE arena_i.c ALTER card MASKED WITH mask_inner(0,4);"
-    "SELECT column_name, function_keyspace, function_name FROM system_schema.column_masks WHERE keyspace_name='arena_i' AND table_name='c';"
-    "GRANT SELECT ON KEYSPACE arena_i TO cassandra; DROP KEYSPACE arena_i;\"")
-
-INVARIANTS = [
-    {"id": "HCD-I1", "dim": "D1", "statement": "Every Part 11 CQL executes on Cassandra 5.0",
-     "live_cmd": _CQL_BATTERY,
-     "proxy_cmd": "! grep -RqE 'mask_outer\\(card|ON ALL TABLES IN KEYSPACE|mask_keyspace|mask_function' scripts config"},
-    {"id": "HCD-I2", "dim": "D6", "statement": "Secure cluster forms (6x UN)",
-     "live_cmd": "[ \"$(docker exec hcd-node1 nodetool status | grep -c '^UN')\" = 6 ]",
-     "proxy_cmd": "grep -q cqlshrc Dockerfile && grep -q HCD_SECURITY_PROFILE scripts/docker-entrypoint.sh"},
-    {"id": "HCD-I3", "dim": "D2", "statement": "Generated cassandra.yaml has zero duplicate top-level keys",
-     "offline_cmd": _DUPKEY},
-    {"id": "HCD-I4", "dim": "D5", "statement": "No module-COUNT claim disagrees with TOTAL_MODULES (all docs)",
-     # PRECISE count-claim patterns ('94-module', 'all 94 modules', '94 modules numbered') so a
-     # part ordinal like 'Part 11 modules 86-92' is NOT mistaken for a count. Catches drift in any doc.
-     "offline_cmd": "python3 -c \"import re,sys; "
-                    "tm=int(re.search(r'TOTAL_MODULES=(\\d+)',open('scripts/demo-entropy.sh').read()).group(1)); "
-                    "docs=['README.md','CLAUDE.md','AGENTS.md','DEMO_ENTROPY.md','Makefile']; "
-                    "pat=re.compile(r'(\\d+)-module\\b|all (\\d+) modules\\b|(\\d+) modules numbered\\b'); "
-                    "bad=[(d,n) for d in docs for tup in pat.findall(open(d).read()) for n in tup if n and int(n)!=tm]; "
-                    "sys.exit(1 if bad else 0)\""},
-    {"id": "HCD-I5", "dim": "D6", "statement": "No key/cert material baked into the image or committed",
-     # filename denylist + CONTENT scan for PEM private keys (catches a key under any name) + (COPY|ADD).*cert
-     "offline_cmd": "! git ls-files | grep -qiE '\\.(key|pem|crt|p12|pfx|jks|der)$|(^|/)certs/' "
-                    "&& ! { git ls-files -z | xargs -0 grep -lIE 'BEGIN ((RSA|EC|OPENSSL|DSA) )?PRIVATE KEY' "
-                    "2>/dev/null | grep -q .; } "
-                    "&& ! grep -qiE '^(COPY|ADD)[[:space:]].*cert' Dockerfile "
-                    "&& grep -qE '^certs/?$' .gitignore"},
-    {"id": "HCD-I6", "dim": "D3", "statement": "Demo script is dry-run/score safe (syntax+lint+scorecard)",
-     # shellcheck failure must FAIL the invariant (no `|| true` swallow); aligned to CI's -S warning
-     "offline_cmd": "for s in scripts/*.sh; do bash -n \"$s\" || exit 1; done; "
-                    "if command -v shellcheck >/dev/null; then shellcheck -S warning scripts/*.sh || exit 1; fi; "
-                    "./scripts/demo-entropy.sh --score 2>/dev/null | grep -q 'Score:  100%'"},
-    {"id": "HCD-I7", "dim": "D1", "statement": "Pinned HCD-2.0/C5.0 version facts present in the docs (drift denylist)",
-     # honest scope: this is a version-DRIFT denylist (each pinned fact must still appear), NOT a
-     # proof that every claim is correct or free of contradictions. Widened to all the doc sites.
-     "offline_cmd": "python3 -c \"import json,subprocess,sys,os; "
-                    "f=json.load(open(os.path.join('audit_arena','reference_facts.json')))['facts']; "
-                    "scope=['DEMO_ENTROPY.md','docs','scripts','README.md','CLAUDE.md','AGENTS.md','Dockerfile','Makefile']; "
-                    "miss=[x for x in f if subprocess.run(['grep','-Rq',x]+scope,capture_output=True).returncode!=0]; "
-                    "sys.exit(1 if miss else 0)\""},
-]
+# Loaded from the contract spine (contract/contract.v1.json) — the single, content-hashed source of
+# truth (v2 Tier 0 / F2). Each finding and Oracle check maps to one. offline_cmd -> PASS/FAIL offline.
+# live_cmd -> PASS/FAIL on a live cluster; offline it falls back to proxy_cmd, which can DEMOTE to FAIL
+# (broken wiring) but never CONFIRM (status caps at DEFERRED) — burden on the artefact, like the Oracle.
+INVARIANTS = CONTRACT["invariants"]
+# The dup-key battery is also the Oracle's offline dup-keys check; derive it from the contract (HCD-I3)
+# so there is ONE source of truth, not a code copy that can silently drift from the contract.
+_DUPKEY = next(i["offline_cmd"] for i in INVARIANTS if i["id"] == "HCD-I3")
 
 
 def invariants(rnd="1"):
@@ -418,6 +389,8 @@ def manifest(rnd="1"):
                 "docker": sh("docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ,") or "absent",
                 "conda_env": os.environ.get("CONDA_DEFAULT_ENV", "")},
         "repo": {"signal_files": len(files), "content_sha256": h.hexdigest()},
+        "contract": {"version": CONTRACT.get("meta", {}).get("contract_version"),
+                     "content_sha256": CONTRACT.get("meta", {}).get("content_sha256")},
         "oracle": {"passed": oj.get("passed"), "failed": oj.get("failed"),
                    "deferred": oj.get("deferred"),
                    "results_sha256": hashlib.sha256(json.dumps(oj, sort_keys=True).encode()).hexdigest() if oj else None},
@@ -575,6 +548,40 @@ def reconcile():
     cn = f"  contradictions: {[c['kind'] for c in contradictions]}" if contradictions else ""
     print(f"RECONCILE {verdict} — {msg}.{cn}")
     return out
+
+
+def contract_check():
+    """Validate the contract spine: semver, content_sha256 integrity, and that every invariant is
+    well-formed (id/dim/statement/mode + a runnable command). The Definition-of-Done as a CHECKED
+    artefact, not a hardcoded literal. See DESIGN_v2_roadmap.md §2 (F2)."""
+    c = CONTRACT
+    meta = c.get("meta", {})
+    errs = []
+    ver = str(meta.get("contract_version", ""))
+    if not re.match(r"^\d+\.\d+\.\d+$", ver):
+        errs.append(f"contract_version not semver: {ver!r}")
+    want, got = meta.get("content_sha256"), _contract_digest(c)
+    if want != got:
+        errs.append(f"content_sha256 mismatch: meta={str(want)[:12]} recomputed={got[:12]} "
+                    f"(contract edited without rehash)")
+    dims = {d["id"] for d in c.get("dimensions", [])}
+    for inv in c.get("invariants", []):
+        for k in ("id", "dim", "statement", "mode"):
+            if not inv.get(k):
+                errs.append(f"{inv.get('id', '?')}: missing {k}")
+        if inv.get("dim") not in dims:
+            errs.append(f"{inv.get('id', '?')}: dim {inv.get('dim')} not in dimensions {sorted(dims)}")
+        if inv.get("mode") == "offline" and not inv.get("offline_cmd"):
+            errs.append(f"{inv.get('id', '?')}: offline mode without offline_cmd")
+        if inv.get("mode") == "live" and not (inv.get("live_cmd") and inv.get("proxy_cmd")):
+            errs.append(f"{inv.get('id', '?')}: live mode without live_cmd+proxy_cmd")
+    if not c.get("severity_scale"):
+        errs.append("missing severity_scale")
+    if errs:
+        print("CONTRACT INVALID:\n  - " + "\n  - ".join(errs))
+        sys.exit(1)
+    print(f"CONTRACT OK — v{ver} ({meta.get('effective_date')}) · {len(c['invariants'])} invariants · "
+          f"{len(dims)} dimensions · content_sha256 {got[:16]} (verified)")
 
 
 def act(role, rnd, md_file):
@@ -823,8 +830,7 @@ def remediate_record(finding_id, patch_file, verdict_file, rnd="1"):
     print(f"recorded remediation for {finding_id}: {v.get('status')}")
 
 
-SEV = {"BLOCKER": "#c0392b", "CRITICAL": "#c0392b", "HIGH": "#d35400",
-       "MED": "#b7950b", "MEDIUM": "#b7950b", "LOW": "#7f8c8d"}
+SEV = CONTRACT["severity_scale"]  # severity->colour, from the contract spine (single source of truth)
 
 
 def render():
@@ -1120,6 +1126,7 @@ if __name__ == "__main__":
     elif cmd == "act": act(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "converge": converge()
     elif cmd == "reconcile": reconcile()
+    elif cmd == "contract": contract_check()
     elif cmd == "gate": gate()
     elif cmd == "judge-brief": judge_brief(sys.argv[2] if len(sys.argv) > 2 else "1")
     elif cmd == "harden": harden()

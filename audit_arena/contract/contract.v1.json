@@ -1,0 +1,101 @@
+{
+  "meta": {
+    "contract_version": "1.0.0",
+    "effective_date": "2026-06-28",
+    "content_sha256": "676976e982d8ce793ccda9c7e6f6f581258514a5df939a8d33b6bd29de92d00d"
+  },
+  "dimensions": [
+    {
+      "id": "D1",
+      "name": "correctness/CQL",
+      "scope": "HCD 2.0 / Cassandra 5.0 behaviour, Part 11 CQL, version facts"
+    },
+    {
+      "id": "D2",
+      "name": "config",
+      "scope": "generated cassandra.yaml + secure fragment"
+    },
+    {
+      "id": "D3",
+      "name": "scripts",
+      "scope": "demo-entropy.sh and helpers: syntax, lint, scorecard"
+    },
+    {
+      "id": "D4",
+      "name": "tests/CI",
+      "scope": "pytest suite + CI gate behaviour"
+    },
+    {
+      "id": "D5",
+      "name": "docs/consistency",
+      "scope": "module counts and cross-doc claims"
+    },
+    {
+      "id": "D6",
+      "name": "security",
+      "scope": "secrets/cert hygiene + secure-profile wiring"
+    }
+  ],
+  "severity_scale": {
+    "BLOCKER": "#c0392b",
+    "CRITICAL": "#c0392b",
+    "HIGH": "#d35400",
+    "MED": "#b7950b",
+    "MEDIUM": "#b7950b",
+    "LOW": "#7f8c8d"
+  },
+  "reference_facts_ref": "audit_arena/reference_facts.json",
+  "invariants": [
+    {
+      "id": "HCD-I1",
+      "dim": "D1",
+      "statement": "Every Part 11 CQL executes on Cassandra 5.0",
+      "mode": "live",
+      "live_cmd": "docker exec hcd-node1 cqlsh -e \"CREATE KEYSPACE IF NOT EXISTS arena_i WITH replication={'class':'SimpleStrategy','replication_factor':1};CREATE TABLE IF NOT EXISTS arena_i.c (id int PRIMARY KEY, card text);ALTER TABLE arena_i.c ALTER card MASKED WITH mask_inner(0,4);SELECT column_name, function_keyspace, function_name FROM system_schema.column_masks WHERE keyspace_name='arena_i' AND table_name='c';GRANT SELECT ON KEYSPACE arena_i TO cassandra; DROP KEYSPACE arena_i;\"",
+      "proxy_cmd": "! grep -RqE 'mask_outer\\(card|ON ALL TABLES IN KEYSPACE|mask_keyspace|mask_function' scripts config"
+    },
+    {
+      "id": "HCD-I2",
+      "dim": "D6",
+      "statement": "Secure cluster forms (6x UN)",
+      "mode": "live",
+      "live_cmd": "[ \"$(docker exec hcd-node1 nodetool status | grep -c '^UN')\" = 6 ]",
+      "proxy_cmd": "grep -q cqlshrc Dockerfile && grep -q HCD_SECURITY_PROFILE scripts/docker-entrypoint.sh"
+    },
+    {
+      "id": "HCD-I3",
+      "dim": "D2",
+      "statement": "Generated cassandra.yaml has zero duplicate top-level keys",
+      "mode": "offline",
+      "offline_cmd": "command -v envsubst >/dev/null || exit 2; CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s envsubst < config/cassandra.yaml.template > /tmp/_inv.yaml || exit 2; printf '\\n' >> /tmp/_inv.yaml; CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s envsubst < config/cassandra-secure.yaml.fragment >> /tmp/_inv.yaml || exit 2; [ -s /tmp/_inv.yaml ] || exit 2; python3 -c \"import yaml,re,collections,sys; s=open('/tmp/_inv.yaml').read(); sys.exit(2) if not s.strip() else None; yaml.safe_load(s); k=re.findall(r'^([A-Za-z_]\\w*):',s,re.M); sys.exit(1 if [x for x,c in collections.Counter(k).items() if c>1] else 0)\""
+    },
+    {
+      "id": "HCD-I4",
+      "dim": "D5",
+      "statement": "No module-COUNT claim disagrees with TOTAL_MODULES (all docs)",
+      "mode": "offline",
+      "offline_cmd": "python3 -c \"import re,sys; tm=int(re.search(r'TOTAL_MODULES=(\\d+)',open('scripts/demo-entropy.sh').read()).group(1)); docs=['README.md','CLAUDE.md','AGENTS.md','DEMO_ENTROPY.md','Makefile']; pat=re.compile(r'(\\d+)-module\\b|all (\\d+) modules\\b|(\\d+) modules numbered\\b'); bad=[(d,n) for d in docs for tup in pat.findall(open(d).read()) for n in tup if n and int(n)!=tm]; sys.exit(1 if bad else 0)\""
+    },
+    {
+      "id": "HCD-I5",
+      "dim": "D6",
+      "statement": "No key/cert material baked into the image or committed",
+      "mode": "offline",
+      "offline_cmd": "! git ls-files | grep -qiE '\\.(key|pem|crt|p12|pfx|jks|der)$|(^|/)certs/' && ! { git ls-files -z | xargs -0 grep -lIE 'BEGIN ((RSA|EC|OPENSSL|DSA) )?PRIVATE KEY' 2>/dev/null | grep -q .; } && ! grep -qiE '^(COPY|ADD)[[:space:]].*cert' Dockerfile && grep -qE '^certs/?$' .gitignore"
+    },
+    {
+      "id": "HCD-I6",
+      "dim": "D3",
+      "statement": "Demo script is dry-run/score safe (syntax+lint+scorecard)",
+      "mode": "offline",
+      "offline_cmd": "for s in scripts/*.sh; do bash -n \"$s\" || exit 1; done; if command -v shellcheck >/dev/null; then shellcheck -S warning scripts/*.sh || exit 1; fi; ./scripts/demo-entropy.sh --score 2>/dev/null | grep -q 'Score:  100%'"
+    },
+    {
+      "id": "HCD-I7",
+      "dim": "D1",
+      "statement": "Pinned HCD-2.0/C5.0 version facts present in the docs (drift denylist)",
+      "mode": "offline",
+      "offline_cmd": "python3 -c \"import json,subprocess,sys,os; f=json.load(open(os.path.join('audit_arena','reference_facts.json')))['facts']; scope=['DEMO_ENTROPY.md','docs','scripts','README.md','CLAUDE.md','AGENTS.md','Dockerfile','Makefile']; miss=[x for x in f if subprocess.run(['grep','-Rq',x]+scope,capture_output=True).returncode!=0]; sys.exit(1 if miss else 0)\""
+    }
+  ]
+}

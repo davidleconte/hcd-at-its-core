@@ -441,3 +441,58 @@ def test_honesty_guardrails_doc_states_binding_rule():
     assert os.path.exists(doc), "missing DESIGN_honesty_guardrails.md"
     t = open(doc).read().lower()
     assert "advisory" in t and "binding" in t and "read by no gate" in t
+
+
+# ─── F2 contract spine (DESIGN_v2_roadmap.md Tier 0) ──────────────────────────────────────────────
+def test_contract_is_authoritative_source():
+    """arena LOADS the Definition-of-Done from the contract spine — INVARIANTS / SEV / _DUPKEY are
+    DERIVED from it (one source of truth), not hardcoded literals."""
+    arena = _load_arena()
+    c = arena.CONTRACT
+    for k in ("meta", "dimensions", "severity_scale", "invariants"):
+        assert k in c, f"contract missing {k}"
+    assert arena.INVARIANTS is c["invariants"], "INVARIANTS must be the contract's invariants"
+    assert [i["id"] for i in arena.INVARIANTS] == [f"HCD-I{n}" for n in range(1, 8)]
+    assert arena.SEV is c["severity_scale"], "SEV must come from the contract"
+    i3 = next(i for i in c["invariants"] if i["id"] == "HCD-I3")
+    assert arena._DUPKEY == i3["offline_cmd"], "_DUPKEY must be derived from contract HCD-I3 (no drift)"
+
+
+def test_contract_content_sha256_is_self_consistent():
+    """The contract carries a content hash over its own body; editing the contract without rehashing
+    must be detectable (the `contract` subcommand FAILs on mismatch)."""
+    arena = _load_arena()
+    c = arena.CONTRACT
+    assert c["meta"]["content_sha256"] == arena._contract_digest(c), \
+        "content_sha256 does not match the contract body — regenerate the hash"
+
+
+def test_contract_subcommand_validates():
+    """`arena.py contract` validates semver + hash integrity + invariant well-formedness, exit 0 OK."""
+    r = _arena("contract")
+    assert r.returncode == 0, f"contract validation failed: {r.stdout}{r.stderr}"
+    assert "CONTRACT OK" in r.stdout and "verified" in r.stdout
+
+
+def test_contract_every_invariant_well_formed():
+    """Every invariant carries id/dim/statement/mode and a runnable command for its mode, and its dim
+    is one of the declared dimensions."""
+    arena = _load_arena()
+    c = arena.CONTRACT
+    dims = {d["id"] for d in c["dimensions"]}
+    for inv in c["invariants"]:
+        for k in ("id", "dim", "statement", "mode"):
+            assert inv.get(k), f"{inv.get('id', '?')} missing {k}"
+        assert inv["dim"] in dims, f"{inv['id']} dim {inv['dim']} not declared"
+        assert inv["mode"] in ("offline", "live")
+        if inv["mode"] == "offline":
+            assert inv.get("offline_cmd"), f"{inv['id']} offline without offline_cmd"
+        else:
+            assert inv.get("live_cmd") and inv.get("proxy_cmd"), f"{inv['id']} live without live_cmd+proxy_cmd"
+
+
+def test_make_audit_validates_contract():
+    """make audit must validate the contract spine (so an edited-without-rehash contract fails fast)."""
+    mk = open(os.path.join(REPO, "Makefile")).read()
+    seg = mk.split("audit:", 1)[1].split("\naudit-tribunal", 1)[0]
+    assert "arena.py contract" in seg, "make audit must validate the contract spine"

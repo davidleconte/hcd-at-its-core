@@ -216,6 +216,7 @@ clean: ## Remove dangling images and build cache
 
 # ─── Adversarial audit arena ────────────────────────────────────────────────────
 audit: ## Run the deterministic audit (Oracle + invariants + manifest) and render courtroom.html
+	python3 audit_arena/bin/arena.py contract   # validate the Definition-of-Done spine (semver + content_sha256 integrity)
 	python3 audit_arena/bin/arena.py repomap
 	# no round arg -> arena defaults to the LATEST round, the same one render/gate display, so the
 	# dashboard's provenance never lags behind the tribunal's current round.
