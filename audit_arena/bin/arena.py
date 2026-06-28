@@ -968,12 +968,15 @@ def _acceptance_digest(contract):
 
 
 def _forge_validate(contract):
-    """Errors for a degenerate/unsafe contract: every accept_cmd must EXERCISE a target_path (no vacuous
-    `true`), must NOT touch the verification harness (no testing its own grader), and must_not_regress
-    must name real invariants."""
+    """Errors for a degenerate/unsafe contract: every accept_cmd should reference a target_path OUTSIDE a
+    comment (a defense-in-depth pre-filter against obvious no-ops — NOT the trust boundary; the human
+    signature is), must NOT touch the verification harness (no testing its own grader), and must_not_regress
+    must name real invariants. A clause can still be vacuous in ways the lint can't catch — which is exactly
+    why a human SIGNS the predicates before a forge can reach ACCEPTED."""
     errs = []
     tps = contract.get("target_paths") or []
     acc = contract.get("acceptance") or []
+    _NOOPS = ("true", "echo", "printf", ":", "test -n", "test -z", "[ -n", "[ -z")
     if not tps:
         errs.append("target_paths is empty — a contract must name the artefact it designs")
     if not acc:
@@ -983,9 +986,14 @@ def _forge_validate(contract):
         if not cmd:
             errs.append(f"clause {name!r}: missing accept_cmd")
             continue
-        if not any(tp in cmd for tp in tps):
-            errs.append(f"clause {name!r}: accept_cmd references no target_path — a vacuous predicate "
-                        f"cannot certify the artefact")
+        # the target_path must appear OUTSIDE a comment — a path named only after '#' tests nothing
+        code = cmd.split("#", 1)[0]
+        if not any(tp in code for tp in tps):
+            errs.append(f"clause {name!r}: accept_cmd does not reference a target_path outside a comment — "
+                        f"a vacuous predicate cannot certify the artefact")
+        elif any(code.strip().startswith(n) for n in _NOOPS):
+            errs.append(f"clause {name!r}: accept_cmd is a no-op ({code.strip().split()[0]} …) that name-drops "
+                        f"the path but tests nothing — use a real check (grep/test -f/-s/diff)")
         if any(h in cmd for h in _HARNESS):
             errs.append(f"clause {name!r}: accept_cmd references the verification harness {_HARNESS} — "
                         f"a contract must not test its own grader")
@@ -1162,7 +1170,7 @@ _PUPITRE_JS = r"""
   var mode='comprendre', selId=null, navIdx=0;
   (function load(){var p=(location.hash||'').replace('#','').split('|'); if(p[0])mode=p[0]; if(p[1])selId=decodeURIComponent(p[1]); if(p[2])navIdx=parseInt(p[2])||0;})();
   function save(){location.hash=mode+'|'+(selId?encodeURIComponent(selId):'')+'|'+navIdx;}
-  function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':String(s));return d.innerHTML;}
+  function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':String(s));return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
   function withCmd(){return F.filter(function(f){return f.oracle_cmd;});}
   function replayCmd(ids){return 'python3 audit_arena/bin/arena.py replay '+ids.join(' ');}
   function bar(){
@@ -1490,10 +1498,16 @@ def render():
                      "oracle_result": (f.get("oracle_result") or "—"),
                      "defender": (verds.get(f.get("id"), {}).get("verdict") or "—")}
                     for f in finds]
+    # Escape HTML-significant chars to \\uXXXX before embedding in a <script> element — findings come from
+    # the (advisory, LLM-authored) prosecutor layer, so a finding containing </script> would otherwise break
+    # out of the tag (stored XSS). \\u003c etc. is valid JS, parses back to the same data, and no raw '<'
+    # can appear, so </script>/<!--/<script can never form. \\u2028/\\u2029 break JS string literals too.
+    pupitre_blob = (json.dumps({"findings": pupitre_data}, ensure_ascii=False)
+                    .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+                    .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
     pupitre_section = ('<h2>Pupitre — explore the tribunal (Comprendre · Exécuter · Naviguer)</h2>'
                        + _PUPITRE_CSS + '<div id="pupitre"><i>loading…</i></div><script>window.__PUPITRE__='
-                       + json.dumps({"findings": pupitre_data}, ensure_ascii=False)
-                       + ';</script><script>' + _PUPITRE_JS + '</script>') if pupitre_data else ""
+                       + pupitre_blob + ';</script><script>' + _PUPITRE_JS + '</script>') if pupitre_data else ""
     # Honesty banner — lead with the BINDING verdict (Oracle reconciliation), never the advisory score.
     # This is the anti-score-theatre UI move: a high judge opinion over a DEFERRED live invariant reads
     # AMBER (not green); a judge that ships over an Oracle FAIL reads RED. See DESIGN_honesty_guardrails.md.

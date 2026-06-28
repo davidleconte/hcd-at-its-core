@@ -1035,3 +1035,44 @@ def test_pupitre_renders_with_guards():
     js = src[src.index("_PUPITRE_JS = r"):src.index("def replay(")]
     assert "replay '+ids.join" in js, "Exécuter must emit `replay <ids>` (ids, not a command string)"
     assert "eval(" not in js, "the pupitre must not eval anything in the browser"
+
+
+# ─── Tier 2 verification fixes (adversarial review of forge + pupitre) ─────────────────────────────
+def test_pupitre_blob_is_script_breakout_safe():
+    """Stored-XSS regression: a finding field containing a close-script tag must NOT break out of the
+    embedded <script> blob — render escapes HTML-significant chars to \\uXXXX, so no raw close-script or
+    <img can appear. This test FAILS against the pre-fix raw-json.dumps embedding."""
+    probe = os.path.join(SDIR, "findings_r987.json")
+    payload = "pwn </script><img src=x onerror=alert(1)>"
+    try:
+        json.dump([{"id": "X987", "dimension": "D1", "finding": payload, "evidence": payload,
+                    "invariant": "-"}], open(probe, "w"))
+        _arena("render")
+        page = open(COURT, encoding="utf-8").read()
+        blob = page.split("window.__PUPITRE__=", 1)[1].split(";</script>", 1)[0]
+        assert "</script>" not in blob, "script-breakout: a raw close-script tag reached the embedded blob"
+        assert "<img" not in blob, "a raw <img reached the embedded blob"
+        assert "\\u003c" in blob, "HTML-significant chars must be escaped to \\uXXXX"
+    finally:
+        if os.path.exists(probe):
+            os.remove(probe)
+        _arena("render")
+
+
+def test_pupitre_esc_escapes_attribute_quotes():
+    """The JS esc() is used in double-quoted data-* attributes; it must escape quotes, else an id/command
+    containing a quote breaks out of the attribute."""
+    src = open(ARENA).read()
+    esc_line = [ln for ln in src.splitlines() if "function esc(s)" in ln][0]
+    assert "&quot;" in esc_line and "&#39;" in esc_line, "esc() must escape both quote characters"
+
+
+def test_forge_validate_rejects_path_namedropping_noops():
+    """Defense-in-depth: a no-op that merely name-drops the target_path (in a comment or as a bare string)
+    is rejected — a vacuous predicate certifies nothing. The human signature remains the trust boundary."""
+    arena = _load_arena()
+    for cmd in ("true # README.md", "echo README.md", "test -n README.md", ": README.md"):
+        c = {"target_paths": ["README.md"], "acceptance": [{"clause": "x", "accept_cmd": cmd}]}
+        assert arena._forge_validate(c), f"no-op predicate not rejected: {cmd!r}"
+    ok = {"target_paths": ["README.md"], "acceptance": [{"clause": "x", "accept_cmd": "grep -q '2.0.6' README.md"}]}
+    assert arena._forge_validate(ok) == [], "a real grep check must still pass"
