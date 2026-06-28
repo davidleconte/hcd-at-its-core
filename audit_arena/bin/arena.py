@@ -469,7 +469,112 @@ def gate():
     # TIMEOUT is inconclusive (a check couldn't run — usually a live cluster starving the CPU), not a
     # failure: it never blocks. Surface it so a green gate with a timed-out check isn't silently lost.
     note = f"  (inconclusive, timed out: {o_timeout} — run with the cluster down)" if o_timeout else ""
-    print(f"GATE PASS — no FAILing oracle check or invariant.{note}")
+    rec = _load_reconciliation()
+    rnote = ""
+    if rec:
+        if rec.get("verdict") == "AMBER":
+            rnote = f"  · honesty: AMBER (green-on-deferred: {rec.get('invariant_deferred') or rec.get('stale_live')} — not live-verified this run)"
+        elif rec.get("contradictions"):
+            rnote = f"  · honesty: {[c['kind'] for c in rec['contradictions']]}"
+    print(f"GATE PASS — no FAILing oracle check or invariant.{note}{rnote}")
+
+
+# ─── F1 HONESTY RECONCILER: make the Oracle's primacy a code invariant, not a charter promise ───
+_RECON = os.path.join(STATE, "reconciliation.json")
+# Dispositions a judge might emit that lean toward "ship/accept" — the only side that can CONTRADICT a
+# binding Oracle/invariant FAIL. Read from a structured `disposition` field, never regexed from prose.
+_SHIP_LEANING = {"ship", "accept", "accepted", "pass", "converged", "green", "go", "approve", "approved"}
+# Numeric-score keys forbidden on a grades artefact: a score is advisory and must never be a disposition
+# surface (no score->ship/block wiring). Numeric scores belong only in a future advisory panel_scores block.
+_SCORE_KEYS = {"score", "grade", "rating", "numeric_score", "panel_score", "overall_score"}
+
+
+def _load_reconciliation():
+    try:
+        return json.load(open(_RECON))
+    except Exception:
+        return {}
+
+
+def _last_live_age_days(ts):
+    """Age in days of a last_live ISO timestamp (YYYY-MM-DDTHH:MM:SS), or None if unparseable."""
+    try:
+        then = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S")
+        return (datetime.datetime.now() - then).total_seconds() / 86400.0
+    except Exception:
+        return None
+
+
+def reconcile():
+    """Cross-join the latest grades (ADVISORY) against the deterministic oracle + invariants (BINDING)
+    and emit reconciliation.json with one honesty verdict — so the Oracle's primacy is a code fact, not
+    a prompt request. See DESIGN_honesty_guardrails.md.
+
+      RED   : any Oracle check FAIL or any invariant FAIL (a binding failure is present). If the judge
+              ALSO leans 'ship', that pairing is recorded as a judge-contradicts-Oracle row.
+      AMBER : no FAIL, but a live invariant is DEFERRED (or a last_live PASS is stale past
+              ARENA_LAST_LIVE_MAX_AGE_DAYS) -> 'green-on-deferred, not live-verified this run'. A
+              ship-leaning judge over a deferred invariant is RECORDED but NEVER blocks (honest deferral
+              is not punished).
+      GREEN : everything PASS, nothing deferred/stale.
+
+    A numeric LLM score never reaches this verdict: the G1 validator REJECTS (exit 2) any grades
+    artefact that surfaces a numeric score, so there is no score->disposition wiring to launder."""
+    oj, ij = _latest("oracle_r*.json"), _latest("invariants_r*.json")
+    grades = _by_round("grades_r*.json")
+    g = json.load(open(grades[-1])) if grades else {}
+
+    wired = sorted(k for k in g if k.lower() in _SCORE_KEYS)
+    if wired:
+        print(f"RECONCILE REJECT — grades carry numeric score field(s) {wired}: a score is advisory and "
+              f"must not be a disposition surface (no score->ship/block wiring). See "
+              f"DESIGN_honesty_guardrails.md; numeric scores belong only in a future advisory panel_scores block.")
+        sys.exit(2)
+
+    o_fail = [c["check"] for c in oj.get("checks", []) if c.get("status") == "FAIL"]
+    i_fail = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "FAIL"]
+    i_def = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "DEFERRED"]
+
+    # G4 freshness (surfacing only, default OFF): a last_live-carried PASS older than the threshold reads
+    # as stale, never as fresh green. Default 0 -> never stale, so a live-verified check stays green with
+    # its timestamp (preserves the green-PASS-with-timestamp decision) until explicitly aged out.
+    try:
+        max_age = float(os.environ.get("ARENA_LAST_LIVE_MAX_AGE_DAYS", "0") or "0")
+    except ValueError:
+        max_age = 0.0
+    stale_live = []
+    if max_age > 0:
+        for i in ij.get("invariants", []):
+            ll = i.get("last_live")
+            if i.get("status") == "PASS" and ll:
+                age = _last_live_age_days(ll.get("ts", ""))
+                if age is not None and age > max_age:
+                    stale_live.append({"id": i["id"], "age_days": round(age, 1), "ts": ll.get("ts")})
+
+    disp = str(g.get("disposition", "")).strip().lower()
+    ship_leaning = disp in _SHIP_LEANING
+
+    contradictions = []
+    if ship_leaning and (o_fail or i_fail):
+        contradictions.append({"kind": "judge-ships-over-FAIL", "level": "RED", "judge_disposition": disp,
+                               "oracle_fail": o_fail, "invariant_fail": i_fail})
+    if ship_leaning and i_def and not (o_fail or i_fail):
+        contradictions.append({"kind": "judge-ships-over-DEFERRED", "level": "AMBER",
+                               "judge_disposition": disp, "invariant_deferred": i_def})
+
+    verdict = "RED" if (o_fail or i_fail) else ("AMBER" if (i_def or stale_live) else "GREEN")
+    out = {"verdict": verdict, "oracle_fail": o_fail, "invariant_fail": i_fail,
+           "invariant_deferred": i_def, "stale_live": stale_live,
+           "judge_disposition": disp or None, "judge_ship_leaning": ship_leaning,
+           "contradictions": contradictions,
+           "generated_at": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}
+    os.makedirs(STATE, exist_ok=True)
+    json.dump(out, open(_RECON, "w"), indent=2, sort_keys=True)
+    msg = {"RED": "binding failure present", "GREEN": "Oracle clean, nothing deferred",
+           "AMBER": "green-on-deferred — not live-verified this run"}[verdict]
+    cn = f"  contradictions: {[c['kind'] for c in contradictions]}" if contradictions else ""
+    print(f"RECONCILE {verdict} — {msg}.{cn}")
+    return out
 
 
 def act(role, rnd, md_file):
@@ -756,6 +861,7 @@ def render():
     cfp = os.path.join(STATE, "convergence.json")
     conv = json.load(open(cfp)) if os.path.exists(cfp) else {}
     rem = _latest("remediation_r*.json").get("remediations", [])
+    rec = _load_reconciliation()
 
     rows = []
     for f in finds:
@@ -847,6 +953,32 @@ def render():
         rem_html = ("<h2>Remediation — verified-in-isolation fixes</h2>"
                     "<table><tr><th>Finding</th><th>Status</th><th>Oracle (worktree)</th><th>Patch</th></tr>"
                     + rrows + "</table>")
+    # Honesty banner — lead with the BINDING verdict (Oracle reconciliation), never the advisory score.
+    # This is the anti-score-theatre UI move: a high judge opinion over a DEFERRED live invariant reads
+    # AMBER (not green); a judge that ships over an Oracle FAIL reads RED. See DESIGN_honesty_guardrails.md.
+    honesty_html = ""
+    if rec:
+        hv = rec.get("verdict", "GREEN")
+        hcol = {"GREEN": "#1e8449", "AMBER": "#b7950b", "RED": "#c0392b"}.get(hv, "#566")
+        hmsg = {"GREEN": "Oracle clean — binding ground truth holds, nothing deferred",
+                "AMBER": "green-on-deferred — the judge may approve, but a live invariant is not verified this run",
+                "RED": "binding failure present — an Oracle check or invariant FAILs, regardless of any judge opinion"}.get(hv, "")
+        detail = ""
+        if hv == "AMBER":
+            detail = f" · deferred: {html.escape(str(rec.get('invariant_deferred') or [c for c in rec.get('stale_live', [])]))}"
+        elif hv == "RED":
+            detail = f" · oracle FAIL: {html.escape(str(rec.get('oracle_fail') or '—'))} · invariant FAIL: {html.escape(str(rec.get('invariant_fail') or '—'))}"
+        contra = ""
+        if rec.get("contradictions"):
+            contra = (f'<div style="margin-top:6px;color:#e6b0aa;font-size:12.5px">⚠ judge contradicts Oracle: '
+                      f'{html.escape(str([c["kind"] for c in rec["contradictions"]]))} '
+                      f'(judge disposition <code>{html.escape(str(rec.get("judge_disposition")))}</code> — advisory, NOT binding)</div>')
+        honesty_html = (f'<div style="margin:0 0 14px;padding:11px 15px;border-radius:9px;'
+                        f'background:#11242b;border:1px solid {hcol};border-left:5px solid {hcol};font-size:14px">'
+                        f'<b style="color:{hcol};font-size:16px">HONESTY: {hv}</b> '
+                        f'<span style="color:#cfe0e4">— {hmsg}{detail}</span>{contra}'
+                        f'<div style="margin-top:5px;color:#7fa6b0;font-size:11.5px">Binding arbiter = the deterministic Oracle. '
+                        f'LLM judge scores/opinions are advisory and are read by no gate.</div></div>')
     man_html = ""
     if man:
         g, rp = man.get("git", {}), man.get("repo", {})
@@ -881,6 +1013,7 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
 <header><h1>🛡️ HCD audit arena — adversarial tribunal (HCD 2.0 / Cassandra 5.0)</h1>
 <div class="sub">Prosecutor <b style="color:#e57373">refute-by-default</b> · Defender <b style="color:#6fb6e0">kills false positives</b> · Judge <b style="color:#b18ad6">SRE / committer / security</b> · Oracle <b style="color:#34c3a0">runs ground truth</b> — auto-refresh /6s</div></header>
 <div class="wrap">
+{honesty_html}
 <div style="margin:0 0 14px;padding:11px 15px;background:#11242b;border:1px solid #1d3640;border-radius:9px;font-size:14px">
 <b style="font-size:17px">Round {cur_round}</b> — latest tribunal pass · {len(finds)} findings across {len(rounds) or 1} round(s) (<span style="color:#7fa6b0">{html.escape(per_round) or '—'}</span>) · <b style="color:#16a085">{fixed_n} fixed</b> · generated {html.escape(str((man or {}).get('generated_at', '')))}</div>
 <div class="panel">
@@ -986,6 +1119,7 @@ if __name__ == "__main__":
     elif cmd == "manifest": manifest(sys.argv[2] if len(sys.argv) > 2 else _latest_round())
     elif cmd == "act": act(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "converge": converge()
+    elif cmd == "reconcile": reconcile()
     elif cmd == "gate": gate()
     elif cmd == "judge-brief": judge_brief(sys.argv[2] if len(sys.argv) > 2 else "1")
     elif cmd == "harden": harden()

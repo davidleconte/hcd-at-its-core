@@ -222,6 +222,7 @@ audit: ## Run the deterministic audit (Oracle + invariants + manifest) and rende
 	python3 audit_arena/bin/arena.py oracle
 	python3 audit_arena/bin/arena.py invariants
 	python3 audit_arena/bin/arena.py manifest
+	python3 audit_arena/bin/arena.py reconcile   # honesty reconciler: emit reconciliation.json, exit 2 if grades wire a numeric score
 	python3 audit_arena/bin/arena.py render
 	@echo "Open: audit_arena/courtroom.html"
 	python3 audit_arena/bin/arena.py gate   # exit 1 on any FAILing oracle check / invariant (CI blocks)

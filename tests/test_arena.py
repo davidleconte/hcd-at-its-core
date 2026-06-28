@@ -340,3 +340,104 @@ def test_mode_b_propagates_egress_fallback(tmp_path):
         for f in (findings, out, promptf):
             if os.path.exists(f):
                 os.remove(f)
+
+
+# ─── F1 honesty reconciler (DESIGN_v2_roadmap.md Tier 0) ───────────────────────────────────────────
+SDIR = os.path.join(REPO, "audit_arena/state")
+COURT = os.path.join(REPO, "audit_arena/courtroom.html")
+RECON = os.path.join(SDIR, "reconciliation.json")
+
+
+def test_reconcile_rejects_score_wiring():
+    """G1: a numeric score on a grades artefact is forbidden — a score is advisory and must never be a
+    disposition surface. reconcile() must REJECT (exit 2), so there is no score->ship/block wiring."""
+    probe = os.path.join(SDIR, "grades_r999.json")
+    try:
+        json.dump({"one_line_verdict": "looks great", "score": 9.5}, open(probe, "w"))
+        r = _arena("reconcile")
+        assert r.returncode == 2, f"reconcile must reject a score-wired grades artefact (got {r.returncode})"
+        assert "score" in (r.stdout + r.stderr).lower()
+    finally:
+        if os.path.exists(probe):
+            os.remove(probe)
+        _arena("reconcile")
+
+
+def test_reconcile_amber_on_deferred_invariant():
+    """G2: no FAIL but a live invariant DEFERRED -> AMBER 'green-on-deferred', and AMBER NEVER blocks
+    (honest deferral is not a failure)."""
+    op = os.path.join(SDIR, "oracle_r999.json")
+    ip = os.path.join(SDIR, "invariants_r999.json")
+    try:
+        json.dump({"checks": [{"check": "x", "dimension": "D1", "status": "PASS", "detail": ""}]}, open(op, "w"))
+        json.dump({"invariants": [{"id": "HCD-I2", "status": "DEFERRED", "statement": "live"}]}, open(ip, "w"))
+        r = _arena("reconcile")
+        assert r.returncode == 0, f"AMBER must not block: {r.stdout}{r.stderr}"
+        assert "AMBER" in r.stdout
+        rec = json.load(open(RECON))
+        assert rec["verdict"] == "AMBER" and "HCD-I2" in rec["invariant_deferred"]
+    finally:
+        for f in (op, ip):
+            if os.path.exists(f):
+                os.remove(f)
+        _arena("reconcile")
+
+
+def test_reconcile_red_and_flags_judge_contradiction():
+    """G2: a ship-leaning judge co-existing with an Oracle FAIL is RED + recorded as a
+    judge-contradicts-Oracle row — the Oracle wins regardless of the judge's opinion."""
+    op = os.path.join(SDIR, "oracle_r999.json")
+    gp = os.path.join(SDIR, "grades_r999.json")
+    try:
+        json.dump({"checks": [{"check": "ddm", "dimension": "D1", "status": "FAIL", "detail": "broke"}]}, open(op, "w"))
+        json.dump({"one_line_verdict": "ship it", "disposition": "ship"}, open(gp, "w"))
+        _arena("reconcile")
+        rec = json.load(open(RECON))
+        assert rec["verdict"] == "RED"
+        assert "judge-ships-over-FAIL" in [c["kind"] for c in rec["contradictions"]], f"not flagged: {rec}"
+    finally:
+        for f in (op, gp):
+            if os.path.exists(f):
+                os.remove(f)
+        _arena("reconcile")
+
+
+def test_render_honesty_banner_leads_with_oracle():
+    """G3 / honesty banner: the rendered dashboard leads with the BINDING (Oracle) verdict, dominant
+    over any judge opinion, and states the score is advisory + read by no gate — 'Oracle beats
+    advocates' as an executable assertion on the rendered output."""
+    op = os.path.join(SDIR, "oracle_r999.json")
+    gp = os.path.join(SDIR, "grades_r999.json")
+    try:
+        json.dump({"checks": [{"check": "ddm", "dimension": "D1", "status": "FAIL", "detail": "broke"}]}, open(op, "w"))
+        json.dump({"one_line_verdict": "ship it", "disposition": "ship"}, open(gp, "w"))
+        _arena("reconcile")
+        _arena("render")
+        page = open(COURT, encoding="utf-8").read()
+        assert "HONESTY: RED" in page, "banner must lead with the binding Oracle verdict"
+        assert "advisory" in page and "read by no gate" in page, "banner must mark scores advisory"
+        assert "judge contradicts Oracle" in page, "a ship-over-FAIL contradiction must surface"
+    finally:
+        for f in (op, gp):
+            if os.path.exists(f):
+                os.remove(f)
+        _arena("reconcile")
+        _arena("render")
+
+
+def test_make_audit_runs_reconcile_before_gate():
+    """reconcile must run in `make audit` AFTER manifest and BEFORE gate, so the honesty verdict and
+    the score-wiring rejection are enforced on every audit and render shows the fresh banner."""
+    mk = open(os.path.join(REPO, "Makefile")).read()
+    seg = mk.split("audit:", 1)[1].split("\naudit-tribunal", 1)[0]
+    assert "arena.py reconcile" in seg, "make audit must run the honesty reconciler"
+    assert seg.index("arena.py reconcile") > seg.index("arena.py manifest"), "reconcile must run after manifest"
+    assert seg.index("arena.py reconcile") < seg.index("arena.py gate"), "reconcile must run before gate"
+
+
+def test_honesty_guardrails_doc_states_binding_rule():
+    """The honesty discipline must be a documented contract, not tribal prose in a charter."""
+    doc = os.path.join(REPO, "audit_arena/DESIGN_honesty_guardrails.md")
+    assert os.path.exists(doc), "missing DESIGN_honesty_guardrails.md"
+    t = open(doc).read().lower()
+    assert "advisory" in t and "binding" in t and "read by no gate" in t
