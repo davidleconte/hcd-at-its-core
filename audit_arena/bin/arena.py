@@ -54,6 +54,15 @@ def _load_contract():
     return json.load(open(_CONTRACT_PATH, encoding="utf-8"))
 
 
+# Sentinel so a missing/corrupt contract degrades to a clean, actionable error per-subcommand instead of
+# a raw import-time traceback that takes down EVERY subcommand (including the `contract` validator that
+# exists to report exactly this). Subcommands that need the contract call _require_contract().
+class _ContractMissing(dict):
+    def __init__(self, err):
+        super().__init__(invariants=[], severity_scale={}, dimensions=[], meta={})
+        self.err = err
+
+
 def _contract_digest(contract):
     """sha256 over the canonical contract body (everything except meta.content_sha256) — recomputed
     identically here and at generation time so the manifest/contract-check can verify integrity."""
@@ -62,7 +71,17 @@ def _contract_digest(contract):
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-CONTRACT = _load_contract()
+try:
+    CONTRACT = _load_contract()
+except (FileNotFoundError, json.JSONDecodeError, OSError) as _e:
+    CONTRACT = _ContractMissing(f"{type(_e).__name__}: {_e}")
+
+
+def _require_contract():
+    """Fail loudly + actionably (not with a raw traceback) when the contract is missing/corrupt."""
+    if isinstance(CONTRACT, _ContractMissing):
+        print(f"CONTRACT UNAVAILABLE — cannot load {os.path.relpath(_CONTRACT_PATH, ROOT)}: {CONTRACT.err}")
+        sys.exit(2)
 
 
 def invariant_records():
@@ -201,6 +220,7 @@ def _last_live_pass(key):
 
 def oracle(rnd="1"):
     """Run the verifiable checks that adjudicate HCD findings as ground truth."""
+    _require_contract()
     checks = []
 
     def add(name, dim, cmd, ok_fn, detail_fn=lambda c, o: "", timeout=300):
@@ -316,11 +336,14 @@ def oracle(rnd="1"):
 # (broken wiring) but never CONFIRM (status caps at DEFERRED) — burden on the artefact, like the Oracle.
 INVARIANTS = CONTRACT["invariants"]
 # The dup-key battery is also the Oracle's offline dup-keys check; derive it from the contract (HCD-I3)
-# so there is ONE source of truth, not a code copy that can silently drift from the contract.
-_DUPKEY = next(i["offline_cmd"] for i in INVARIANTS if i["id"] == "HCD-I3")
+# so there is ONE source of truth, not a code copy that can silently drift from the contract. Defaults to
+# a never-passing command if the contract is missing, so import never crashes (subcommands that depend on
+# the contract call _require_contract() and exit cleanly instead).
+_DUPKEY = next((i["offline_cmd"] for i in INVARIANTS if i["id"] == "HCD-I3"), "false")
 
 
 def invariants(rnd="1"):
+    _require_contract()
     """Evaluate the formal HCD Definition-of-Done -> state/invariants_r{rnd}.json."""
     up_code, _ = _run("docker exec hcd-node1 nodetool status", timeout=20)
     cluster_up = up_code == 0
@@ -451,24 +474,50 @@ def gate():
     # TIMEOUT is inconclusive (a check couldn't run — usually a live cluster starving the CPU), not a
     # failure: it never blocks. Surface it so a green gate with a timed-out check isn't silently lost.
     note = f"  (inconclusive, timed out: {o_timeout} — run with the cluster down)" if o_timeout else ""
+    # The honesty note is ADVISORY and read from reconciliation.json, which may predate this gate run if
+    # gate is invoked standalone (make audit always runs reconcile first). Tag it with its provenance so a
+    # stale note is never mistaken for the current run; gate still BLOCKS only on the fresh oracle/invariants.
     rec = _load_reconciliation()
     rnote = ""
     if rec:
+        ts = rec.get("generated_at", "?")
         if rec.get("verdict") == "AMBER":
-            rnote = f"  · honesty: AMBER (green-on-deferred: {rec.get('invariant_deferred') or rec.get('stale_live')} — not live-verified this run)"
+            rnote = (f"  · honesty (reconcile @ {ts}): AMBER (green-on-deferred: "
+                     f"{rec.get('invariant_deferred') or rec.get('stale_live')} — not live-verified this run)")
         elif rec.get("contradictions"):
-            rnote = f"  · honesty: {[c['kind'] for c in rec['contradictions']]}"
+            rnote = f"  · honesty (reconcile @ {ts}): {[c['kind'] for c in rec['contradictions']]}"
     print(f"GATE PASS — no FAILing oracle check or invariant.{note}{rnote}")
 
 
 # ─── F1 HONESTY RECONCILER: make the Oracle's primacy a code invariant, not a charter promise ───
 _RECON = os.path.join(STATE, "reconciliation.json")
 # Dispositions a judge might emit that lean toward "ship/accept" — the only side that can CONTRADICT a
-# binding Oracle/invariant FAIL. Read from a structured `disposition` field, never regexed from prose.
-_SHIP_LEANING = {"ship", "accept", "accepted", "pass", "converged", "green", "go", "approve", "approved"}
-# Numeric-score keys forbidden on a grades artefact: a score is advisory and must never be a disposition
-# surface (no score->ship/block wiring). Numeric scores belong only in a future advisory panel_scores block.
+# binding Oracle/invariant FAIL. CONDITIONAL-SHIP counts: "ship with conditions over an unverified/failing
+# invariant" is exactly the contradiction this feature exists to surface (judge.md SRE vocab is
+# SHIP|CONDITIONAL-SHIP|BLOCK). Read from the judge's STRUCTURED fields (see _judge_disposition).
+_SHIP_LEANING = {"ship", "conditional-ship", "accept", "accepted", "pass", "converged", "green", "go",
+                 "approve", "approved"}
+# Numeric/headline score keys forbidden at the TOP LEVEL of a grades artefact: a headline score must never
+# be a disposition surface (no score->ship/block wiring). This is a TOP-LEVEL check BY DESIGN — the judge
+# legitimately puts per-lens advisory grades UNDER `lenses.*` (e.g. lenses.committer.grade); those are lens
+# detail, not a headline disposition, and must not be rejected. Numeric scores only in a future advisory
+# panel_scores block.
 _SCORE_KEYS = {"score", "grade", "rating", "numeric_score", "panel_score", "overall_score"}
+
+
+def _judge_disposition(g):
+    """The judge's ship/block disposition TOKEN, read from the real (inconsistent) judge schema:
+    lenses.sre.disposition (a token, when lenses.sre is a dict — judge.md), else a legacy top-level
+    `disposition`, else token-extracted from the top-level integrated_disposition prose as a last resort.
+    Returns a normalized lowercase token ('' if none). Structured fields first; prose only as fallback,
+    via a bounded token match — never a loose regex over the free-text lens bodies."""
+    sre = g.get("lenses", {}).get("sre")
+    if isinstance(sre, dict) and sre.get("disposition"):
+        return str(sre["disposition"]).strip().lower()
+    if g.get("disposition"):
+        return str(g["disposition"]).strip().lower()
+    m = re.search(r"\b(conditional-ship|ship|block)\b", str(g.get("integrated_disposition", "")), re.I)
+    return m.group(1).lower() if m else ""
 
 
 def _load_reconciliation():
@@ -533,7 +582,7 @@ def reconcile():
                 if age is not None and age > max_age:
                     stale_live.append({"id": i["id"], "age_days": round(age, 1), "ts": ll.get("ts")})
 
-    disp = str(g.get("disposition", "")).strip().lower()
+    disp = _judge_disposition(g)
     ship_leaning = disp in _SHIP_LEANING
 
     contradictions = []
@@ -563,6 +612,7 @@ def contract_check():
     """Validate the contract spine: semver, content_sha256 integrity, and that every invariant is
     well-formed (id/dim/statement/mode + a runnable command). The Definition-of-Done as a CHECKED
     artefact, not a hardcoded literal. See DESIGN_v2_roadmap.md §2 (F2)."""
+    _require_contract()
     c = CONTRACT
     meta = c.get("meta", {})
     errs = []
@@ -882,10 +932,12 @@ def lineage(rnd="1"):
         live = _last_live_pass(f.get("invariant") or "") or _last_live_pass(fid)
         rstat = (rem.get(fid, {}).get("status") or "").upper()
         dverd = (v.get("verdict") or "").upper()
-        # lineage_status — Oracle-dominant ladder.
-        if live:
+        # lineage_status — Oracle-DOMINANT ladder. A current Oracle FAIL caps the status at ADJUDICATED:
+        # a stale recorded live PASS must NEVER mask a finding that is failing the Oracle right now (that
+        # would be exactly the green-on-stale dishonesty the engine exists to refuse).
+        if live and ores != "FAIL":
             lstat = "LIVE_CONFIRMED"
-        elif rstat == "VERIFIED":
+        elif rstat == "VERIFIED" and ores != "FAIL":
             lstat = "REMEDIATED"
         elif ores in ("PASS", "FAIL", "FIXED"):
             lstat = "ADJUDICATED"
@@ -899,9 +951,14 @@ def lineage(rnd="1"):
                "defender_verdict": dverd or None, "invariant": f.get("invariant") or None,
                "layer_refs": {k: lv for k, lv in layers.items() if lv is not None},
                "content_digests": {"finding": _dig(f), **({"verdict": _dig(v)} if v else {})}}
-        # L4/L5 disagreement: Defender says it survives, Oracle says resolved -> status follows the Oracle.
+        # Disagreements where the Oracle (L5) overrides an advocate, recorded both ways — the Oracle wins.
         if dverd in ("CONFIRMED", "OVERSTATED") and ores in ("FIXED", "PASS"):
             obj["l4_l5_disagreement"] = f"Defender={dverd} but Oracle={ores} — status follows the Oracle"
+        elif dverd == "FALSE_POSITIVE" and ores == "FAIL":
+            obj["l4_l5_disagreement"] = f"Defender=FALSE_POSITIVE but Oracle=FAIL — status follows the Oracle"
+        if live and ores == "FAIL":
+            obj["l5_l7_disagreement"] = (f"stale live PASS @ {live.get('ts')} but Oracle=FAIL now — "
+                                         f"capped at ADJUDICATED (the current Oracle wins)")
         objs.append(obj)
 
     os.makedirs(STATE, exist_ok=True)

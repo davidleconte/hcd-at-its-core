@@ -18,15 +18,19 @@ external vendor in Mode B — are advocates. Advocates argue; the Oracle decides
 
 | Guardrail | Where | What it does |
 |---|---|---|
-| **G1 — no score surface** | `reconcile()` validator (`arena.py`) | REJECTS (exit 2) any `grades_rN.json` carrying a numeric `score`/`grade`/`rating`/`panel_score` field — there is no score→disposition wiring to launder. Numeric scores may live only in a future *advisory* `panel_scores` block. |
+| **G1 — no headline score surface** | `reconcile()` validator (`arena.py`) | REJECTS (exit 2) any `grades_rN.json` carrying a numeric/headline `score`/`grade`/`rating`/`panel_score` field **at the top level** — there is no score→disposition wiring to launder. This is a **top-level check by design**: the judge legitimately puts *per-lens* advisory grades under `lenses.*` (e.g. `lenses.committer.grade`), which are lens detail, not a headline disposition, and are allowed. Numeric scores may live only in a future *advisory* `panel_scores` block. |
 | **G2 — reconciler / contradiction** | `arena.py reconcile` → `state/reconciliation.json` | Cross-joins the latest grades (advisory) against oracle + invariants (binding). Emits one verdict: **RED** (any Oracle/invariant FAIL — if the judge also leans *ship*, recorded as `judge-ships-over-FAIL`), **AMBER** (no FAIL but a live invariant DEFERRED / stale — `green-on-deferred, not live-verified this run`; a ship-leaning judge here is recorded but **never blocks**), **GREEN** (all PASS, nothing deferred). |
 | **G3 — Oracle-primacy self-test** | `tests/test_arena.py` | Asserts that for every finding with an `oracle_result`, the rendered disposition follows the Oracle (FIXED/PASS ⇒ non-blocking, FAIL ⇒ blocking) — "Oracle beats advocates" as an executable assertion. |
 | **G4 — last-live freshness** | `reconcile()` (`ARENA_LAST_LIVE_MAX_AGE_DAYS`) | A `last_live` PASS older than the threshold reads `stale`, contributing AMBER. **Surfacing only** — default OFF (`0`), and a stale live PASS never hard-FAILs (that would punish honest deferral). Respects the green-PASS-with-timestamp decision. |
 | **Honesty banner** | `render()` | The dashboard *leads* with the binding verdict (GREEN / AMBER / RED), visually above and dominant over any judge opinion. The advisory note is explicit: "LLM judge scores/opinions are advisory and are read by no gate." |
 
-The reconciler reads only **structured** fields (`disposition`, oracle/invariant `status`) — never a regex
-over the judges' free-text lenses, which would mis-flag. A judge may emit an optional `disposition`
-(`ship`/`block`/`hold`); if absent, the reconciler simply reconciles on Oracle state alone.
+The reconciler reads the judge's disposition from **structured** fields, never a loose regex over the
+free-text lens bodies. The real judge schema is inconsistent across rounds, so `_judge_disposition()`
+prefers `lenses.sre.disposition` (the `SHIP|CONDITIONAL-SHIP|BLOCK` token, when `lenses.sre` is an
+object), falls back to a legacy top-level `disposition`, and only as a last resort token-extracts from the
+top-level `integrated_disposition` prose. `CONDITIONAL-SHIP` counts as ship-leaning — "ship with
+conditions over an unverified/failing invariant" is precisely the contradiction this surfaces. If no
+disposition is present, the reconciler reconciles on Oracle state alone.
 
 ## Explicit DO-NOT-ADOPT (from the v2 design panel)
 

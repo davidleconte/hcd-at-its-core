@@ -197,10 +197,12 @@ failure. The hook is read-only on *tracked* files but, on success, refreshes the
 (§4.10).
 
 ### 4.10 The render — `courtroom.html` (live dashboard semantics)
-`render` aggregates every `state/` artefact into a single auto-refreshing HTML dashboard: the
+`render` aggregates every `state/` artefact into a single auto-refreshing HTML dashboard: an
+[honesty banner](DESIGN_honesty_guardrails.md) (the binding GREEN/AMBER/RED verdict, leading), the
 four-role summary, the latest judge verdict (tri-lens), convergence, manifest provenance, the seven
-invariants, the Oracle table, remediation, and the full findings register with per-finding live
-`oracle_cmd` execution (FIXED/FAIL). Three dashboard rules earned the hard way:
+invariants, the Oracle table, remediation, and the full findings register. Since v2 (F3) the per-finding
+FIXED/FAIL resolution is **consumed from the gated `lineage_rN.json`** (single-sourced from the audit),
+not re-executed at render time. Three dashboard rules earned the hard way:
 
 - **Latest-round refresh.** `render`/`gate` read the *latest* round; `make audit` therefore defaults
   to the latest round so the dashboard's provenance can't silently lag once the tribunal advances.

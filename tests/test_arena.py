@@ -390,7 +390,9 @@ def test_reconcile_red_and_flags_judge_contradiction():
     gp = os.path.join(SDIR, "grades_r999.json")
     try:
         json.dump({"checks": [{"check": "ddm", "dimension": "D1", "status": "FAIL", "detail": "broke"}]}, open(op, "w"))
-        json.dump({"one_line_verdict": "ship it", "disposition": "ship"}, open(gp, "w"))
+        # REAL judge schema (lenses.sre.disposition), not a synthetic top-level `disposition` the judge
+        # never emits — otherwise the contradiction path could be dead on real output and this test blind.
+        json.dump({"one_line_verdict": "ship it", "lenses": {"sre": {"disposition": "SHIP"}}}, open(gp, "w"))
         _arena("reconcile")
         rec = json.load(open(RECON))
         assert rec["verdict"] == "RED"
@@ -410,7 +412,7 @@ def test_render_honesty_banner_leads_with_oracle():
     gp = os.path.join(SDIR, "grades_r999.json")
     try:
         json.dump({"checks": [{"check": "ddm", "dimension": "D1", "status": "FAIL", "detail": "broke"}]}, open(op, "w"))
-        json.dump({"one_line_verdict": "ship it", "disposition": "ship"}, open(gp, "w"))
+        json.dump({"one_line_verdict": "ship it", "lenses": {"sre": {"disposition": "SHIP"}}}, open(gp, "w"))
         _arena("reconcile")
         _arena("render")
         page = open(COURT, encoding="utf-8").read()
@@ -564,3 +566,126 @@ def test_make_audit_runs_lineage_before_manifest():
     assert seg.index("arena.py lineage") > seg.index("arena.py invariants"), "lineage after invariants"
     assert seg.index("arena.py lineage") < seg.index("arena.py manifest"), "lineage before manifest"
     assert seg.index("arena.py lineage") < seg.index("arena.py render"), "lineage before render"
+
+
+# ─── Tier 0 verification fixes (adversarial review of the foundation) ──────────────────────────────
+CONTRACT_FILE = os.path.join(REPO, "audit_arena/contract/contract.v1.json")
+
+
+def test_reconcile_reads_real_judge_disposition_schema():
+    """The judge emits lenses.sre.disposition (SHIP|CONDITIONAL-SHIP|BLOCK) or integrated_disposition prose
+    — NOT a top-level `disposition`. The reconciler must read the real schema, incl. CONDITIONAL-SHIP, or
+    the contradiction surface is dead on production output."""
+    arena = _load_arena()
+    assert arena._judge_disposition({"lenses": {"sre": {"disposition": "SHIP"}}}) == "ship"
+    assert arena._judge_disposition({"integrated_disposition": "Disposition: CONDITIONAL-SHIP — ok"}) == "conditional-ship"
+    assert arena._judge_disposition({"lenses": {"sre": "free text, no token"}}) == ""  # r2/r3 shape
+    assert "conditional-ship" in arena._SHIP_LEANING, "CONDITIONAL-SHIP must count as ship-leaning"
+
+
+def test_contract_tamper_without_rehash_is_detected():
+    """Editing the contract body WITHOUT recomputing meta.content_sha256 must make `contract` FAIL —
+    the integrity check has real teeth (committed regression, not just a manual check)."""
+    original = open(CONTRACT_FILE, encoding="utf-8").read()
+    try:
+        c = json.loads(original)
+        c["invariants"][0]["statement"] = "TAMPERED — should be caught"  # body changed, hash NOT updated
+        json.dump(c, open(CONTRACT_FILE, "w"), indent=2)
+        r = _arena("contract")
+        assert r.returncode == 1, f"tamper not detected (exit {r.returncode}): {r.stdout}"
+        assert "content_sha256 mismatch" in r.stdout
+    finally:
+        open(CONTRACT_FILE, "w", encoding="utf-8").write(original)
+
+
+def test_contract_missing_degrades_gracefully():
+    """A missing/corrupt contract must degrade to a clean, actionable error per subcommand — NOT a raw
+    import-time traceback that takes down every subcommand (incl. the `contract` validator)."""
+    original = open(CONTRACT_FILE, encoding="utf-8").read()
+    try:
+        os.remove(CONTRACT_FILE)
+        r = _arena("contract")
+        assert r.returncode == 2, f"expected clean exit 2, got {r.returncode}"
+        assert "CONTRACT UNAVAILABLE" in r.stdout and "Traceback" not in (r.stdout + r.stderr)
+    finally:
+        open(CONTRACT_FILE, "w", encoding="utf-8").write(original)
+
+
+def test_audit_root_is_deterministic_and_change_sensitive():
+    """The manifest audit_root_sha256 is a Merkle root over the binding layers: stable when nothing
+    changes, and it MOVES when any layer (here, the oracle results) changes."""
+    _arena("lineage")
+    base = json.loads(_arena("manifest").stdout)["audit_root_sha256"]
+    again = json.loads(_arena("manifest").stdout)["audit_root_sha256"]
+    assert base == again, "audit_root must be deterministic when nothing changes"
+    op = os.path.join(SDIR, "oracle_r999.json")
+    mp = os.path.join(SDIR, "manifest_r999.json")  # manifest defaults to _latest_round -> 999 while op exists
+    try:
+        json.dump({"checks": [{"check": "z", "dimension": "D1", "status": "FAIL", "detail": "x"}],
+                   "passed": 0, "failed": 1, "deferred": 0}, open(op, "w"))
+        moved = json.loads(_arena("manifest").stdout)["audit_root_sha256"]
+        assert moved != base, "audit_root must change when a binding layer (oracle) changes"
+    finally:
+        for f in (op, mp):  # remove BOTH so _latest_round falls back to the real latest round
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_render_consumes_lineage_behaviorally():
+    """render() must NOT execute any finding's oracle_cmd: after lineage runs the command once, render
+    must not re-trigger its observable side effect (proves single-sourcing, not a literal grep)."""
+    fp = os.path.join(SDIR, "findings_r998.json")
+    lp = os.path.join(SDIR, "lineage_r998.json")
+    sentinel = os.path.join(SDIR, "sentinel_998")
+    try:
+        json.dump([{"id": "R8-01", "dimension": "D1", "invariant": "-", "finding": "probe", "evidence": "x",
+                    "oracle_cmd": f"touch {sentinel}"}], open(fp, "w"))
+        _arena("lineage", "998")            # lineage runs the cmd -> sentinel created
+        assert os.path.exists(sentinel), "lineage should have executed the oracle_cmd once"
+        os.remove(sentinel)
+        _arena("render")                    # render consumes lineage -> must NOT re-run the cmd
+        assert not os.path.exists(sentinel), "render re-executed oracle_cmd (must consume lineage instead)"
+    finally:
+        for f in (fp, lp, sentinel):
+            if os.path.exists(f):
+                os.remove(f)
+        _arena("render")
+
+
+def test_lineage_stale_live_does_not_mask_current_oracle_fail():
+    """Oracle dominance: a finding with a recorded live PASS but a CURRENT Oracle FAIL must cap at
+    ADJUDICATED (never LIVE_CONFIRMED) and record an l5_l7 disagreement — a stale green cannot hide a fail."""
+    fp = os.path.join(SDIR, "findings_r997.json")
+    lp = os.path.join(SDIR, "lineage_r997.json")
+    try:
+        # invariant 'HCD-I1' has a recorded last_live PASS; pair it with an oracle_cmd that FAILs now.
+        json.dump([{"id": "R7-01", "dimension": "D1", "invariant": "HCD-I1", "finding": "probe",
+                    "evidence": "x", "oracle_cmd": "false"}], open(fp, "w"))
+        _arena("lineage", "997")
+        o = next(x for x in json.load(open(lp))["findings"] if x["id"] == "R7-01")
+        assert o["oracle_result"] == "FAIL", o
+        assert o["lineage_status"] == "ADJUDICATED", f"stale live PASS masked a current FAIL: {o}"
+        assert "l5_l7_disagreement" in o, "the stale-live vs current-FAIL conflict must be recorded"
+    finally:
+        for f in (fp, lp):
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_lineage_records_false_positive_vs_oracle_fail_disagreement():
+    """When the Defender dismissed a finding (FALSE_POSITIVE) but the Oracle FAILs, the disagreement is
+    recorded (both directions) — the Oracle still wins."""
+    fp = os.path.join(SDIR, "findings_r996.json")
+    vp = os.path.join(SDIR, "verdicts_r996.json")
+    lp = os.path.join(SDIR, "lineage_r996.json")
+    try:
+        json.dump([{"id": "R6-01", "dimension": "D1", "invariant": "-", "finding": "probe",
+                    "evidence": "x", "oracle_cmd": "false"}], open(fp, "w"))
+        json.dump([{"id": "R6-01", "verdict": "FALSE_POSITIVE"}], open(vp, "w"))
+        _arena("lineage", "996")
+        o = next(x for x in json.load(open(lp))["findings"] if x["id"] == "R6-01")
+        assert "l4_l5_disagreement" in o and "FALSE_POSITIVE" in o["l4_l5_disagreement"], o
+    finally:
+        for f in (fp, vp, lp):
+            if os.path.exists(f):
+                os.remove(f)
