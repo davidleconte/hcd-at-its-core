@@ -51,13 +51,16 @@ if CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 CASSAND
 tm=$(grep -oE 'TOTAL_MODULES=[0-9]+' scripts/demo-entropy.sh | head -1 | cut -d= -f2)
 if grep -q "all ${tm} modules" Makefile; then say "count consistency (=$tm)" "PASS"; else say "count consistency" "FAIL"; fail=1; fi
 
-# Pure gate: this hook is read-only on tracked files. Refresh the dashboard explicitly
-# with `make audit` (kept out of the hook so a push never mutates committed artefacts).
-
 echo "─────────────────────────────────────────────────────────"
 if [ "$fail" -ne 0 ]; then
   echo "BLOCKED: deterministic gate failed. Fix the above or bypass with: git push --no-verify" >&2
   exit 1
 fi
-echo "OK: deterministic gate passed (LLM tribunal is advisory — run 'make audit-tribunal')."
+# Gate passed → refresh the courtroom snapshot to the exact commit being pushed, so the dashboard's
+# git provenance never lags HEAD. Writes ONLY gitignored generated artefacts (manifest_r*.json,
+# courtroom.html) — it never mutates a TRACKED file, so the push stays clean. Best-effort: a render
+# hiccup must never block the push, hence `|| true`. manifest/render default to the latest round.
+"$PY" audit_arena/bin/arena.py manifest >/dev/null 2>&1 || true
+"$PY" audit_arena/bin/arena.py render   >/dev/null 2>&1 || true
+echo "OK: deterministic gate passed · courtroom refreshed to $(git rev-parse --short HEAD) (LLM tribunal is advisory — 'make audit-tribunal')."
 exit 0

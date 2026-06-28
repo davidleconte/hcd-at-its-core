@@ -103,6 +103,17 @@ def test_latest_round_resolves_highest_round():
         assert int(r) == max(present), f"_latest_round {r} != max findings round {max(present)}"
 
 
+def test_pre_push_hook_refreshes_courtroom_on_success():
+    """The pre-push hook refreshes the courtroom snapshot (manifest + render) so the dashboard's git
+    provenance never lags HEAD — but only on the SUCCESS path, after the gate's fail-exit, and only
+    touching gitignored artefacts (never a tracked file, so the push stays clean)."""
+    hook = open(os.path.join(REPO, "audit_arena/bin/pre-merge-hook.sh")).read()
+    assert "arena.py render" in hook, "hook must refresh the courtroom (render)"
+    assert "arena.py manifest" in hook, "hook must refresh the manifest provenance SHA"
+    assert hook.index("arena.py render") > hook.index("BLOCKED"), \
+        "courtroom refresh must be on the success path (after the gate's fail-exit)"
+
+
 def test_make_audit_not_hardcoded_to_round_one():
     """Regression for the stale-courtroom bug: `make audit` rendered the LATEST round but only
     regenerated round 1, so the manifest provenance silently lagged once the tribunal advanced.
