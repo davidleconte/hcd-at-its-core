@@ -2289,6 +2289,15 @@ The module works in two layers:
 
 ## Module 86: CIDR / IP Allowlist Authorizer
 
+> **Live status (HCD 2.0.6, verified 2026-06-28):** the `CassandraCIDRAuthorizer` is **disabled** in
+> this demo's secure profile. Enabling it crashes every node at first boot with a
+> `NullPointerException` in `AuthCacheService.register` ← `CassandraCIDRAuthorizer.initCaches`
+> (reproduced with the full parameter set) — a product bootstrap catch-22: `initCaches` reads
+> `system_auth.cidr_groups`, the very table the authorizer is supposed to create. This module
+> therefore **teaches the commands below but does not enforce them** on this build; enabling enforce
+> would need a post-boot table-seed step IBM/DataStax does not document here. The concepts and CQL
+> are exactly what HCD 2.0 / Cassandra 5.0 offer once the authorizer can initialize.
+
 HCD 2.0 (Cassandra 5.0) can restrict a role's logins by the **source IP range** of the connection. The CIDR authorizer runs in **MONITOR** (logs violations, allows the connection — safe for rollout) or **ENFORCE** (rejects logins from CIDRs not allowed for the role). CIDR groups live in `system_auth.cidr_groups`; a role is bound with `ALTER ROLE ... WITH ACCESS FROM CIDRS { 'group' }`.
 
 ```sql

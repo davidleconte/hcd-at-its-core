@@ -6,7 +6,7 @@ This project provides a Dockerized environment for running a multi-node **IBM HC
 
 - A Docker-compatible engine:
   - [Docker Desktop](https://docs.docker.com/get-docker/) (includes Compose v2), **or**
-  - [colima](https://github.com/abiosoft/colima) on macOS (Apple Silicon / MBP M3 Pro). Colima exposes a Docker socket, so `docker compose` works unchanged. Size the VM for a 6-node cluster: `colima start --cpu 4 --memory 8 --disk 60` (the compose limits sum to ~6 GiB RAM; the default 2 CPU / 2 GiB VM is too small).
+  - [colima](https://github.com/abiosoft/colima) on macOS (Apple Silicon / MBP M3 Pro). Colima exposes a Docker socket — note it ships the standalone `docker-compose` (v2), not the `docker compose` plugin; the Makefile auto-detects. Size the VM: `colima start --cpu 4 --memory 12 --disk 60`. 8 GiB is the bare floor (the 6 compose limits sum to ~6 GiB, leaving almost nothing for the VM/daemon and none for MinIO/Data-API/Grafana); **12 GiB is what booted cleanly live** (2026-06-28). The default 2 CPU / 2 GiB VM is far too small.
 - [Docker Compose](https://docs.docker.com/compose/install/) (v1 `docker-compose` also supported)
 - **HCD Binary**: Place `hcd-2.0.6-bin.tar.gz` in the root directory. Obtain it from IBM Passport Advantage (part number `M1442EN`) or your IBM representative.
 
@@ -203,7 +203,7 @@ The cluster can be configured via environment variables in the `.env` file or `d
 | `CASSANDRA_DC` | Datacenter name for this node | `dc1` |
 | `CASSANDRA_RACK` | Rack name for this node | `rack1` |
 | `MAX_HEAP_SIZE` | JVM heap size (`-Xmx` and `-Xms`) | `512M` |
-| `HEAP_NEWSIZE` | JVM young generation size (`-Xmn`) | `100M` |
+| `HEAP_NEWSIZE` | JVM young gen (`-Xmn`); honored by cassandra-env if set | _unset_ (G1 auto-sizes; compose no longer pins it — a pinned `-Xmn` under G1 aborted the JVM) |
 | `JVM_EXTRA_OPTS` | Additional JVM options (e.g., JMX exporter) | (empty) |
 
 ## Monitoring (Prometheus + Grafana)
@@ -273,7 +273,7 @@ Part 11 modules 86–92 demonstrate authentication, authorization, CIDR/IP allow
 make gen-certs        # generate ./certs (PEM CA + per-node + client identity certs)
 make up-secure        # compose base + secure overlay (auth, CIDR, certs)
 make wait             # wait for all 6 nodes to reach UN
-make secure-bootstrap # replicate system_auth across DCs (run once, after UN)
+make secure-bootstrap # replicate system_auth/traces/distributed across DCs (run once, after UN)
 make demo-2.0         # run the Part 11 innovation modules (85-93)
 ```
 
@@ -281,5 +281,5 @@ The default `make up` runs the **open profile** (no auth) so modules 0–85 work
 
 Notes on the secure profile:
 - All in-container `cqlsh` calls (healthcheck, seed-wait, every demo command) authenticate as the bootstrap superuser `cassandra/cassandra` via a baked `cqlshrc` — so the cluster forms and the demo runs under auth. This means CQL under the secure profile runs *as the superuser*; the profile is intended to exercise the Part 11 security features (86–92), not to re-run modules 0–85 against the RBAC model.
-- `make secure-bootstrap` raises `system_auth` from the default RF=1 to `NetworkTopologyStrategy {dc1:3, dc2:3}` and repairs it, so authentication survives node loss (the default RF=1 superuser is a known multi-DC bootstrap hazard).
-- The CIDR authorizer ships in **MONITOR** mode. Never switch it to **ENFORCE** in production before populating `system_auth.cidr_groups` and allowlisting your own source CIDR, or you can lock yourself out.
+- `make secure-bootstrap` raises `system_auth` (and `system_traces` / `system_distributed`) from the default SimpleStrategy RF=1 to `NetworkTopologyStrategy {dc1:3, dc2:3}` and repairs them, so authentication survives node loss and `LOCAL_QUORUM` reads against the system keyspaces (e.g. cqlsh `TRACING ON`) work on the multi-DC cluster. The default RF=1 superuser is a known multi-DC bootstrap hazard; the superuser also authenticates at QUORUM, so if a prior boot half-initialized `system_auth`, recreate with fresh volumes (`docker-compose … down -v`).
+- The CIDR / IP allowlist authorizer (Module 86) is **disabled** in the base secure profile (default `AllowAllCIDRAuthorizer`). On a live HCD 2.0.6 boot it NPEs at first-boot cache-init (`AuthCacheService.register` ← `CassandraCIDRAuthorizer.initCaches`) regardless of parameters — a product bootstrap catch-22 (it reads `system_auth.cidr_groups`, the table it is meant to create), so every node crashes before serving CQL. The module renders the CIDR commands for teaching; enabling enforce needs a post-boot table-seed step this build does not provide. The rest of the secure profile (Password/Authorizer/NetworkAuthorizer/mTLS) is unaffected.
