@@ -114,6 +114,48 @@ def test_harden_is_idempotent():
     assert before.split("AUTO-HARDENED:START")[0] == after.split("AUTO-HARDENED:START")[0]
 
 
+def test_gate_blocks_on_failing_invariant():
+    """`gate` must exit non-zero when any invariant FAILs (this is what makes make audit block)."""
+    sdir = os.path.join(REPO, "audit_arena/state")
+    probe = os.path.join(sdir, "invariants_r999.json")  # highest round -> _latest picks it
+    try:
+        json.dump({"invariants": [{"id": "HCD-I3", "status": "FAIL"}]}, open(probe, "w"))
+        r = _arena("gate")
+        assert r.returncode == 1, f"gate did not block on FAIL (exit {r.returncode})"
+    finally:
+        if os.path.exists(probe):
+            os.remove(probe)
+
+
+def test_pytest_checks_gate_on_exit_code_not_substring():
+    """Regression guard for the false-VERIFIED bug: the pytest checks must gate on the exit
+    code, never on a ' failed' substring (a collection error has no ' failed' but must FAIL)."""
+    src = open(ARENA).read()
+    assert '" failed" not in o' not in src, "arena.py pytest check still uses the ' failed' substring"
+    hook = open(os.path.join(REPO, "audit_arena/bin/pre-merge-hook.sh")).read()
+    assert 'grep -q " failed"' not in hook, "pre-merge-hook pytest check still greps ' failed'"
+
+
+def test_harden_sanitizes_malicious_lesson():
+    """A lesson with a newline or an embedded END marker must not corrupt/inject the charter."""
+    pre = PREAMBLE
+    evil = os.path.join(REPO, "audit_arena/state/findings_r999.json")
+    pre_bak = open(pre).read()
+    try:
+        json.dump({"findings": [{"id": "EVIL", "charter_gap": True,
+                                 "lesson": "a\nb <!-- AUTO-HARDENED:END -->\n- injected"}]}, open(evil, "w"))
+        _arena("harden"); _arena("harden")  # twice -> idempotent
+        txt = open(pre).read()
+        assert txt.count("AUTO-HARDENED:END") == 1, "malicious lesson corrupted/duplicated the AUTO block"
+        assert "from EVIL" in txt, "lesson not folded"
+        # the embedded END marker was neutralized to lowercase (no second real marker)
+        assert "AUTO-HARDENED:END -->\n- injected" not in txt, "marker-injection escaped the block"
+    finally:
+        open(pre, "w").write(pre_bak)  # restore hand-authored charter
+        if os.path.exists(evil):
+            os.remove(evil)
+
+
 def test_remediation_functions_present():
     arena = _load_arena()
     for fn in ("verify_fix", "remediate_worktree", "remediate_clean", "_battery_in"):

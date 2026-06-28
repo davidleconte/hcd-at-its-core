@@ -215,6 +215,7 @@ audit: ## Run the deterministic audit (Oracle + invariants + manifest) and rende
 	python3 audit_arena/bin/arena.py manifest 1
 	python3 audit_arena/bin/arena.py render
 	@echo "Open: audit_arena/courtroom.html"
+	python3 audit_arena/bin/arena.py gate   # exit 1 on any FAILing oracle check / invariant (CI blocks)
 
 audit-tribunal: ## Show how to run the LLM tribunal rounds (Mode A subagents / Mode B external)
 	@echo "Tribunal (per round R):"

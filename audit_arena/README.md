@@ -18,6 +18,18 @@ look-ahead-biased; an HCD audit can *run* the artefact — `cqlsh`, `make demo-s
 apache/cassandra. So HCD findings are **executably adjudicated**, not merely debated. The Oracle
 overrides both Prosecutor and Defender for any finding it can run.
 
+> **What actually runs vs what's a design (be precise):** the **deterministic half** — the
+> Oracle, the `HCD-I*` invariants, the manifest, `verify-fix`, the gate — is real code that runs
+> every time. The **multi-family LLM tribunal** (Prosecutor/Defender/Judge as *different* model
+> families) is **architecture, not a result yet**: `acts/` is empty and the seed
+> `state/findings_r1.json` are the findings from a **manual MECE subagent pass**, loaded into the
+> tribunal's schema — three independent model families have **not** adjudicated them. Mode B was
+> exercised only by sending a role charter (no repo data). Treat the "Defender is a different
+> family / diversity-of-judgement" line as the *intended* anti-collusion mechanism, not a claim
+> that it has run. The seed findings are tagged `FIXED`, meaning the code fix landed and the
+> *offline* Oracle passes — **not** that `HCD-I1`/`I2` (live CQL / cluster-forms) were executed;
+> those stay `DEFERRED` until the cluster boots.
+
 ## MECE dimensions
 D1 technical accuracy (CQL/config vs C5.0) · D2 build & runtime wiring · D3 shell robustness ·
 D4 tests · D5 documentation consistency · D6 security & back-compat. See `prompts/_preamble.md`
@@ -66,7 +78,7 @@ Once `hcd-2.0.6-bin.tar.gz` is staged and `make up` / `make up-secure` runs, the
 6×UN cluster-forms, `make verify-release` (C5.0 + Java 17), and the **Part 11 DDM CQL battery via
 `cqlsh -e`** — promoting the "verified-against-docs" findings to "executed-live".
 
-### Formal invariants (Definition-of-Done) + reproducibility manifest
+### Formal invariants (Definition-of-Done) + provenance manifest
 
 `bin/arena.py invariants` evaluates the seven named **HCD invariants** — the formal DoD every
 finding and Oracle check maps to (full spec + design in `DESIGN_invariants_manifest.md`):
@@ -81,7 +93,7 @@ Offline they evaluate to `PASS`/`FAIL`; the two live invariants (I1/I2) fall bac
 can **fail fast on broken wiring but only `DEFERRED` until a live cluster confirms** (burden on the
 artefact). `I7` checks the pinned `reference_facts.json` — a drift to a wrong version/date fails it.
 
-`bin/arena.py manifest` emits a **reproducibility manifest** (`state/manifest_r{N}.json`): git SHA +
+`bin/arena.py manifest` emits a **provenance manifest** (`state/manifest_r{N}.json`) — it *records* (does not bundle/pin): git SHA +
 `git_dirty`, tool versions, a **content hash of the audited HCD source** (the arena's own outputs are
 excluded, so the hash is stable across runs), the Oracle summary, and the seven invariant statuses.
 Both surface in `courtroom.html` (an invariant scorecard + a manifest strip).

@@ -12,9 +12,10 @@ Subcommands:
   excerpts F.json         -> verbatim path:line excerpts for the findings in F.json
   oracle [R]              -> run the deterministic check battery -> state/oracle_r{R}.json
   invariants [R]          -> evaluate the HCD Definition-of-Done -> state/invariants_r{R}.json
-  manifest [R]            -> emit a reproducibility manifest -> state/manifest_r{R}.json
+  manifest [R]            -> emit a provenance manifest (records SHA/versions/hash) -> state/manifest_r{R}.json
   act ROLE RND F.md       -> append an act block to TRANSCRIPT.md
   converge                -> verdict: 2-dry-rounds AND no FAILing invariant -> convergence.json
+  gate                    -> exit 1 if the latest oracle/invariants have any FAIL (makes `make audit` block)
   judge-brief [R]         -> Judge input with severities stripped (anti-anchoring)
   harden                  -> fold charter_gap lessons into prompts/_preamble.md (AUTO block)
   verify-fix FIX [BASE]   -> apply patch(es) in a THROWAWAY worktree, run the Oracle there,
@@ -78,8 +79,8 @@ def repomap():
 
 def _read_window(path, line, ctx=8):
     p = os.path.join(ROOT, path)
-    if not os.path.exists(p):
-        return f"  [MISSING FILE: {path}]"
+    if not path or not os.path.isfile(p):  # isfile, not exists: empty path -> ROOT (a dir) crashed open()
+        return f"  [MISSING FILE: {path or '(none)'}]"
     ls = open(p, encoding="utf-8", errors="ignore").read().splitlines()
     if line is None:
         return "\n".join(f"{i+1:>5} | {l}" for i, l in enumerate(ls[:20]))
@@ -159,7 +160,9 @@ def oracle(rnd="1"):
         lambda c, o: "Score:  100%" in o, lambda c, o: o.strip().splitlines()[-1] if o.strip() else "")
     add("pytest (no fail)", "D4",
         "python3 -m pytest tests/ -q",
-        lambda c, o: " failed" not in o, lambda c, o: o.strip().splitlines()[-1] if o.strip() else "")
+        # gate on the EXIT CODE: pytest exits 0 only on pass (skips ok); a collection error
+        # (2), zero tests (5), or syntax error never contain " failed" but must FAIL.
+        lambda c, o: c == 0, lambda c, o: o.strip().splitlines()[-1] if o.strip() else "")
     # D2 — combined cassandra.yaml has no duplicate top-level keys
     dupcheck = (
         "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
@@ -234,13 +237,17 @@ def oracle(rnd="1"):
 # DEMOTE to FAIL (broken wiring) but never CONFIRM (status caps at DEFERRED) — burden on
 # the artefact, mirroring the Oracle's honesty.
 _DUPKEY = (
+    # fail CLOSED if envsubst is missing or the rendered file is empty (else 0 keys -> false PASS)
+    "command -v envsubst >/dev/null || exit 2; "
     "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
     "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
-    "envsubst < config/cassandra.yaml.template > /tmp/_inv.yaml; printf '\\n' >> /tmp/_inv.yaml; "
+    "envsubst < config/cassandra.yaml.template > /tmp/_inv.yaml || exit 2; printf '\\n' >> /tmp/_inv.yaml; "
     "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
     "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
-    "envsubst < config/cassandra-secure.yaml.fragment >> /tmp/_inv.yaml; "
-    "python3 -c \"import yaml,re,collections,sys; s=open('/tmp/_inv.yaml').read(); yaml.safe_load(s); "
+    "envsubst < config/cassandra-secure.yaml.fragment >> /tmp/_inv.yaml || exit 2; "
+    "[ -s /tmp/_inv.yaml ] || exit 2; "
+    "python3 -c \"import yaml,re,collections,sys; s=open('/tmp/_inv.yaml').read(); "
+    "sys.exit(2) if not s.strip() else None; yaml.safe_load(s); "
     "k=re.findall(r'^([A-Za-z_]\\w*):',s,re.M); sys.exit(1 if [x for x,c in collections.Counter(k).items() if c>1] else 0)\"")
 _CQL_BATTERY = ("docker exec hcd-node1 cqlsh -e \""
     "CREATE KEYSPACE IF NOT EXISTS arena_i WITH replication={'class':'SimpleStrategy','replication_factor':1};"
@@ -262,11 +269,16 @@ INVARIANTS = [
      "offline_cmd": "tm=$(grep -oE 'TOTAL_MODULES=[0-9]+' scripts/demo-entropy.sh | head -1 | cut -d= -f2); "
                     "grep -q \"all $tm modules\" Makefile && grep -q \"$tm-module\" README.md"},
     {"id": "HCD-I5", "dim": "D6", "statement": "No key/cert material baked into the image or committed",
-     "offline_cmd": "! git ls-files | grep -qE '\\.(key|pem)$|^certs/' && ! grep -q 'COPY certs' Dockerfile "
+     # filename denylist + CONTENT scan for PEM private keys (catches a key under any name) + (COPY|ADD).*cert
+     "offline_cmd": "! git ls-files | grep -qiE '\\.(key|pem|crt|p12|pfx|jks|der)$|(^|/)certs/' "
+                    "&& ! { git ls-files -z | xargs -0 grep -lIE 'BEGIN ((RSA|EC|OPENSSL|DSA) )?PRIVATE KEY' "
+                    "2>/dev/null | grep -q .; } "
+                    "&& ! grep -qiE '^(COPY|ADD)[[:space:]].*cert' Dockerfile "
                     "&& grep -qE '^certs/?$' .gitignore"},
     {"id": "HCD-I6", "dim": "D3", "statement": "Demo script is dry-run/score safe (syntax+lint+scorecard)",
+     # shellcheck failure must FAIL the invariant (no `|| true` swallow); aligned to CI's -S warning
      "offline_cmd": "for s in scripts/*.sh; do bash -n \"$s\" || exit 1; done; "
-                    "{ command -v shellcheck >/dev/null && shellcheck -S error scripts/*.sh || true; } && "
+                    "if command -v shellcheck >/dev/null; then shellcheck -S warning scripts/*.sh || exit 1; fi; "
                     "./scripts/demo-entropy.sh --score 2>/dev/null | grep -q 'Score:  100%'"},
     {"id": "HCD-I7", "dim": "D1", "statement": "Every HCD-2.0/C5.0 version & CQL claim is source-verified",
      "offline_cmd": "python3 -c \"import json,subprocess,sys,os; "
@@ -307,7 +319,7 @@ def invariants(rnd="1"):
 
 
 def manifest(rnd="1"):
-    """Emit a reproducibility manifest -> state/manifest_r{rnd}.json (content hash over the
+    """Emit a provenance manifest -> state/manifest_r{rnd}.json (records git/env/hash; full sha256 content hash over the
     audited HCD source only; the arena's own outputs are excluded by tracked_files())."""
     import hashlib
 
@@ -336,10 +348,10 @@ def manifest(rnd="1"):
                 "shellcheck": sh("shellcheck --version 2>/dev/null | awk '/version:/{print $2}'") or "absent",
                 "docker": sh("docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ,") or "absent",
                 "conda_env": os.environ.get("CONDA_DEFAULT_ENV", "")},
-        "repo": {"signal_files": len(files), "content_sha256": h.hexdigest()[:16]},
+        "repo": {"signal_files": len(files), "content_sha256": h.hexdigest()},
         "oracle": {"passed": oj.get("passed"), "failed": oj.get("failed"),
                    "deferred": oj.get("deferred"),
-                   "results_sha256": hashlib.sha256(json.dumps(oj, sort_keys=True).encode()).hexdigest()[:16] if oj else None},
+                   "results_sha256": hashlib.sha256(json.dumps(oj, sort_keys=True).encode()).hexdigest() if oj else None},
         "invariants": {i["id"]: i["status"] for i in ij.get("invariants", [])},
     }
     os.makedirs(STATE, exist_ok=True)
@@ -347,9 +359,32 @@ def manifest(rnd="1"):
     print(json.dumps(man, indent=2))
 
 
+def _round_of(path):
+    m = re.search(r"_r(\d+)\.", path)
+    return int(m.group(1)) if m else -1
+
+
+def _by_round(pattern):
+    """state/<x>_r{N}.json sorted by NUMERIC round (lexical sort puts r10 before r2)."""
+    return sorted(glob.glob(os.path.join(STATE, pattern)), key=_round_of)
+
+
 def _latest(pattern):
-    fs = sorted(glob.glob(os.path.join(STATE, pattern)))
+    fs = _by_round(pattern)
     return json.load(open(fs[-1])) if fs else {}
+
+
+def gate():
+    """Read the latest oracle + invariants and exit non-zero if anything FAILed.
+    This is what makes `make audit` actually gate (oracle/invariants are reporters that
+    exit 0; without this the CI `make audit` step is non-blocking). DEFERRED never blocks."""
+    oj, ij = _latest("oracle_r*.json"), _latest("invariants_r*.json")
+    o_fail = [c["check"] for c in oj.get("checks", []) if c.get("status") == "FAIL"]
+    i_fail = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "FAIL"]
+    if o_fail or i_fail:
+        print(f"GATE FAIL — oracle: {o_fail or '—'} · invariants: {i_fail or '—'}")
+        sys.exit(1)
+    print("GATE PASS — no FAILing oracle check or invariant.")
 
 
 def act(role, rnd, md_file):
@@ -367,10 +402,10 @@ def _norm(f):
 
 def converge():
     finds, verds = {}, {}
-    for fp in sorted(glob.glob(os.path.join(STATE, "findings_r*.json"))):
+    for fp in _by_round("findings_r*.json"):
         rnd = int(re.search(r"_r(\d+)", fp).group(1))
         d = json.load(open(fp)); finds[rnd] = d if isinstance(d, list) else d.get("findings", [])
-    for fp in sorted(glob.glob(os.path.join(STATE, "verdicts_r*.json"))):
+    for fp in _by_round("verdicts_r*.json"):
         rnd = int(re.search(r"_r(\d+)", fp).group(1))
         d = json.load(open(fp)); items = d if isinstance(d, list) else d.get("verdicts", [])
         verds[rnd] = {v.get("id"): v for v in items}
@@ -401,7 +436,7 @@ def converge():
 
 def _all_findings():
     out = []
-    for fp in sorted(glob.glob(os.path.join(STATE, "findings_r*.json"))):
+    for fp in _by_round("findings_r*.json"):
         d = json.load(open(fp))
         out += (d if isinstance(d, list) else d.get("findings", []))
     return out
@@ -411,7 +446,7 @@ def judge_brief(rnd="1"):
     """Write the Judge's input with the Prosecutor's SEVERITY stripped, so the Judge
     re-derives severity from the finding + Oracle (anti-anchoring; the adl-aqt2 move)."""
     verds = {}
-    for fp in sorted(glob.glob(os.path.join(STATE, "verdicts_r*.json"))):
+    for fp in _by_round("verdicts_r*.json"):
         d = json.load(open(fp))
         for v in (d if isinstance(d, list) else d.get("verdicts", [])):
             verds[v.get("id")] = v
@@ -452,7 +487,11 @@ def harden():
     new_entries, seen_now = [], set()
     for f in _all_findings():
         if f.get("charter_gap") and f.get("lesson"):
-            entry = f"- [from {f.get('id')}] {f['lesson'].strip()}"
+            # sanitize: collapse to ONE line (so the `^- .*$` re-capture stays idempotent) and
+            # neutralize the marker tokens (lessons are LLM free-text — a newline duplicated
+            # entries, and an embedded AUTO-HARDENED:END would truncate/rewrite the block).
+            lesson = re.sub(r"\s+", " ", str(f["lesson"])).replace("AUTO-HARDENED", "auto-hardened").strip()
+            entry = f"- [from {f.get('id')}] {lesson}"
             k = norm(entry)
             if k in have or k in seen_now:
                 continue
@@ -493,7 +532,7 @@ def _battery_in(cwd):
 
     ck("bash-n", 'for s in scripts/*.sh; do bash -n "$s" || exit 1; done', lambda c, o: c == 0)
     ck("demo-score", "./scripts/demo-entropy.sh --score 2>/dev/null", lambda c, o: "Score:  100%" in o)
-    ck("pytest", "python3 -m pytest tests/ -q 2>&1", lambda c, o: " failed" not in o)
+    ck("pytest", "python3 -m pytest tests/ -q 2>&1", lambda c, o: c == 0)  # exit code, not substring
     ck("dup-keys", _DUPKEY, lambda c, o: c == 0)
     ck("counts", "tm=$(grep -oE 'TOTAL_MODULES=[0-9]+' scripts/demo-entropy.sh | head -1 | cut -d= -f2); "
                  "grep -q \"all $tm modules\" Makefile", lambda c, o: c == 0)
@@ -571,17 +610,17 @@ SEV = {"BLOCKER": "#c0392b", "CRITICAL": "#c0392b", "HIGH": "#d35400",
 def render():
     md = open(TRANSCRIPT, encoding="utf-8").read() if os.path.exists(TRANSCRIPT) else "*(awaiting prosecution)*"
     finds, verds, oracle_idx, grades = [], {}, {}, []
-    for fp in sorted(glob.glob(os.path.join(STATE, "findings_r*.json"))):
+    for fp in _by_round("findings_r*.json"):
         d = json.load(open(fp)); finds += (d if isinstance(d, list) else d.get("findings", []))
-    for fp in sorted(glob.glob(os.path.join(STATE, "verdicts_r*.json"))):
+    for fp in _by_round("verdicts_r*.json"):
         d = json.load(open(fp))
         for v in (d if isinstance(d, list) else d.get("verdicts", [])):
             verds[v.get("id")] = v
-    for fp in sorted(glob.glob(os.path.join(STATE, "oracle_r*.json"))):
+    for fp in _by_round("oracle_r*.json"):
         d = json.load(open(fp))
         for c in d.get("checks", []):
             oracle_idx[c.get("check")] = c
-    for fp in sorted(glob.glob(os.path.join(STATE, "grades_r*.json"))):
+    for fp in _by_round("grades_r*.json"):
         grades.append(json.load(open(fp)))
     inv = _latest("invariants_r*.json")
     man = _latest("manifest_r*.json")
@@ -735,6 +774,7 @@ if __name__ == "__main__":
     elif cmd == "manifest": manifest(sys.argv[2] if len(sys.argv) > 2 else "1")
     elif cmd == "act": act(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "converge": converge()
+    elif cmd == "gate": gate()
     elif cmd == "judge-brief": judge_brief(sys.argv[2] if len(sys.argv) > 2 else "1")
     elif cmd == "harden": harden()
     elif cmd == "verify-fix": verify_fix(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)

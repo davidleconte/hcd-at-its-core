@@ -24,9 +24,10 @@ else say "shellcheck" "skip (not installed)"; fi
 ./scripts/demo-entropy.sh --score >/tmp/_arena_score 2>/dev/null || true
 if grep -q "Score:  100%" /tmp/_arena_score; then say "make demo-score (100%)" "PASS"; else say "make demo-score" "FAIL"; fail=1; fi
 
-# D4 — pytest no failures
+# D4 — pytest: gate on the EXIT CODE (0 = pass, skips ok). A collection/import error
+# exits non-zero without printing " failed" — the old substring check let it through.
 if python3 -m pytest tests/ -q >/tmp/_arena_pytest 2>&1; then say "pytest" "PASS"; else
-  if grep -q " failed" /tmp/_arena_pytest; then say "pytest" "FAIL"; fail=1; else say "pytest" "PASS (skips only)"; fi; fi
+  say "pytest" "FAIL"; tail -1 /tmp/_arena_pytest; fail=1; fi
 
 # D2 — combined cassandra.yaml: no duplicate keys
 if CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 CASSANDRA_BROADCAST_ADDRESS=1 \
