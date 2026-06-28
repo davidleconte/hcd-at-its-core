@@ -90,6 +90,28 @@ def test_judge_brief_strips_severity():
     assert not re.search(r'(?m)^- severity|"severity"\s*:', brief), "severity field leaked to Judge"
 
 
+def test_latest_round_resolves_highest_round():
+    """`make audit` defaults oracle/invariants/manifest to _latest_round() so it refreshes the SAME
+    round the courtroom renders. The helper must return the highest round present, never below it."""
+    arena = _load_arena()
+    r = arena._latest_round()
+    assert r.isdigit(), f"_latest_round must be a numeric string, got {r!r}"
+    sdir = os.path.join(REPO, "audit_arena/state")
+    present = [int(re.search(r"_r(\d+)\.", f).group(1))
+               for f in __import__("glob").glob(os.path.join(sdir, "findings_r*.json"))]
+    if present:
+        assert int(r) == max(present), f"_latest_round {r} != max findings round {max(present)}"
+
+
+def test_make_audit_not_hardcoded_to_round_one():
+    """Regression for the stale-courtroom bug: `make audit` rendered the LATEST round but only
+    regenerated round 1, so the manifest provenance silently lagged once the tribunal advanced.
+    The audit target must call oracle/invariants/manifest with NO hardcoded round."""
+    mk = open(os.path.join(REPO, "Makefile")).read()
+    for cmd in ("oracle", "invariants", "manifest"):
+        assert f"arena.py {cmd} 1" not in mk, f"make audit must not hardcode round 1 for {cmd}"
+
+
 def test_convergence_schema_and_keys():
     """converge emits a verdict with the invariant-aware fields."""
     r = _arena("converge")

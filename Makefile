@@ -215,9 +215,11 @@ clean: ## Remove dangling images and build cache
 # ─── Adversarial audit arena ────────────────────────────────────────────────────
 audit: ## Run the deterministic audit (Oracle + invariants + manifest) and render courtroom.html
 	python3 audit_arena/bin/arena.py repomap
-	python3 audit_arena/bin/arena.py oracle 1
-	python3 audit_arena/bin/arena.py invariants 1
-	python3 audit_arena/bin/arena.py manifest 1
+	# no round arg -> arena defaults to the LATEST round, the same one render/gate display, so the
+	# dashboard's provenance never lags behind the tribunal's current round.
+	python3 audit_arena/bin/arena.py oracle
+	python3 audit_arena/bin/arena.py invariants
+	python3 audit_arena/bin/arena.py manifest
 	python3 audit_arena/bin/arena.py render
 	@echo "Open: audit_arena/courtroom.html"
 	python3 audit_arena/bin/arena.py gate   # exit 1 on any FAILing oracle check / invariant (CI blocks)

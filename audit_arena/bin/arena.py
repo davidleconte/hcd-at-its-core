@@ -391,6 +391,18 @@ def _latest(pattern):
     return json.load(open(fs[-1])) if fs else {}
 
 
+def _latest_round():
+    """Highest round present in state/ (findings/oracle/invariants/manifest), default '1'.
+    `make audit` defaults to this so it refreshes the SAME round the courtroom renders (render
+    reads _latest) — otherwise audit regenerates round 1 while the dashboard shows round N and the
+    manifest provenance silently goes stale."""
+    rounds = {_round_of(f) for pat in ("findings_r*.json", "oracle_r*.json",
+                                       "invariants_r*.json", "manifest_r*.json")
+              for f in glob.glob(os.path.join(STATE, pat))}
+    rounds.discard(-1)
+    return str(max(rounds)) if rounds else "1"
+
+
 def gate():
     """Read the latest oracle + invariants and exit non-zero if anything FAILed.
     This is what makes `make audit` actually gate (oracle/invariants are reporters that
@@ -909,9 +921,9 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "repomap": repomap()
     elif cmd == "excerpts": excerpts(sys.argv[2])
-    elif cmd == "oracle": oracle(sys.argv[2] if len(sys.argv) > 2 else "1")
-    elif cmd == "invariants": invariants(sys.argv[2] if len(sys.argv) > 2 else "1")
-    elif cmd == "manifest": manifest(sys.argv[2] if len(sys.argv) > 2 else "1")
+    elif cmd == "oracle": oracle(sys.argv[2] if len(sys.argv) > 2 else _latest_round())
+    elif cmd == "invariants": invariants(sys.argv[2] if len(sys.argv) > 2 else _latest_round())
+    elif cmd == "manifest": manifest(sys.argv[2] if len(sys.argv) > 2 else _latest_round())
     elif cmd == "act": act(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "converge": converge()
     elif cmd == "gate": gate()
