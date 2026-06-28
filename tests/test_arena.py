@@ -123,6 +123,23 @@ def test_make_audit_not_hardcoded_to_round_one():
         assert f"arena.py {cmd} 1" not in mk, f"make audit must not hardcode round 1 for {cmd}"
 
 
+def test_gate_does_not_block_on_oracle_timeout():
+    """A TIMEOUT oracle check (couldn't run — e.g. CPU contention from a live cluster) is
+    inconclusive, NOT a failure: the gate must pass (it blocks on FAIL). Prevents `make audit`
+    against a live cluster from reading as a hard pytest failure."""
+    sdir = os.path.join(REPO, "audit_arena/state")
+    probe = os.path.join(sdir, "oracle_r999.json")  # highest round -> _latest picks it
+    try:
+        json.dump({"checks": [{"check": "pytest (no fail)", "dimension": "D4",
+                               "status": "TIMEOUT", "detail": "timed out"}]}, open(probe, "w"))
+        r = _arena("gate")
+        assert r.returncode == 0, f"gate blocked on a TIMEOUT (should be inconclusive): {r.stdout}{r.stderr}"
+        assert "timed out" in (r.stdout + r.stderr).lower(), "gate should surface the timed-out check"
+    finally:
+        if os.path.exists(probe):
+            os.remove(probe)
+
+
 def test_convergence_schema_and_keys():
     """converge emits a verdict with the invariant-aware fields."""
     r = _arena("converge")

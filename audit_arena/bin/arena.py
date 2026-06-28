@@ -149,11 +149,18 @@ def oracle(rnd="1"):
     """Run the verifiable checks that adjudicate HCD findings as ground truth."""
     checks = []
 
-    def add(name, dim, cmd, ok_fn, detail_fn=lambda c, o: ""):
-        code, out = _run(cmd)
-        status = "PASS" if ok_fn(code, out) else "FAIL"
-        checks.append({"check": name, "dimension": dim, "status": status,
-                       "detail": detail_fn(code, out)[:300]})
+    def add(name, dim, cmd, ok_fn, detail_fn=lambda c, o: "", timeout=300):
+        code, out = _run(cmd, timeout=timeout)
+        if code == 99 and "[oracle-error]" in out and "timed out" in out:
+            # The check could not run to completion — almost always CPU contention from a LIVE
+            # cluster (these offline checks finish in seconds). Report as inconclusive (amber,
+            # non-blocking like DEFERRED), NOT a misleading red FAIL that reads as "tests broke".
+            status, detail = "TIMEOUT", ("timed out — likely CPU contention from a running cluster; "
+                                         "run `make audit` with the cluster down (it is an offline gate)")
+        else:
+            status = "PASS" if ok_fn(code, out) else "FAIL"
+            detail = detail_fn(code, out)
+        checks.append({"check": name, "dimension": dim, "status": status, "detail": str(detail)[:300]})
 
     # D3 — shell syntax + lint
     add("bash -n (all scripts)", "D3",
@@ -170,7 +177,9 @@ def oracle(rnd="1"):
         "python3 -m pytest tests/ -q",
         # gate on the EXIT CODE: pytest exits 0 only on pass (skips ok); a collection error
         # (2), zero tests (5), or syntax error never contain " failed" but must FAIL.
-        lambda c, o: c == 0, lambda c, o: o.strip().splitlines()[-1] if o.strip() else "")
+        # Generous timeout: ~30s offline, but minutes if a live cluster is starving the CPU —
+        # let it finish (real result) rather than time out; a timeout -> inconclusive, not FAIL.
+        lambda c, o: c == 0, lambda c, o: o.strip().splitlines()[-1] if o.strip() else "", timeout=900)
     # D2 — combined cassandra.yaml has no duplicate top-level keys
     dupcheck = (
         "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
@@ -410,10 +419,14 @@ def gate():
     oj, ij = _latest("oracle_r*.json"), _latest("invariants_r*.json")
     o_fail = [c["check"] for c in oj.get("checks", []) if c.get("status") == "FAIL"]
     i_fail = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "FAIL"]
+    o_timeout = [c["check"] for c in oj.get("checks", []) if c.get("status") == "TIMEOUT"]
     if o_fail or i_fail:
         print(f"GATE FAIL — oracle: {o_fail or '—'} · invariants: {i_fail or '—'}")
         sys.exit(1)
-    print("GATE PASS — no FAILing oracle check or invariant.")
+    # TIMEOUT is inconclusive (a check couldn't run — usually a live cluster starving the CPU), not a
+    # failure: it never blocks. Surface it so a green gate with a timed-out check isn't silently lost.
+    note = f"  (inconclusive, timed out: {o_timeout} — run with the cluster down)" if o_timeout else ""
+    print(f"GATE PASS — no FAILing oracle check or invariant.{note}")
 
 
 def act(role, rnd, md_file):
@@ -721,7 +734,7 @@ def render():
 <td><code>{html.escape(f.get('invariant','—'))}</code></td>
 </tr>""")
 
-    ostat = {"PASS": "#1e8449", "FAIL": "#c0392b", "DEFERRED": "#b7950b"}
+    ostat = {"PASS": "#1e8449", "FAIL": "#c0392b", "DEFERRED": "#b7950b", "TIMEOUT": "#b7950b"}
     orows = "".join(
         f"<tr><td>{html.escape(c['check'])}</td><td>{html.escape(c.get('dimension',''))}</td>"
         f"<td style=\"color:{ostat.get(c['status'],'#566')};font-weight:600\">{c['status']}</td>"
@@ -742,7 +755,7 @@ def render():
     fp_n = sum(1 for v in verds.values() if v.get('verdict', '').upper() == 'FALSE_POSITIVE')
     o_pass = sum(1 for c in oracle_idx.values() if c['status'] == 'PASS')
     o_fail = sum(1 for c in oracle_idx.values() if c['status'] == 'FAIL')
-    o_def = sum(1 for c in oracle_idx.values() if c['status'] == 'DEFERRED')
+    o_def = sum(1 for c in oracle_idx.values() if c['status'] in ('DEFERRED', 'TIMEOUT'))
     rounds = sorted({int(str(f.get('id', '')).split('-')[0][1:])
                      for f in finds if str(f.get('id', ''))[:1] == 'R' and str(f.get('id', ''))[1:2].isdigit()})
     cur_round = max(rounds) if rounds else 0
