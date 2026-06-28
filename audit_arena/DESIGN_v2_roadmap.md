@@ -42,13 +42,13 @@ Every refinement below pushed an anti-theatre control from prose into code. That
 All 7 themes returned **REFINE** from the adversarial critics (valid core, scoped down) — none rejected,
 none rubber-stamped. Sequenced by erosion-risk and dependency.
 
-### Tier 0 — Foundation (P1, build first; makes the rest safe to add)
+### Tier 0 — Foundation (P1, build first; makes the rest safe to add) — ✅ BUILT
 
-| # | Theme | Core delta | Effort |
-|---|---|---|---|
-| F1 | **Honesty reconciler / determinism-guard** | The Oracle's primacy as a *code invariant*, not a charter promise | M |
-| F2 | **Contract spine** | The Definition-of-Done as versioned data; `arena.py` loads it | M |
-| F3 | **Artefact lineage core** | One Oracle-dominant provenance object per finding; render consumes it | M |
+| # | Theme | Core delta | Effort | Status |
+|---|---|---|---|---|
+| F1 | **Honesty reconciler / determinism-guard** | The Oracle's primacy as a *code invariant*, not a charter promise | M | ✅ shipped (`reconcile`; [DESIGN_honesty_guardrails.md](DESIGN_honesty_guardrails.md)) |
+| F2 | **Contract spine** | The Definition-of-Done as versioned data; `arena.py` loads it | M | ✅ shipped (`contract/contract.v1.json`, `arena.py contract`) |
+| F3 | **Artefact lineage core** | One Oracle-dominant provenance object per finding; render consumes it | M | ✅ shipped (`lineage`; manifest `audit_root_sha256`) |
 
 **F1 — Honesty reconciler.** A thin pass on the *deterministic side* of the boundary so it cannot be
 argued away by any model/vendor:
