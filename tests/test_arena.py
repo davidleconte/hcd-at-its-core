@@ -67,17 +67,24 @@ def test_reference_facts_valid():
 
 
 def test_manifest_matches_invariants_if_generated():
-    """Self-check: if `make audit` has run, the manifest's invariant map agrees with
-    invariants_r1.json (no drift between the two generated artefacts)."""
+    """Self-check: if `make audit` has run, the manifest's invariant map agrees with the invariants
+    of the SAME round. `make audit` refreshes the LATEST round (not round 1), so compare that one —
+    checking a hardcoded round 1 would drift once the tribunal advances."""
+    import glob
     sdir = os.path.join(REPO, "audit_arena/state")
-    mp = os.path.join(sdir, "manifest_r1.json")
-    ip = os.path.join(sdir, "invariants_r1.json")
-    if not (os.path.exists(mp) and os.path.exists(ip)):
+    mans = sorted(glob.glob(os.path.join(sdir, "manifest_r*.json")),
+                  key=lambda f: int(re.search(r"_r(\d+)\.", f).group(1)))
+    if not mans:
         import pytest
-        pytest.skip("manifest/invariants not generated (run `make audit`)")
-    man = json.load(open(mp))
+        pytest.skip("manifest not generated (run `make audit`)")
+    rnd = re.search(r"_r(\d+)\.", mans[-1]).group(1)  # latest round, the one make audit refreshes
+    ip = os.path.join(sdir, f"invariants_r{rnd}.json")
+    if not os.path.exists(ip):
+        import pytest
+        pytest.skip("invariants for the latest manifest round not generated")
+    man = json.load(open(mans[-1]))
     inv = {i["id"]: i["status"] for i in json.load(open(ip))["invariants"]}
-    assert man["invariants"] == inv, "manifest invariant map drifted from invariants_r1.json"
+    assert man["invariants"] == inv, f"manifest invariant map drifted from invariants_r{rnd}.json"
 
 
 def test_judge_brief_strips_severity():
@@ -123,22 +130,27 @@ def test_make_audit_not_hardcoded_to_round_one():
         assert f"arena.py {cmd} 1" not in mk, f"make audit must not hardcode round 1 for {cmd}"
 
 
-def test_last_live_verdict_persists_for_deferred_rows():
-    """A live PASS must survive offline renders: _record_last_live stores it and _deferred_detail
-    surfaces it on a DEFERRED row, so the dashboard never silently loses a proven live result."""
+def test_last_live_pass_persists_and_promotes():
+    """A live PASS must survive offline renders: _record_last_live stores it and _last_live_pass
+    returns it so an offline check renders as a green PASS (with timestamp), not amber DEFERRED.
+    A check never run live -> None (stays DEFERRED); a recorded FAIL -> None (never promotes)."""
     arena = _load_arena()
     real = arena._LAST_LIVE
     bak = open(real).read() if os.path.exists(real) else None
     try:
-        arena._record_last_live("PROBE-CHECK", "PASS", "UN nodes: 6")
-        annotated = arena._deferred_detail("PROBE-CHECK", "no live cluster")
-        assert "last LIVE: PASS" in annotated, "deferred row must surface the prior live verdict"
-        assert arena._deferred_detail("NEVER-RAN", "base") == "base", "no record -> detail unchanged"
+        arena._record_last_live("PROBE-PASS", "PASS", "UN nodes: 6")
+        p = arena._last_live_pass("PROBE-PASS")
+        assert p and p["status"] == "PASS" and p.get("ts"), "a recorded live PASS must be retrievable"
+        assert arena._last_live_pass("NEVER-RAN") is None, "no record -> stays DEFERRED"
+        arena._record_last_live("PROBE-FAIL", "FAIL", "x")
+        assert arena._last_live_pass("PROBE-FAIL") is None, "a live FAIL must not promote to green"
     finally:
         if bak is not None:
             open(real, "w").write(bak)
         else:
-            d = arena._load_last_live(); d.pop("PROBE-CHECK", None)
+            d = arena._load_last_live()
+            d.pop("PROBE-PASS", None)
+            d.pop("PROBE-FAIL", None)
             json.dump(d, open(real, "w"))
 
 

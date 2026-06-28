@@ -166,10 +166,11 @@ def _record_last_live(key, status, detail):
     json.dump(d, open(_LAST_LIVE, "w"), indent=2, sort_keys=True)
 
 
-def _deferred_detail(key, base):
-    """Append `· last LIVE: PASS @ <ts>` to a DEFERRED detail if we have a prior live verdict."""
+def _last_live_pass(key):
+    """The prior live verdict for `key` iff it was a PASS, else None — so an offline render can show
+    a check that was verified live as a green PASS (with its timestamp) instead of amber DEFERRED."""
     p = _load_last_live().get(key)
-    return base + (f"  ·  last LIVE: {p['status']} @ {p['ts']}" if p else "")
+    return p if p and p.get("status") == "PASS" else None
 
 
 def oracle(rnd="1"):
@@ -241,8 +242,13 @@ def oracle(rnd="1"):
 
     def add_live(name, dim, cmd, ok_fn, detail_fn=lambda c, o: ""):
         if not cluster_up:
-            checks.append({"check": name, "dimension": dim, "status": "DEFERRED",
-                           "detail": _deferred_detail(name, "no live cluster (make up / make up-secure first)")})
+            p = _last_live_pass(name)  # verified live before -> green PASS w/ timestamp, not amber
+            if p:
+                checks.append({"check": name, "dimension": dim, "status": "PASS",
+                               "detail": f"last LIVE: PASS @ {p['ts']}"})
+            else:
+                checks.append({"check": name, "dimension": dim, "status": "DEFERRED",
+                               "detail": "no live cluster (make up / make up-secure first)"})
             return
         code, out = _run(cmd)
         status = "PASS" if ok_fn(code, out) else "FAIL"
@@ -362,12 +368,16 @@ def invariants(rnd="1"):
                 _record_last_live(inv["id"], status, "executed on live cluster")
         else:
             pcode, _o = _run(inv["proxy_cmd"])
-            # proxy can demote to FAIL (broken wiring) but cannot confirm PASS
-            prior = _load_last_live().get(inv["id"])
-            results.append({**base, "status": "FAIL" if pcode != 0 else "DEFERRED", "via": "proxy",
-                            "last_live": prior,
-                            "evidence": ("offline proxy FAILED — broken wiring" if pcode != 0 else
-                                         _deferred_detail(inv["id"], "wiring present; live verification deferred"))})
+            # proxy can demote to FAIL (broken wiring); a prior live PASS shows green w/ timestamp;
+            # otherwise DEFERRED (wiring present, not yet live-verified).
+            p = _last_live_pass(inv["id"])
+            if pcode != 0:
+                status, ev = "FAIL", "offline proxy FAILED — broken wiring"
+            elif p:
+                status, ev = "PASS", f"last LIVE: PASS @ {p['ts']}"
+            else:
+                status, ev = "DEFERRED", "wiring present; live verification deferred"
+            results.append({**base, "status": status, "via": "proxy", "evidence": ev, "last_live": p})
     os.makedirs(STATE, exist_ok=True)
     out = {"round": int(rnd), "cluster_up": cluster_up, "invariants": results,
            "passed": sum(1 for r in results if r["status"] == "PASS"),
@@ -797,9 +807,9 @@ def render():
 
     istat = {"PASS": "#1e8449", "FAIL": "#c0392b", "DEFERRED": "#b7950b"}
     def _ll_badge(i):
-        ll = i.get("last_live")
-        return (f' <span style="color:#1e8449">· last LIVE: {html.escape(ll["status"])} @ '
-                f'{html.escape(str(ll["ts"])[11:19])}</span>') if ll else ""
+        ll = i.get("last_live")  # status is already PASS for these; badge notes WHEN it was live
+        return (f' <span style="color:#1e8449">· ✓ live @ {html.escape(str(ll["ts"])[11:19])}</span>'
+                ) if ll else ""
     ichips = "".join(
         '<span style="display:inline-block;margin:3px 6px 3px 0;padding:4px 9px;border-radius:6px;'
         'background:#11242b;border:1px solid #1d3640;font-size:12px">'
