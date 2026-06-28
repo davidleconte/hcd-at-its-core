@@ -3,6 +3,9 @@
 A dedicated, repeatable **adversarial audit engine** for `hcd-at-its-core`, inspired by the
 `bb-debunking-phase-1` courtroom but adapted to **serious HCD 2.0 / Cassandra 5.0 requirements**.
 
+> 📐 **Full technical design:** [`DESIGN.md`](DESIGN.md) — the as-built retrospective (architecture,
+> components, decisions, the dogfooding defects, limitations). This README is the usage quick-start.
+
 Four roles. Diversity-of-judgement is the anti-collusion mechanism:
 
 | Role | Job | Driven by |
