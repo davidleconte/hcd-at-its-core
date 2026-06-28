@@ -46,7 +46,9 @@ secure-bootstrap: ## Replicate system_auth/traces/distributed across DCs after u
 	@# multi-DC cluster with "Unable to complete the operation against any hosts". Make them NTS too.
 	docker exec hcd-node1 cqlsh -e "ALTER KEYSPACE system_traces WITH replication = {'class':'NetworkTopologyStrategy','dc1':2,'dc2':2};"
 	docker exec hcd-node1 cqlsh -e "ALTER KEYSPACE system_distributed WITH replication = {'class':'NetworkTopologyStrategy','dc1':2,'dc2':2};"
-	@for n in 1 2 3 4 5 6; do docker exec hcd-node$$n nodetool repair -- system_auth system_traces system_distributed || true; done
+	@# Repair each keyspace SEPARATELY: `nodetool repair -- ks1 ks2 ks3` is mis-parsed as
+	@# "repair tables ks2/ks3 in keyspace ks1" (Unknown keyspace/cf pair). One repair per keyspace.
+	@for n in 1 2 3 4 5 6; do for ks in system_auth system_traces system_distributed; do docker exec hcd-node$$n nodetool repair "$$ks" >/dev/null 2>&1 || true; done; done
 	@echo "Done. system_auth/traces/distributed are DC-replicated; auth + LOCAL_QUORUM tracing resilient."
 
 down-secure: ## Stop the secure-profile cluster (preserve volumes)
