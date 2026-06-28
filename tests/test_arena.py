@@ -123,6 +123,25 @@ def test_make_audit_not_hardcoded_to_round_one():
         assert f"arena.py {cmd} 1" not in mk, f"make audit must not hardcode round 1 for {cmd}"
 
 
+def test_last_live_verdict_persists_for_deferred_rows():
+    """A live PASS must survive offline renders: _record_last_live stores it and _deferred_detail
+    surfaces it on a DEFERRED row, so the dashboard never silently loses a proven live result."""
+    arena = _load_arena()
+    real = arena._LAST_LIVE
+    bak = open(real).read() if os.path.exists(real) else None
+    try:
+        arena._record_last_live("PROBE-CHECK", "PASS", "UN nodes: 6")
+        annotated = arena._deferred_detail("PROBE-CHECK", "no live cluster")
+        assert "last LIVE: PASS" in annotated, "deferred row must surface the prior live verdict"
+        assert arena._deferred_detail("NEVER-RAN", "base") == "base", "no record -> detail unchanged"
+    finally:
+        if bak is not None:
+            open(real, "w").write(bak)
+        else:
+            d = arena._load_last_live(); d.pop("PROBE-CHECK", None)
+            json.dump(d, open(real, "w"))
+
+
 def test_gate_does_not_block_on_oracle_timeout():
     """A TIMEOUT oracle check (couldn't run — e.g. CPU contention from a live cluster) is
     inconclusive, NOT a failure: the gate must pass (it blocks on FAIL). Prevents `make audit`

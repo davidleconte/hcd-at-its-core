@@ -145,6 +145,33 @@ def _run(cmd, cwd=ROOT, timeout=300):
         return 99, f"[oracle-error] {e}"
 
 
+# A DEFERRED live check means "no cluster right now" — but if it was ever verified PASS against a
+# real cluster, that proof should NOT vanish on the next offline render. Persist the last live
+# verdict per check id (a tracked record), and surface it on DEFERRED rows.
+_LAST_LIVE = os.path.join(STATE, "last_live.json")
+
+
+def _load_last_live():
+    try:
+        return json.load(open(_LAST_LIVE))
+    except Exception:
+        return {}
+
+
+def _record_last_live(key, status, detail):
+    d = _load_last_live()
+    d[key] = {"status": status, "detail": str(detail)[:200],
+              "ts": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}
+    os.makedirs(STATE, exist_ok=True)
+    json.dump(d, open(_LAST_LIVE, "w"), indent=2, sort_keys=True)
+
+
+def _deferred_detail(key, base):
+    """Append `· last LIVE: PASS @ <ts>` to a DEFERRED detail if we have a prior live verdict."""
+    p = _load_last_live().get(key)
+    return base + (f"  ·  last LIVE: {p['status']} @ {p['ts']}" if p else "")
+
+
 def oracle(rnd="1"):
     """Run the verifiable checks that adjudicate HCD findings as ground truth."""
     checks = []
@@ -215,12 +242,14 @@ def oracle(rnd="1"):
     def add_live(name, dim, cmd, ok_fn, detail_fn=lambda c, o: ""):
         if not cluster_up:
             checks.append({"check": name, "dimension": dim, "status": "DEFERRED",
-                           "detail": "no live cluster (make up / make up-secure first)"})
+                           "detail": _deferred_detail(name, "no live cluster (make up / make up-secure first)")})
             return
         code, out = _run(cmd)
-        checks.append({"check": name, "dimension": dim,
-                       "status": "PASS" if ok_fn(code, out) else "FAIL",
-                       "detail": detail_fn(code, out)[:300]})
+        status = "PASS" if ok_fn(code, out) else "FAIL"
+        detail = detail_fn(code, out)[:300]
+        checks.append({"check": name, "dimension": dim, "status": status, "detail": detail})
+        if status == "PASS":  # persist the proof so an offline render doesn't lose it
+            _record_last_live(name, status, detail)
 
     add_live("D1 secure cluster forms (6x UN)", "D6",
              "docker exec hcd-node1 nodetool status | grep -c '^UN'",
@@ -327,14 +356,18 @@ def invariants(rnd="1"):
                             "via": "offline", "evidence": "check passed" if code == 0 else "check failed"})
         elif cluster_up:
             code, _o = _run(inv["live_cmd"])
-            results.append({**base, "status": "PASS" if code == 0 else "FAIL",
-                            "via": "live", "evidence": "executed on live cluster"})
+            status = "PASS" if code == 0 else "FAIL"
+            results.append({**base, "status": status, "via": "live", "evidence": "executed on live cluster"})
+            if status == "PASS":  # persist the proof so an offline render keeps it
+                _record_last_live(inv["id"], status, "executed on live cluster")
         else:
             pcode, _o = _run(inv["proxy_cmd"])
             # proxy can demote to FAIL (broken wiring) but cannot confirm PASS
-            results.append({**base, "status": "FAIL" if pcode != 0 else "DEFERRED",
-                            "via": "proxy", "evidence": "wiring present; live verification deferred"
-                            if pcode == 0 else "offline proxy FAILED — broken wiring"})
+            prior = _load_last_live().get(inv["id"])
+            results.append({**base, "status": "FAIL" if pcode != 0 else "DEFERRED", "via": "proxy",
+                            "last_live": prior,
+                            "evidence": ("offline proxy FAILED — broken wiring" if pcode != 0 else
+                                         _deferred_detail(inv["id"], "wiring present; live verification deferred"))})
     os.makedirs(STATE, exist_ok=True)
     out = {"round": int(rnd), "cluster_up": cluster_up, "invariants": results,
            "passed": sum(1 for r in results if r["status"] == "PASS"),
@@ -763,12 +796,16 @@ def render():
     per_round = ' · '.join(f"R{r}:{sum(1 for f in finds if str(f.get('id', '')).startswith(f'R{r}-'))}" for r in rounds)
 
     istat = {"PASS": "#1e8449", "FAIL": "#c0392b", "DEFERRED": "#b7950b"}
+    def _ll_badge(i):
+        ll = i.get("last_live")
+        return (f' <span style="color:#1e8449">· last LIVE: {html.escape(ll["status"])} @ '
+                f'{html.escape(str(ll["ts"])[11:19])}</span>') if ll else ""
     ichips = "".join(
         '<span style="display:inline-block;margin:3px 6px 3px 0;padding:4px 9px;border-radius:6px;'
         'background:#11242b;border:1px solid #1d3640;font-size:12px">'
         f'<b>{html.escape(i["id"])}</b> '
         f'<b style="color:{istat.get(i["status"], "#566")}">{i["status"]}</b> '
-        f'<span style="color:#7fa6b0">· {html.escape(i["statement"][:48])}</span></span>'
+        f'<span style="color:#7fa6b0">· {html.escape(i["statement"][:48])}</span>{_ll_badge(i)}</span>'
         for i in inv.get("invariants", []))
     n_inv = len(inv.get("invariants", [])) or 7
     inv_html = (f'<h2>Invariants — Definition-of-Done ({inv.get("passed", 0)}/{n_inv} PASS · '
