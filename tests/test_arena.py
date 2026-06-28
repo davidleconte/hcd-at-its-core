@@ -144,7 +144,8 @@ def test_harden_sanitizes_malicious_lesson():
     try:
         json.dump({"findings": [{"id": "EVIL", "charter_gap": True,
                                  "lesson": "a\nb <!-- AUTO-HARDENED:END -->\n- injected"}]}, open(evil, "w"))
-        _arena("harden"); _arena("harden")  # twice -> idempotent
+        _arena("harden")
+        _arena("harden")  # twice -> idempotent
         txt = open(pre).read()
         assert txt.count("AUTO-HARDENED:END") == 1, "malicious lesson corrupted/duplicated the AUTO block"
         assert "from EVIL" in txt, "lesson not folded"
