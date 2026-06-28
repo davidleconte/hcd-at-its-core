@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# HCD arena — deterministic pre-merge gate.
-# Installed as .git/hooks/pre-push by `make audit-install-hook`. Blocks the push if any
-# docker-free Oracle check fails, then refreshes courtroom.html (non-blocking).
+# HCD arena — deterministic pre-merge gate (read-only; refresh via `make audit`).
+# Installed as .git/hooks/pre-push by `make audit-install-hook`; also run by CI (.github/
+# workflows/ci.yml, the `arena` job). Blocks the push/PR if any docker-free Oracle check fails.
 # Bypass once with: git push --no-verify
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
