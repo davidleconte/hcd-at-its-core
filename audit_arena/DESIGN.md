@@ -58,7 +58,7 @@ that passes review by inspection and fails in practice. The arena turns "trust m
 
 ```
                          ┌─────────────────────────────────────────────────────┐
-                         │  bin/arena.py  — deterministic plumbing (≈1000 LOC)  │
+                         │  bin/arena.py  — deterministic plumbing (≈1800 LOC)  │
                          │  stdlib only; runs on Python 3.11 (project) & 3.14   │
                          └─────────────────────────────────────────────────────┘
    LLM roles (judgement)                         │                 Deterministic core (ground truth)
@@ -90,7 +90,7 @@ decided by an exit code. The Oracle's word beats both advocates.
 ## 4. Component design
 
 ### 4.1 `bin/arena.py` — the deterministic plumbing
-A single ~1000-line, **stdlib-only** Python file (no third-party imports → runs anywhere a Python
+A single ~1800-line, **stdlib-only** Python file (no third-party imports → runs anywhere a Python
 does). Subcommands:
 
 | Command | Purpose |
@@ -354,8 +354,8 @@ audit_arena/
 │   ├── arena.py            # the deterministic plumbing (all subcommands)
 │   ├── llm.sh              # Mode B provider adapter (glm/gemini/openai; egress+key gated)
 │   └── pre-merge-hook.sh   # git pre-push gate + courtroom auto-refresh
-├── prompts/                # role charters: _preamble, prosecutor, defender, judge, oracle,
-│                           #   proposer, redteam_fix (the hardened charter lives in _preamble.md)
+├── prompts/                # role charters: _preamble, prosecutor, defender, judge, oracle, proposer,
+│                           #   redteam_fix, forge_proposer, forge_redteam (hardened charter in _preamble.md)
 ├── contract/               # the Definition-of-Done as versioned data
 │   └── contract.v1.json    #   dimensions + invariants (HCD-I1..I7) + severity scale, content-hashed
 ├── state/                  # per-round artefacts (see §5); courtroom.html renders from here

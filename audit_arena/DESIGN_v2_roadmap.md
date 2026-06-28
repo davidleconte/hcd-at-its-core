@@ -99,14 +99,18 @@ digests.
 `panel-aggregate` reads oracle+invariants and caps the score (any `HCD-I*` FAIL → cap 5; Oracle FAIL on a
 surviving finding → cap 7), overwriting the judge's self-reported number and recording
 `{ceiling_applied, judge_claimed, capped_to}`. The Oracle ceiling becomes a *verified fact*, not a prompt
-request. *Phase 2:* K-vendor fan-out (`panel-judge`), `panel_rN.json` with median/spread/dissent.
+request. *Phase 2 (deferred):* per-judge K-vendor fan-out with median/spread/dissent — the multi-vendor
+variance need is met instead by **T2's `vendor-panel`** (below), so Phase 2 was not built separately.
+*As built:* `arena.py panel-aggregate` → `panel_rN.json`.
 
-**T2 — Routine multi-vendor panel.** `panel <role> <round>` fans `mode_b` over N vendors via
-`ARENA_PROVIDER` env per iteration (**no `llm.sh` signature change** — `llm.sh` already honors it),
-writing per-vendor artifacts (`verdicts_rN__<vendor>.json`). A deterministic `aggregate` produces a
-variance artifact (median/spread/dissent), tagging `oracle_absent` to prevent vendor-majority overriding
-the Oracle. Egress discipline intact (`ARENA_MODE_B=1`); vendor disagreement is settled by the Oracle and
-surfaced as a *variance signal* (turning "Gemini ignored `oracle=FIXED`" into a routine observation).
+**T2 — Routine multi-vendor panel.** *As built:* `arena.py vendor-panel <role> <round>` fans `_mode_b_call`
+over N vendors via `ARENA_PROVIDER` env per iteration (the `llm.sh` role-default was made to honor an
+explicit `ARENA_PROVIDER` — see the Tier-1 hardening), writing per-vendor artifacts
+(`verdicts_rN__<vendor>.json` / `grades_rN__<vendor>.json`, the `__` namespace excluded from binding
+pipelines). It emits the deterministic variance artifact `vendor_panel_rN_<role>.json` (participated/
+abstained/dissent), tagging `oracle_absent`. Egress discipline intact (`ARENA_MODE_B=1`); a gated/bad
+vendor abstains (never aborts), and vendor disagreement is settled by the Oracle and surfaced as a
+*variance signal* (turning "Gemini ignored `oracle=FIXED`" into a routine observation).
 *Critic refinement:* extract `mode_b`'s body into a helper returning `(status, obj_or_reason)` without
 `sys.exit`, so a per-vendor failure maps to `abstain`, never aborts the panel.
 

@@ -1076,3 +1076,48 @@ def test_forge_validate_rejects_path_namedropping_noops():
         assert arena._forge_validate(c), f"no-op predicate not rejected: {cmd!r}"
     ok = {"target_paths": ["README.md"], "acceptance": [{"clause": "x", "accept_cmd": "grep -q '2.0.6' README.md"}]}
     assert arena._forge_validate(ok) == [], "a real grep check must still pass"
+
+
+# ─── v2 holistic-challenge fixes (forge end-to-end coverage + CLI dispatch smoke) ─────────────────
+def test_forge_verify_signed_contract_reaches_accepted(tmp_path, monkeypatch):
+    """End-to-end (the claim 'forge proven end-to-end' must mean THIS): a SIGNED contract + a candidate
+    that satisfies every acceptance clause + a clean battery -> ACCEPTED via forge_verify. The SAME
+    candidate on an UNSIGNED contract -> PROVISIONAL (human-freeze); a post-sign acceptance edit ->
+    signature stale -> not ACCEPTED. (_battery_in is stubbed so the test doesn't re-run the full suite.)"""
+    arena = _load_arena()
+    monkeypatch.setattr(arena, "_battery_in", lambda cwd: {"overall": "PASS", "invariant_fail": []})
+    fid = "test-e2e-accept"
+    cpath = os.path.join(REPO, f"audit_arena/forge/{fid}.contract.json")
+    cand = str(tmp_path / "cand.diff")
+    probe = "_forge_e2e_probe.txt"
+    open(cand, "w").write(f"diff --git a/{probe} b/{probe}\nnew file mode 100644\n--- /dev/null\n"
+                          f"+++ b/{probe}\n@@ -0,0 +1 @@\n+ARENA_E2E_OK\n")
+    c = {"id": fid, "target_paths": [probe],
+         "acceptance": [{"clause": "probe present", "accept_cmd": f"grep -q ARENA_E2E_OK {probe}"}],
+         "must_not_regress": [], "human_signed": False, "signed_sha256": None}
+    try:
+        json.dump(c, open(cpath, "w"))
+        v = arena.forge_verify(fid, cand)
+        assert v["status"] == "PROVISIONAL", f"unsigned must cap at PROVISIONAL: {v.get('status')}"
+        assert all(cl["status"] == "PASS" for cl in v["acceptance"]), v
+        c["human_signed"] = True
+        c["signed_sha256"] = arena._acceptance_digest(c)
+        json.dump(c, open(cpath, "w"))
+        v2 = arena.forge_verify(fid, cand)
+        assert v2["status"] == "ACCEPTED", f"signed + all-pass + clean must be ACCEPTED: {v2.get('status')}"
+        c["acceptance"].append({"clause": "extra", "accept_cmd": f"grep -q ARENA_E2E_OK {probe}"})
+        json.dump(c, open(cpath, "w"))
+        v3 = arena.forge_verify(fid, cand)
+        assert v3["contract_signed"] is False and v3["status"] != "ACCEPTED", \
+            f"a post-sign acceptance edit must invalidate the signature: {v3.get('status')}"
+    finally:
+        if os.path.exists(cpath):
+            os.remove(cpath)
+
+
+def test_forge_cli_dispatch_arms_wired():
+    """The forge CLI dispatch arms are wired (not just the functions) — forge-contract validates the
+    committed example, forge-converge handles an unknown id without crashing."""
+    assert _arena("forge-contract", "example-version-pin").returncode == 0
+    r = _arena("forge-converge", "no-such-contract")
+    assert r.returncode == 0 and '"converged": false' in r.stdout, r.stdout

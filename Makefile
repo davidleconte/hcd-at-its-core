@@ -16,7 +16,7 @@ EXPECTED_CASSANDRA_MAJOR ?= 5.0
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part demo-2.0 gen-certs up-secure down-secure secure-bootstrap minio minio-down check-prereqs verify-release env test-env test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down audit audit-tribunal audit-mode-b audit-harden verify-fix audit-install-hook
+.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part demo-2.0 gen-certs up-secure down-secure secure-bootstrap minio minio-down check-prereqs verify-release env test-env test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down audit audit-tribunal audit-mode-b audit-vendor-panel audit-harden verify-fix forge audit-install-hook
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \

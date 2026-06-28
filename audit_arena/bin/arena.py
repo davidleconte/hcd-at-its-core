@@ -254,18 +254,11 @@ def oracle(rnd="1"):
         # Generous timeout: ~30s offline, but minutes if a live cluster is starving the CPU —
         # let it finish (real result) rather than time out; a timeout -> inconclusive, not FAIL.
         lambda c, o: c == 0, lambda c, o: o.strip().splitlines()[-1] if o.strip() else "", timeout=900)
-    # D2 — combined cassandra.yaml has no duplicate top-level keys
-    dupcheck = (
-        "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
-        "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
-        "envsubst < config/cassandra.yaml.template > /tmp/_arena.yaml; printf '\\n' >> /tmp/_arena.yaml; "
-        "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
-        "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
-        "envsubst < config/cassandra-secure.yaml.fragment >> /tmp/_arena.yaml; "
-        "python3 -c \"import yaml,re,collections,sys; s=open('/tmp/_arena.yaml').read(); yaml.safe_load(s); "
-        "k=re.findall(r'^([A-Za-z_]\\w*):',s,re.M); d=[x for x,c in collections.Counter(k).items() if c>1]; "
-        "sys.exit(1 if d else 0)\"")
-    add("combined config: no duplicate keys", "D2", dupcheck, lambda c, o: c == 0)
+    # D2 — combined cassandra.yaml has no duplicate top-level keys. Use the SAME contract-derived command
+    # as HCD-I3 / _battery_in (_DUPKEY) — one source of truth, not a third inline copy that can drift
+    # (and _DUPKEY additionally fails CLOSED if envsubst is missing or the render is empty). _require_contract
+    # above guarantees _DUPKEY is the real HCD-I3 command, not the fallback.
+    add("combined config: no duplicate keys", "D2", _DUPKEY, lambda c, o: c == 0)
     # D2 — secure overlay merges (try compose v2, then v1; skip if neither present)
     add("compose secure overlay merges", "D2",
         "(docker compose -f docker-compose.yml -f docker-compose.secure.yml config >/dev/null 2>&1 "
@@ -397,8 +390,8 @@ def manifest(rnd="1"):
         except Exception:
             data = b""
         h.update(f.encode() + b"\0" + hashlib.sha256(data).hexdigest().encode() + b"\n")
-    oj = _latest("oracle_r*.json")
-    ij = _latest("invariants_r*.json")
+    oj = _round_or_latest("oracle_r*.json", rnd)
+    ij = _round_or_latest("invariants_r*.json", rnd)
     man = {
         "schema_version": 1,
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
@@ -450,6 +443,13 @@ def _by_round(pattern):
 def _latest(pattern):
     fs = _by_round(pattern)
     return json.load(open(fs[-1])) if fs else {}
+
+
+def _round_or_latest(pattern, rnd):
+    """The round-specific artefact for `rnd` if it exists, else the latest — so a per-round command
+    reflects ITS round's state rather than whatever happens to be newest."""
+    p = os.path.join(STATE, pattern.replace("*", str(rnd)))
+    return json.load(open(p)) if os.path.exists(p) else _latest(pattern)
 
 
 def _latest_round():
@@ -621,9 +621,6 @@ def panel_aggregate(rnd="1"):
     DESIGN_v2_roadmap.md T1 + DESIGN_honesty_guardrails.md."""
     # Round-matched reads (fall back to latest if the round-specific file is absent), so a panel for round
     # N reflects round N's binding state, not whatever happens to be latest.
-    def _round_or_latest(pat, rn):
-        p = os.path.join(STATE, pat.replace("*", rn))
-        return json.load(open(p)) if os.path.exists(p) else _latest(pat)
     oj, ij = _round_or_latest("oracle_r*.json", rnd), _round_or_latest("invariants_r*.json", rnd)
     gp = os.path.join(STATE, f"grades_r{rnd}.json")
     grades_doc = json.load(open(gp)) if os.path.exists(gp) else (
@@ -1402,9 +1399,13 @@ def render():
             cap = panel.get("ceiling_applied")
             col = "#b7950b" if cap else "#7fa6b0"
             shown = panel.get("capped_to")
-            note = (f"capped to {shown} from {panel.get('judge_claimed')} — Oracle ceiling "
-                    f"{panel.get('ceiling')} ({html.escape(str(panel.get('ceiling_reason')))})") if cap \
-                else f"{shown}/10 (within Oracle ceiling {panel.get('ceiling')})"
+            if cap:
+                note = (f"capped to {shown} from {panel.get('judge_claimed')} — Oracle ceiling "
+                        f"{panel.get('ceiling')} ({html.escape(str(panel.get('ceiling_reason')))})")
+            elif panel.get("rubric_clamped"):
+                note = f"{shown}/10 — clamped from {panel.get('judge_claimed')} into the 0–10 rubric range"
+            else:
+                note = f"{shown}/10 (within Oracle ceiling {panel.get('ceiling')})"
             score_html = (f'<div style="margin:4px 0 8px;font-size:13px;color:{col}">advisory score: '
                           f'<b>{shown}</b>/10 — {note} · <span style="color:#7fa6b0">read by NO gate</span></div>')
         grade_html = f"""<div class="verdict"><h2>⚖️ Judge verdict (round {len(grades)})</h2>
