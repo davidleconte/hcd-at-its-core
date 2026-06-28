@@ -110,12 +110,12 @@ surfaced as a *variance signal* (turning "Gemini ignored `oracle=FIXED`" into a 
 *Critic refinement:* extract `mode_b`'s body into a helper returning `(status, obj_or_reason)` without
 `sys.exit`, so a per-vendor failure maps to `abstain`, never aborts the panel.
 
-### Tier 2 — Generative & pedagogical (P2; higher-effort, high-value-later)
+### Tier 2 — Generative & pedagogical (P2; higher-effort, high-value-later) — ✅ BUILT
 
 | # | Theme | Core delta | Effort | Status |
 |---|---|---|---|---|
 | G1 | **Generative battle (`forge`)** | Proposer⇄Red-team *designs* an artefact against a contract | L | ✅ shipped (`forge-contract`/`-sign`/`-verify`/`-record`/`-converge`; human-freeze; acceptance predicates; PROVISIONAL-until-signed) |
-| G2 | **Pupitre console** | 3-mode interactive teaching console over `courtroom.html` | L | ⏳ next |
+| G2 | **Pupitre console** | 3-mode interactive teaching console over `courtroom.html` | L | ✅ shipped (Comprendre/Exécuter/Naviguer; `replay <ids>` safe execution; argued-only guard; hash-persisted state) |
 
 **G1 — Generative battle.** A first-class loop that *designs/hardens a new artefact* against an
 acceptance contract (not just fixes a cited line). `forge-verify` is a thin generalization of `verify_fix`

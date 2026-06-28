@@ -1122,6 +1122,127 @@ def forge_converge(fid):
 
 SEV = CONTRACT["severity_scale"]  # severity->colour, from the contract spine (single source of truth)
 
+# ─── T2 / G2 PUPITRE: the dashboard as an interactive teaching console (3 modes, no framework/network) ──
+_PUPITRE_CSS = """<style>
+#pupitre{background:#0f1d22;border:1px solid #1d3640;border-radius:10px;padding:12px;margin-bottom:18px}
+.pmodes{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.pbtn{background:#13262d;color:#cfe0e4;border:1px solid #1d3640;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:13px}
+.pbtn.on{background:#1f6f8b;color:#fff;border-color:#2a8fb0}
+.phint{color:#7fa6b0;font-size:11.5px;margin-left:auto}
+.pcols{display:grid;grid-template-columns:230px 1fr;gap:12px}
+.plist{display:flex;flex-direction:column;gap:4px;max-height:360px;overflow:auto}
+.pchip{text-align:left;background:#11242b;color:#cfe0e4;border:1px solid #1d3640;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:12px}
+.pchip.sel{background:#15303a;border-color:#34c3a0}
+.pchip.argued{color:#9fb0b5;border-style:dashed}
+.pdetail{background:#11242b;border:1px solid #1d3640;border-radius:8px;padding:12px;font-size:13px}
+.pdetail h3{margin:0 0 6px;font-size:14px}
+.pmeta{color:#7fa6b0;font-size:12px;margin:6px 0}
+.pcmd{margin-top:8px} .pexe{margin-top:8px;color:#cfe0e4}
+.pargued{margin-top:8px;color:#d9b36b}
+.por{margin-left:6px} .por.ok{color:#34c3a0} .por.bad{color:#e57373}
+.pcopy{background:#1f6f8b;color:#fff;border:0;border-radius:5px;padding:2px 8px;cursor:pointer;font-size:11px;margin-left:4px}
+.pnav{background:#11242b;border:1px solid #1d3640;border-radius:8px;padding:14px}
+.pstep{color:#7fa6b0;font-size:12px;margin-bottom:6px}
+</style>"""
+
+# Vanilla JS, literal braces (kept OUT of the page f-string). State (mode/selection) lives in location.hash
+# so the 6s dashboard auto-refresh never wipes the user's exploration. NO command string ever leaves the
+# browser: "Exécuter" only ever emits `arena.py replay <id>` — ids, looked up server-side (guard b).
+_PUPITRE_JS = r"""
+(function(){
+  var P=window.__PUPITRE__||{findings:[]}, F=P.findings, root=document.getElementById('pupitre');
+  if(!root) return;
+  var STORY=[
+    {t:'The Prosecutor',d:'Refutes by default — files findings that something is wrong.'},
+    {t:'The Defender',d:'A different-model Defender cross-examines and kills false positives.'},
+    {t:'The Judge',d:'A blind Judge (severities stripped) re-derives severity under three lenses.'},
+    {t:'The Oracle binds',d:'The deterministic Oracle runs real commands; its exit code decides. Advocates argue, the Oracle adjudicates.'},
+    {t:'Convergence',d:'Findings collapse round over round until 2 dry rounds with no blocking invariant.'}
+  ];
+  var mode='comprendre', selId=null, navIdx=0;
+  (function load(){var p=(location.hash||'').replace('#','').split('|'); if(p[0])mode=p[0]; if(p[1])selId=decodeURIComponent(p[1]); if(p[2])navIdx=parseInt(p[2])||0;})();
+  function save(){location.hash=mode+'|'+(selId?encodeURIComponent(selId):'')+'|'+navIdx;}
+  function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':String(s));return d.innerHTML;}
+  function withCmd(){return F.filter(function(f){return f.oracle_cmd;});}
+  function replayCmd(ids){return 'python3 audit_arena/bin/arena.py replay '+ids.join(' ');}
+  function bar(){
+    var M=[['comprendre','Comprendre'],['executer','Exécuter'],['naviguer','Naviguer']];
+    return '<div class="pmodes">'+M.map(function(m){return '<button data-m="'+m[0]+'" class="pbtn'+(mode===m[0]?' on':'')+'">'+m[1]+'</button>';}).join('')
+      +'<span class="phint">the Oracle is the binding arbiter — the browser runs nothing</span></div>';
+  }
+  function detail(f){
+    if(!f) return '<div class="pdetail"><i>Select a finding on the left.</i></div>';
+    var ores=esc(f.oracle_result), cl=(f.oracle_result==='FIXED'||f.oracle_result==='PASS')?'ok':(f.oracle_result==='FAIL'?'bad':'');
+    var binding = f.oracle_cmd
+      ? '<div class="pcmd"><b>binding command</b> (stored): <code>'+esc(f.oracle_cmd)+'</code><span class="por '+cl+'">Oracle: '+ores+'</span></div>'
+      : '<div class="pargued">argued-only — <b>no binding command</b>. This finding rests on argument + citation, not an executable Oracle check.</div>';
+    var exe='';
+    if(mode==='executer'){
+      exe = f.oracle_cmd
+        ? '<div class="pexe">Replay through the trusted core (passes the <b>id</b>, not a command): <code>'+esc(replayCmd([f.id]))+'</code>'
+          +'<button class="pcopy" data-c="'+esc(replayCmd([f.id]))+'">copy</button></div>'
+        : '<div class="pexe pargued">nothing to replay — argued-only finding.</div>';
+    }
+    return '<div class="pdetail"><h3>'+esc(f.id)+' · '+esc(f.dim)+'</h3><p>'+esc(f.finding)+'</p>'
+      +'<div class="pmeta">citation <code>'+esc(f.evidence)+'</code> · invariant <code>'+esc(f.invariant)+'</code> · Defender '+esc(f.defender)+'</div>'
+      +binding+exe+'</div>';
+  }
+  function draw(){
+    var h=bar();
+    if(mode==='naviguer'){
+      var s=STORY[navIdx];
+      h+='<div class="pnav"><div class="pstep">step '+(navIdx+1)+'/'+STORY.length+'</div><h3>'+esc(s.t)+'</h3><p>'+esc(s.d)+'</p>'
+        +'<button class="pprev pbtn">‹ Prev</button> <button class="pnext pbtn">Next ›</button></div>';
+      root.innerHTML=h; wire(); return;
+    }
+    var head=(mode==='executer')
+      ? '<div class="pexe">'+withCmd().length+' findings carry a binding command. Replay them all (ids only): <code>'+esc(replayCmd(withCmd().map(function(f){return f.id;})))+'</code>'
+        +'<button class="pcopy" data-c="'+esc(replayCmd(withCmd().map(function(f){return f.id;})))+'">copy</button></div>'
+      : '';
+    var list='<div class="plist">'+F.map(function(f){
+      return '<button class="pchip'+(f.id===selId?' sel':'')+(f.oracle_cmd?'':' argued')+'" data-id="'+esc(f.id)+'">'+esc(f.id)+(f.oracle_cmd?'':' · argued')+'</button>';
+    }).join('')+'</div>';
+    var sel=F.filter(function(f){return f.id===selId;})[0];
+    root.innerHTML=h+head+'<div class="pcols">'+list+detail(sel)+'</div>'; wire();
+  }
+  function wire(){
+    root.querySelectorAll('.pbtn[data-m]').forEach(function(b){b.onclick=function(){mode=b.dataset.m;save();draw();};});
+    root.querySelectorAll('.pchip').forEach(function(b){b.onclick=function(){selId=b.dataset.id;save();draw();};});
+    root.querySelectorAll('.pcopy').forEach(function(b){b.onclick=function(){try{navigator.clipboard.writeText(b.dataset.c);}catch(e){} b.textContent='copied';};});
+    var pv=root.querySelector('.pprev'), nx=root.querySelector('.pnext');
+    if(pv)pv.onclick=function(){navIdx=(navIdx-1+STORY.length)%STORY.length;save();draw();};
+    if(nx)nx.onclick=function(){navIdx=(navIdx+1)%STORY.length;save();draw();};
+  }
+  draw();
+})();
+"""
+
+
+def replay(ids):
+    """T2/G2 — re-run the STORED oracle_cmd for each given finding id (looked up from committed state) and
+    print PASS/FAIL. The pupitre console's 'Exécuter' mode emits `replay <ids>` — it passes only IDS; the
+    trusted core supplies the command, so a browser can NEVER inject a command string into the
+    deterministic core. A finding with no oracle_cmd is reported argued-only and is never executed."""
+    finds = {}
+    for fp in _by_round("findings_r*.json"):
+        d = json.load(open(fp))
+        for f in (d if isinstance(d, list) else d.get("findings", [])):
+            finds[f.get("id")] = f
+    for fid in ids:
+        f = finds.get(fid)
+        if not f:
+            print(f"{fid}: NOT FOUND (id not in the committed findings register — nothing executed)")
+            continue
+        cmd = f.get("oracle_cmd")
+        if not cmd:
+            print(f"{fid}: argued-only — no binding command (nothing to replay)")
+            continue
+        try:
+            rc = subprocess.run(cmd, shell=True, cwd=ROOT, capture_output=True, timeout=60).returncode
+            print(f"{fid}: {'PASS' if rc == 0 else 'FAIL'} (stored oracle_cmd exit {rc})  ·  {cmd[:90]}")
+        except Exception as e:
+            print(f"{fid}: ERROR running stored oracle_cmd: {e}")
+
 
 def lineage(rnd="1"):
     """F3 — emit one Oracle-DOMINANT provenance object per finding -> state/lineage_r{rnd}.json. This is
@@ -1360,6 +1481,19 @@ def render():
         forge_html = ("<h2>Forge — artefacts designed against a contract</h2>"
                       "<table><tr><th>Contract</th><th>Human-freeze</th><th>Clauses</th>"
                       "<th>Last verdict</th><th>Open defects</th></tr>" + frows + "</table>")
+    # Pupitre console (T2/G2): the findings as a 3-mode interactive teaching console over an embedded JSON
+    # blob. Guard (a): an oracle_cmd-less finding renders "argued-only — no binding command", never a fake
+    # run. Guard (b): the only execution path is `arena.py replay <ids>` — ids, looked up server-side.
+    pupitre_data = [{"id": f.get("id"), "dim": f.get("dimension", ""),
+                     "finding": (f.get("finding", "") or "")[:400], "evidence": f.get("evidence", ""),
+                     "invariant": f.get("invariant", "—"), "oracle_cmd": f.get("oracle_cmd"),
+                     "oracle_result": (f.get("oracle_result") or "—"),
+                     "defender": (verds.get(f.get("id"), {}).get("verdict") or "—")}
+                    for f in finds]
+    pupitre_section = ('<h2>Pupitre — explore the tribunal (Comprendre · Exécuter · Naviguer)</h2>'
+                       + _PUPITRE_CSS + '<div id="pupitre"><i>loading…</i></div><script>window.__PUPITRE__='
+                       + json.dumps({"findings": pupitre_data}, ensure_ascii=False)
+                       + ';</script><script>' + _PUPITRE_JS + '</script>') if pupitre_data else ""
     # Honesty banner — lead with the BINDING verdict (Oracle reconciliation), never the advisory score.
     # This is the anti-score-theatre UI move: a high judge opinion over a DEFERRED live invariant reads
     # AMBER (not green); a judge that ships over an Oracle FAIL reads RED. See DESIGN_honesty_guardrails.md.
@@ -1438,6 +1572,7 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
 {orows or '<tr><td colspan=4><i>run: bin/arena.py oracle</i></td></tr>'}</table>
 {rem_html}
 {forge_html}
+{pupitre_section}
 <h2>Findings register</h2>
 <table><tr><th>ID</th><th>Sev</th><th>Dim</th><th>Finding</th><th>Citation</th><th>Defender</th><th>Oracle</th><th>Inv</th></tr>
 {''.join(rows) if rows else '<tr><td colspan=8><i>awaiting the prosecutor…</i></td></tr>'}</table>
@@ -1640,6 +1775,7 @@ if __name__ == "__main__":
                                              sys.argv[5] if len(sys.argv) > 5 else "1")
     elif cmd == "forge-converge": forge_converge(sys.argv[2])
     elif cmd == "render": render()
+    elif cmd == "replay": replay(sys.argv[2:])
     elif cmd == "mode-b": mode_b(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "1")
     elif cmd == "vendor-panel": vendor_panel(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "1")
     else: print(__doc__); sys.exit(1)

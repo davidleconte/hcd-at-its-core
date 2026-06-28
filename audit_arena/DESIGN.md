@@ -118,7 +118,8 @@ does). Subcommands:
 | `forge-verify <id> <cand.diff>` | Apply a candidate in a throwaway worktree, run the battery + the contract's acceptance predicates; ACCEPTED only on a **signed** contract, else PROVISIONAL/REJECTED/UNTRUSTED |
 | `forge-record` / `forge-converge <id>` | Record a forge verdict / converge (2 ACCEPTED rounds, 0 open defects) |
 | `mode-b <defender\|judge> <round>` | Drive a role with an external model family (egress-gated) |
-| `render` | Build `courtroom.html` from all `state/` artefacts |
+| `render` | Build `courtroom.html` from all `state/` artefacts (incl. the interactive pupitre console) |
+| `replay <id...>` | Re-run the **stored** `oracle_cmd` for the given finding ids (looked up server-side; never a passed command string) — the pupitre's safe execution path (v2 Tier 2/G2) |
 
 `oracle`/`invariants`/`manifest` default to the **latest** tribunal round (§4.10 lesson).
 
@@ -208,7 +209,14 @@ failure. The hook is read-only on *tracked* files but, on success, refreshes the
 four-role summary, the latest judge verdict (tri-lens), convergence, manifest provenance, the seven
 invariants, the Oracle table, remediation, and the full findings register. Since v2 (F3) the per-finding
 FIXED/FAIL resolution is **consumed from the gated `lineage_rN.json`** (single-sourced from the audit),
-not re-executed at render time. Three dashboard rules earned the hard way:
+not re-executed at render time.
+
+Since v2 (G2) it also embeds the **pupitre** — a 3-mode interactive teaching console (Comprendre /
+Exécuter / Naviguer) over an embedded JSON blob, no framework or network. Two guards: a finding with no
+`oracle_cmd` renders *"argued-only — no binding command"* (never a fake run); the only execution path is
+`arena.py replay <ids>`, which passes **ids** (the trusted core looks up the stored command) — a browser
+can never carry a command string into the deterministic core. Console state lives in `location.hash`, so
+the 6s auto-refresh never wipes the user's exploration. Three dashboard rules earned the hard way:
 
 - **Latest-round refresh.** `render`/`gate` read the *latest* round; `make audit` therefore defaults
   to the latest round so the dashboard's provenance can't silently lag once the tribunal advances.

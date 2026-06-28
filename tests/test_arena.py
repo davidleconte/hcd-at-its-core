@@ -985,3 +985,53 @@ def test_forge_state_gitignored_but_contracts_tracked():
     r2 = subprocess.run(["git", "check-ignore", "audit_arena/forge/example-version-pin.contract.json"],
                         cwd=REPO, capture_output=True, text=True)
     assert r2.returncode != 0, "forge contracts (trust root) must be TRACKED, not ignored"
+
+
+# ─── T2 / G2 pupitre console + replay (DESIGN_v2_roadmap.md Tier 2) ────────────────────────────────
+def test_replay_runs_stored_command_by_id():
+    """replay re-runs the STORED oracle_cmd for a finding that has one, reporting PASS/FAIL."""
+    arena = _load_arena()
+    fid = next((f["id"] for fp in arena._by_round("findings_r*.json")
+                for f in json.load(open(fp)).get("findings", json.load(open(fp)) if isinstance(json.load(open(fp)), list) else [])
+                if isinstance(f, dict) and f.get("oracle_cmd")), None)
+    if not fid:
+        import pytest
+        pytest.skip("no committed finding carries an oracle_cmd")
+    r = _arena("replay", fid)
+    assert fid in r.stdout and ("PASS" in r.stdout or "FAIL" in r.stdout), r.stdout
+
+
+def test_replay_argued_only_when_no_command():
+    """Guard (a): a finding with no oracle_cmd is reported argued-only and never executed."""
+    r = _arena("replay", "R1-01")  # R1-01 is argued-only (no binding command)
+    assert "argued-only" in r.stdout, r.stdout
+
+
+def test_replay_never_executes_a_command_string_only_ids():
+    """Guard (b): replay looks up the STORED command by id and NEVER executes a passed string — a
+    shell-injection 'id' resolves to an unknown id (NOT FOUND); nothing runs. The decisive security test."""
+    sentinel = os.path.join(SDIR, "replay_pwned")
+    try:
+        r = _arena("replay", f"; touch {sentinel}")
+        assert "NOT FOUND" in r.stdout, r.stdout
+        assert not os.path.exists(sentinel), "replay EXECUTED an injected command string — guard (b) breached"
+    finally:
+        if os.path.exists(sentinel):
+            os.remove(sentinel)
+
+
+def test_pupitre_renders_with_guards():
+    """The pupitre renders a 3-mode console over a valid JSON blob; guard (a) marks argued-only findings;
+    the JS execution affordance is `replay <id>` (ids), with no in-browser command execution."""
+    _arena("render")
+    page = open(COURT, encoding="utf-8").read()
+    assert 'id="pupitre"' in page and "Comprendre · Exécuter · Naviguer" in page
+    assert "argued-only" in page, "guard (a): argued-only state must render for oracle_cmd-less findings"
+    m = re.search(r"window.__PUPITRE__=(.*?);</script>", page, re.S)
+    assert m, "embedded pupitre blob missing"
+    blob = json.loads(m.group(1))  # must be valid JSON
+    assert blob["findings"] and any(f["oracle_cmd"] is None for f in blob["findings"])
+    src = open(ARENA).read()
+    js = src[src.index("_PUPITRE_JS = r"):src.index("def replay(")]
+    assert "replay '+ids.join" in js, "Exécuter must emit `replay <ids>` (ids, not a command string)"
+    assert "eval(" not in js, "the pupitre must not eval anything in the browser"
