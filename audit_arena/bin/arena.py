@@ -452,6 +452,14 @@ def _round_or_latest(pattern, rnd):
     return json.load(open(p)) if os.path.exists(p) else _latest(pattern)
 
 
+def _binding_fails(oj, ij):
+    """The ONE definition of 'what blocks' — the binding failures from an oracle + invariants pair.
+    Returns (oracle_check_fails, invariant_fails). Shared by gate/reconcile/panel-aggregate so the
+    notion of a binding failure can't drift between them."""
+    return ([c["check"] for c in oj.get("checks", []) if c.get("status") == "FAIL"],
+            [i["id"] for i in ij.get("invariants", []) if i.get("status") == "FAIL"])
+
+
 def _latest_round():
     """Highest round present in state/ (findings/oracle/invariants/manifest), default '1'.
     `make audit` defaults to this so it refreshes the SAME round the courtroom renders (render
@@ -469,8 +477,7 @@ def gate():
     This is what makes `make audit` actually gate (oracle/invariants are reporters that
     exit 0; without this the CI `make audit` step is non-blocking). DEFERRED never blocks."""
     oj, ij = _latest("oracle_r*.json"), _latest("invariants_r*.json")
-    o_fail = [c["check"] for c in oj.get("checks", []) if c.get("status") == "FAIL"]
-    i_fail = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "FAIL"]
+    o_fail, i_fail = _binding_fails(oj, ij)
     o_timeout = [c["check"] for c in oj.get("checks", []) if c.get("status") == "TIMEOUT"]
     if o_fail or i_fail:
         print(f"GATE FAIL — oracle: {o_fail or '—'} · invariants: {i_fail or '—'}")
@@ -566,8 +573,7 @@ def reconcile():
               f"DESIGN_honesty_guardrails.md; numeric scores belong only in a future advisory panel_scores block.")
         sys.exit(2)
 
-    o_fail = [c["check"] for c in oj.get("checks", []) if c.get("status") == "FAIL"]
-    i_fail = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "FAIL"]
+    o_fail, i_fail = _binding_fails(oj, ij)
     i_def = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "DEFERRED"]
 
     # G4 freshness (surfacing only, default OFF): a last_live-carried PASS older than the threshold reads
@@ -630,8 +636,7 @@ def panel_aggregate(rnd="1"):
         claimed = float(ps["self_score"]) if ps.get("self_score") is not None else None
     except (TypeError, ValueError):
         claimed = None
-    i_fail = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "FAIL"]
-    o_fail = [c["check"] for c in oj.get("checks", []) if c.get("status") == "FAIL"]
+    o_fail, i_fail = _binding_fails(oj, ij)
     if i_fail:
         ceiling, reason = 5.0, f"invariant FAIL ({', '.join(i_fail)})"
     elif o_fail:
@@ -834,19 +839,14 @@ def _git(args, cwd=ROOT):
 
 
 def _battery_in(cwd):
-    """Run the offline Oracle battery + invariants against a checkout at `cwd`."""
-    checks = {}
-
-    def ck(name, cmd, ok):
-        r = subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=300)
-        checks[name] = "PASS" if ok(r.returncode, (r.stdout or "") + (r.stderr or "")) else "FAIL"
-
-    ck("bash-n", 'for s in scripts/*.sh; do bash -n "$s" || exit 1; done', lambda c, o: c == 0)
-    ck("demo-score", "./scripts/demo-entropy.sh --score 2>/dev/null", lambda c, o: "Score:  100%" in o)
-    ck("pytest", "python3 -m pytest tests/ -q 2>&1", lambda c, o: c == 0)  # exit code, not substring
-    ck("dup-keys", _DUPKEY, lambda c, o: c == 0)
-    ck("counts", "tm=$(grep -oE 'TOTAL_MODULES=[0-9]+' scripts/demo-entropy.sh | head -1 | cut -d= -f2); "
-                 "grep -q \"all $tm modules\" Makefile", lambda c, o: c == 0)
+    """Adjudicate a candidate checkout at `cwd`, SINGLE-SOURCED through the contract: run the contract's
+    invariants (HCD-I1..I7 — the offline ones HCD-I3/I4/I6 already cover dup-keys / module-counts /
+    script-syntax+lint+scorecard, so no parallel battery is duplicated here) plus the pytest suite (the
+    one D4 offline check that is not an HCD-I* invariant). Live invariants with no cluster fall to
+    DEFERRED, never FAIL, so an offline candidate is judged only on what is offline-decidable here."""
+    pt = subprocess.run("python3 -m pytest tests/ -q 2>&1", cwd=cwd, shell=True,
+                        capture_output=True, text=True, timeout=300)
+    checks = {"pytest": "PASS" if pt.returncode == 0 else "FAIL"}  # exit code, not substring
     r = subprocess.run(["python3", "audit_arena/bin/arena.py", "invariants", "0"],
                        cwd=cwd, capture_output=True, text=True)
     try:
