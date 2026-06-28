@@ -20,15 +20,15 @@ overrides both Prosecutor and Defender for any finding it can run.
 
 > **What actually runs vs what's a design (be precise):** the **deterministic half** — the
 > Oracle, the `HCD-I*` invariants, the manifest, `verify-fix`, the gate — is real code that runs
-> every time. The **multi-family LLM tribunal** (Prosecutor/Defender/Judge as *different* model
-> families) is **architecture, not a result yet**: `acts/` is empty and the seed
-> `state/findings_r1.json` are the findings from a **manual MECE subagent pass**, loaded into the
-> tribunal's schema — three independent model families have **not** adjudicated them. Mode B was
-> exercised only by sending a role charter (no repo data). Treat the "Defender is a different
-> family / diversity-of-judgement" line as the *intended* anti-collusion mechanism, not a claim
-> that it has run. The seed findings are tagged `FIXED`, meaning the code fix landed and the
-> *offline* Oracle passes — **not** that `HCD-I1`/`I2` (live CQL / cluster-forms) were executed;
-> those stay `DEFERRED` until the cluster boots.
+> every time. The **LLM tribunal HAS now run**: rounds 2 and 3 are real Prosecutor→Defender→Judge
+> passes (`acts/` is populated; `findings_r2/r3`, `verdicts_r2/r3`, `grades_r2/r3` are their
+> output), each role a **different model** for anti-collusion, with the deterministic Oracle as
+> binding arbiter. **But that was Mode A** — different *Claude-family* models (opus/sonnet/fable):
+> **model diversity, not vendor diversity.** True cross-vendor adjudication is **Mode B**, which is
+> now wired one-command (`arena.py mode-b`, mock-tested) but only *runs* against real third-party
+> families when you supply keys + `ARENA_MODE_B=1`. The round-1 seed remains a manual MECE pass.
+> Findings tagged `FIXED` mean the code fix landed and the *offline* Oracle passes — **not** that
+> `HCD-I1`/`I2` (live CQL / cluster-forms) were executed; those stay `DEFERRED` until the cluster boots.
 
 ## MECE dimensions
 D1 technical accuracy (CQL/config vs C5.0) · D2 build & runtime wiring · D3 shell robustness ·
@@ -54,22 +54,31 @@ python3 audit_arena/bin/arena.py render            # 7. build courtroom.html
 open audit_arena/courtroom.html                    # auto-refreshes /6s
 ```
 
-### Mode B — true 3-family tribunal (optional, needs keys)
-`bin/llm.sh <role> <prompt_file>` routes the Defender/Judge to an **external** model family so no
-single family grades its own work. Two safety gates: (1) an **egress opt-in** — it refuses to call
-out unless `ARENA_MODE_B=1` is set for that run (so an ambient key in your shell never triggers a
-silent off-machine call); (2) **key-gated** — with no provider key it exits 2. Either gate → the
-orchestrator falls back to Mode A. Put keys in `~/.secrets.env`; configure providers via env:
+### Mode B — true cross-vendor tribunal (optional, needs keys)
+**One command** routes a role to an **external model family** so no single family grades its own
+work. `arena.py mode-b <defender|judge> <round>` does the whole loop: it assembles the role prompt
+from the charter + that round's state (Defender: `findings_rN` + cited excerpts; Judge: the
+severity-stripped `judge_brief_rN` + verdicts), calls the provider via `bin/llm.sh`, then
+**extracts and validates the JSON** (tolerating ```json fences / prose) and writes the same
+`verdicts_rN.json` / `grades_rN.json` artifact Mode A produces.
+
+Two safety gates: (1) an **egress opt-in** — refuses to call out unless `ARENA_MODE_B=1` is set for
+that run (an ambient key never triggers a silent off-machine call); (2) **key-gated** — with no
+provider key it exits 2. Either gate → `mode-b` propagates exit 2 and you fall back to Mode A.
 
 ```bash
-# defaults: Defender=glm (ZAI_API_KEY), Judge=gemini (GEMINI_API_KEY)
-ARENA_MODE_B=1 audit_arena/bin/llm.sh defender /tmp/defender_prompt.md > state/verdicts_r1.json
-ARENA_MODE_B=1 ARENA_JUDGE_PROVIDER=gemini audit_arena/bin/llm.sh judge /tmp/judge_prompt.md > state/grades_r1.json
-# or any OpenAI-compatible endpoint:
-ARENA_MODE_B=1 ARENA_DEFENDER_PROVIDER=openai OPENAI_BASE_URL=... OPENAI_MODEL=... audit_arena/bin/llm.sh defender ...
+# defaults: Defender=glm (ZAI_API_KEY), Judge=gemini (GEMINI_API_KEY). Keys live in ~/.secrets.env.
+ARENA_MODE_B=1 python3 audit_arena/bin/arena.py mode-b defender 2     # -> state/verdicts_r2.json
+ARENA_MODE_B=1 ARENA_JUDGE_PROVIDER=gemini \
+  python3 audit_arena/bin/arena.py mode-b judge 2                     # -> state/grades_r2.json
+# any OpenAI-compatible endpoint:
+ARENA_MODE_B=1 ARENA_DEFENDER_PROVIDER=openai OPENAI_BASE_URL=... OPENAI_MODEL=... \
+  python3 audit_arena/bin/arena.py mode-b defender 2
 ```
 Mode B sends repo excerpts (findings + cited source) to a third party — that is why it is opt-in.
-The Prosecutor stays Claude (this session). `make audit-tribunal` prints the full per-round recipe.
+The wiring is tested offline with a mock provider (`$ARENA_LLM_CMD`), so the prompt-build →
+extract → validate → write pipeline is covered without real egress. The Prosecutor stays Claude.
+`make audit-tribunal` prints the full per-round recipe.
 
 ### Live-cluster Oracle (decisive HCD adjudication)
 `bin/arena.py oracle` auto-detects a running cluster (`nodetool status`). With no cluster, the live

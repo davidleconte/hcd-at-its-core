@@ -203,3 +203,59 @@ def test_worktree_isolation_leaves_main_tree_untouched():
     # no stray arena worktree registered
     wl = subprocess.run(["git", "worktree", "list"], cwd=REPO, capture_output=True, text=True).stdout
     assert "hcd-arena-worktree" not in wl, "stray remediation worktree left behind"
+
+
+def _mode_b_paths(rnd):
+    sdir = os.path.join(REPO, "audit_arena/state")
+    return (os.path.join(sdir, f"findings_r{rnd}.json"),
+            os.path.join(sdir, f"verdicts_r{rnd}.json"),
+            os.path.join(sdir, f"_modeb_defender_r{rnd}_prompt.md"))
+
+
+def test_mode_b_builds_validates_and_writes(tmp_path):
+    """Mode B wiring: with a MOCK provider (no real egress/key), the orchestrator assembles the
+    prompt, captures the (fenced) response, extracts the JSON, and writes a valid role artifact."""
+    rnd = "901"
+    findings, out, promptf = _mode_b_paths(rnd)
+    mock = tmp_path / "mock_llm.sh"
+    mock.write_text("#!/usr/bin/env bash\n"
+                    "printf '%s\\n' '```json' "
+                    "'{\"verdicts\":[{\"id\":\"R901-01\",\"verdict\":\"CONFIRMED\","
+                    "\"adjusted_severity\":\"LOW\",\"counter_evidence\":\"x:1\",\"reasoning\":\"ok\"}],"
+                    "\"missed_strengths\":[]}' '```'\n")
+    mock.chmod(0o755)
+    try:
+        json.dump({"findings": [{"id": "R901-01", "dimension": "D4", "invariant": "HCD-I6",
+                                 "finding": "t", "severity": "LOW", "evidence": "Makefile:1"}]},
+                  open(findings, "w"))
+        env = dict(os.environ, ARENA_LLM_CMD=str(mock))
+        r = subprocess.run([sys.executable, ARENA, "mode-b", "defender", rnd],
+                           cwd=REPO, capture_output=True, text=True, env=env)
+        assert r.returncode == 0, r.stderr
+        v = json.load(open(out))
+        assert v["verdicts"][0]["id"] == "R901-01", "Mode B did not write the validated verdict"
+    finally:
+        for f in (findings, out, promptf):
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_mode_b_propagates_egress_fallback(tmp_path):
+    """If the provider adapter exits 2 (egress off / no key), Mode B must propagate exit 2 (so the
+    orchestrator uses Mode A) and write NO artifact."""
+    rnd = "902"
+    findings, out, promptf = _mode_b_paths(rnd)
+    mock = tmp_path / "deny_llm.sh"
+    mock.write_text("#!/usr/bin/env bash\nprintf '[mode-B] disabled\\n' >&2\nexit 2\n")
+    mock.chmod(0o755)
+    try:
+        json.dump({"findings": []}, open(findings, "w"))
+        env = dict(os.environ, ARENA_LLM_CMD=str(mock))
+        r = subprocess.run([sys.executable, ARENA, "mode-b", "defender", rnd],
+                           cwd=REPO, capture_output=True, text=True, env=env)
+        assert r.returncode == 2, f"expected egress fallback exit 2, got {r.returncode}: {r.stderr}"
+        assert not os.path.exists(out), "Mode B wrote an artifact despite egress fallback"
+    finally:
+        for f in (findings, out, promptf):
+            if os.path.exists(f):
+                os.remove(f)

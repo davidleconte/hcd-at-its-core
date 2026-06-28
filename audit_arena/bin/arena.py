@@ -834,6 +834,77 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
     print(f"courtroom.html rendered ({len(finds)} findings, {len(grades)} grades, {len(oracle_idx)} oracle checks)")
 
 
+# ─── MODE B: drive a tribunal role with an EXTERNAL model family (vendor diversity) ──
+def _extract_json(text):
+    """Pull the outermost JSON object from an LLM response, tolerating ```json fences / prose."""
+    t = (text or "").strip()
+    m = re.search(r"```(?:json)?\s*(.*?)```", t, re.S)
+    if m:
+        t = m.group(1).strip()
+    i, j = t.find("{"), t.rfind("}")
+    if i == -1 or j <= i:
+        raise ValueError("no JSON object found in model response")
+    return json.loads(t[i:j + 1])
+
+
+def mode_b(role, rnd="1"):
+    """The REAL Mode B: assemble the role prompt from charter + arena state, call the external
+    provider via bin/llm.sh (or $ARENA_LLM_CMD, used by tests), extract+validate the JSON, and
+    write the SAME artifact Mode A would. Egress-gated: if the provider exits 2 (ARENA_MODE_B
+    unset or no API key) this propagates exit 2 so the orchestrator falls back to Mode A."""
+    role = role.lower()
+    prompts = os.path.join(ARENA, "prompts")
+    parts = []
+    for p in ("_preamble.md", f"{role}.md"):
+        fp = os.path.join(prompts, p)
+        if os.path.isfile(fp):
+            parts.append(open(fp, encoding="utf-8").read())
+
+    if role == "defender":
+        findings = os.path.join(STATE, f"findings_r{rnd}.json")
+        if not os.path.isfile(findings):
+            print(f"[mode-B] no findings_r{rnd}.json — run the prosecutor first", file=sys.stderr); sys.exit(1)
+        rc, ex = _run([sys.executable, os.path.abspath(__file__), "excerpts", findings])
+        parts.append("## FINDINGS UNDER REVIEW\n```json\n" + open(findings, encoding="utf-8").read() + "\n```")
+        parts.append("## CITED EXCERPTS\n" + (ex if rc == 0 else "(excerpts unavailable)"))
+        out_file, req_key = os.path.join(STATE, f"verdicts_r{rnd}.json"), "verdicts"
+    elif role == "judge":
+        brief = os.path.join(STATE, f"judge_brief_r{rnd}.md")
+        if not os.path.isfile(brief):
+            print(f"[mode-B] no judge_brief_r{rnd}.md — run `judge-brief {rnd}` first", file=sys.stderr); sys.exit(1)
+        parts.append("## JUDGE BRIEF (severities stripped)\n" + open(brief, encoding="utf-8").read())
+        verdicts = os.path.join(STATE, f"verdicts_r{rnd}.json")
+        if os.path.isfile(verdicts):
+            parts.append("## DEFENDER VERDICTS\n```json\n" + open(verdicts, encoding="utf-8").read() + "\n```")
+        out_file, req_key = os.path.join(STATE, f"grades_r{rnd}.json"), "one_line_verdict"
+    else:
+        print(f"[mode-B] role must be 'defender' or 'judge', got {role!r}", file=sys.stderr); sys.exit(1)
+
+    parts.append("OUTPUT: reply with ONLY the JSON object specified in your charter — "
+                 "no prose, no explanation, no markdown fences.")
+    prompt_file = os.path.join(STATE, f"_modeb_{role}_r{rnd}_prompt.md")
+    open(prompt_file, "w", encoding="utf-8").write("\n\n".join(parts))
+
+    llm = os.environ.get("ARENA_LLM_CMD") or os.path.join(ARENA, "bin", "llm.sh")
+    r = subprocess.run([llm, role, prompt_file], capture_output=True, text=True)
+    if r.returncode == 2:  # egress off / no key — the deliberate Mode-A fallback path
+        sys.stderr.write(r.stderr)
+        print(f"[mode-B] {role}: external family unavailable — use Mode A (subagent).", file=sys.stderr)
+        sys.exit(2)
+    if r.returncode != 0:
+        print(f"[mode-B] {role}: provider call failed (exit {r.returncode}): {r.stderr[:300]}", file=sys.stderr); sys.exit(1)
+    try:
+        obj = _extract_json(r.stdout)
+    except Exception as e:
+        raw = os.path.join(STATE, f"_modeb_{role}_r{rnd}_raw.txt")
+        open(raw, "w", encoding="utf-8").write(r.stdout)
+        print(f"[mode-B] {role}: response was not valid JSON ({e}); raw saved to {raw}", file=sys.stderr); sys.exit(3)
+    if req_key not in obj:
+        print(f"[mode-B] {role}: JSON missing required key '{req_key}'", file=sys.stderr); sys.exit(3)
+    json.dump(obj, open(out_file, "w", encoding="utf-8"), indent=2)
+    print(f"[mode-B] {role} (external family) -> {os.path.relpath(out_file, ROOT)}  ✓ valid JSON ('{req_key}' present)")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "repomap": repomap()
@@ -852,4 +923,5 @@ if __name__ == "__main__":
     elif cmd == "remediate-record": remediate_record(sys.argv[2], sys.argv[3], sys.argv[4],
                                                       sys.argv[5] if len(sys.argv) > 5 else "1")
     elif cmd == "render": render()
+    elif cmd == "mode-b": mode_b(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "1")
     else: print(__doc__); sys.exit(1)
