@@ -45,7 +45,9 @@ x-shared-env: &shared-env
   CASSANDRA_RPC_ADDRESS: 0.0.0.0
   CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
   MAX_HEAP_SIZE: ${MAX_HEAP_SIZE:-512M}
-  HEAP_NEWSIZE: ${HEAP_NEWSIZE:-100M}
+  # No HEAP_NEWSIZE: HCD 2.0 uses G1, which auto-sizes the young generation. Pinning -Xmn under G1
+  # is "not recommended" (and combined with the old entrypoint heap-file edit, was fatal). Leave it
+  # to G1 unless you have a measured reason to override.
   # JMX Prometheus exporter (active only when jmx_prometheus_javaagent.jar exists)
   JVM_EXTRA_OPTS: >-
     -javaagent:/opt/hcd/jmx_prometheus_javaagent.jar=9404:/opt/hcd/jmx-exporter.yml

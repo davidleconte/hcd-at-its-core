@@ -89,27 +89,12 @@ if [ "$CASSANDRA_ENDPOINT_SNITCH" = "GossipingPropertyFileSnitch" ]; then
     echo "prefer_local=true" >> /opt/hcd/resources/cassandra/conf/cassandra-rackdc.properties
 fi
 
-# Apply JVM heap settings if provided (sed replaces existing, or appends if not found)
-JVM_OPTIONS="/opt/hcd/resources/cassandra/conf/jvm-server.options"
-if [ -n "$MAX_HEAP_SIZE" ] && [ -f "$JVM_OPTIONS" ]; then
-    if grep -q "^-Xmx" "$JVM_OPTIONS"; then
-        sed -i "s|^-Xmx.*|-Xmx${MAX_HEAP_SIZE}|" "$JVM_OPTIONS"
-    else
-        echo "-Xmx${MAX_HEAP_SIZE}" >> "$JVM_OPTIONS"
-    fi
-    if grep -q "^-Xms" "$JVM_OPTIONS"; then
-        sed -i "s|^-Xms.*|-Xms${MAX_HEAP_SIZE}|" "$JVM_OPTIONS"
-    else
-        echo "-Xms${MAX_HEAP_SIZE}" >> "$JVM_OPTIONS"
-    fi
-fi
-if [ -n "$HEAP_NEWSIZE" ] && [ -f "$JVM_OPTIONS" ]; then
-    if grep -q "^-Xmn" "$JVM_OPTIONS"; then
-        sed -i "s|^-Xmn.*|-Xmn${HEAP_NEWSIZE}|" "$JVM_OPTIONS"
-    else
-        echo "-Xmn${HEAP_NEWSIZE}" >> "$JVM_OPTIONS"
-    fi
-fi
+# Heap sizing is handled by cassandra-env.sh, which reads MAX_HEAP_SIZE / HEAP_NEWSIZE from the
+# environment and sets -Xmx/-Xms/-Xmn once. We deliberately DO NOT also write them into
+# jvm-server.options: HCD 2.0's stock options use G1 (which auto-sizes the young gen), and adding a
+# second, file-level -Xmn produced a conflicting/duplicate -Xmn under G1 that aborts the JVM at
+# launch — before logback — with no error in the container log (confirmed on a live HCD 2.0.6 boot,
+# 2026-06-28). Let cassandra-env own the heap; if you must pin it, set the env vars (compose does).
 
 # Extract first seed from comma-separated list, trimming whitespace
 FIRST_SEED=$(echo "${CASSANDRA_SEEDS}" | cut -d',' -f1 | tr -d '[:space:]')
@@ -165,10 +150,19 @@ else
     sleep $JITTER
 fi
 
-# Apply JVM_EXTRA_OPTS (e.g., JMX Prometheus exporter) if the agent JAR exists
-if [ -n "$JVM_EXTRA_OPTS" ] && [ -f /opt/hcd/jmx_prometheus_javaagent.jar ]; then
-    export JVM_OPTS="${JVM_OPTS:-} ${JVM_EXTRA_OPTS}"
-    echo "JMX exporter enabled on port 9404"
+# JMX Prometheus exporter via JVM_EXTRA_OPTS. IMPORTANT: HCD's cassandra-env.sh already appends
+# $JVM_EXTRA_OPTS to JVM_OPTS (resources/cassandra/conf/cassandra-env.sh:323), so we must NOT add it
+# again — doing so loaded the -javaagent TWICE and the JVM aborted at premain with
+# "jmx_exporter_build_info is already in use by another Collector" (confirmed on a live HCD 2.0.6
+# boot, 2026-06-28). Here we only validate the jar: if it's missing, unset JVM_EXTRA_OPTS so
+# cassandra-env doesn't reference a non-existent agent and fail startup.
+if [ -n "$JVM_EXTRA_OPTS" ]; then
+    if [ -f /opt/hcd/jmx_prometheus_javaagent.jar ]; then
+        echo "JMX exporter enabled on port 9404 (applied once by cassandra-env.sh)"
+    else
+        echo "JMX agent jar not found — disabling JVM_EXTRA_OPTS to avoid a broken -javaagent"
+        unset JVM_EXTRA_OPTS
+    fi
 fi
 
 echo "Starting HCD..."

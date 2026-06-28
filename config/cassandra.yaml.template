@@ -96,9 +96,11 @@ partition_keys_in_select_warn_threshold: 20
 partition_keys_in_select_fail_threshold: -1
 in_select_cartesian_product_warn_threshold: 25
 in_select_cartesian_product_fail_threshold: -1
-batch_size_warn_threshold_in_kb: 5
-batch_size_fail_threshold_in_kb: 50
-collection_size_warn_threshold_in_kb: 100
+# Cassandra 5.0 renamed these size guardrails to typed sizes (the old *_in_kb names are
+# rejected at startup — confirmed on a live HCD 2.0.6 boot, 2026-06-28).
+batch_size_warn_threshold: 5KiB
+batch_size_fail_threshold: 50KiB
+collection_size_warn_threshold: 100KiB
 unlogged_batch_across_partitions_warn_threshold: 10
 page_size_warn_threshold: 5000
 page_size_fail_threshold: -1
