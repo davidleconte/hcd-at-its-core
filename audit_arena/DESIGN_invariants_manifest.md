@@ -88,11 +88,17 @@ New `manifest(round)` → `state/manifest_r{N}.json`. **Content hash is over the
   "generated_at": "<ISO8601>",
   "git": {"sha": "<HEAD>", "branch": "master", "dirty": false},
   "env": {"python":"3.11.15","pytest":"9.1.1","ruff":"0.15.20","shellcheck":"0.10.0","docker":"…|absent","conda_env":"hcd-at-its-core"},
-  "repo": {"signal_files": 38, "content_sha256": "<hash of sorted path:filesha>"},
+  "repo": {"signal_files": 43, "content_sha256": "<hash of sorted path:filesha>"},
+  "contract": {"version": "1.0.0", "content_sha256": "<hash of the contract body>"},
   "oracle": {"passed":7,"failed":0,"deferred":3,"results_sha256":"<hash of oracle_r{N}.json>"},
-  "invariants": {"HCD-I1":"DEFERRED","HCD-I2":"DEFERRED","HCD-I3":"PASS","HCD-I4":"PASS","HCD-I5":"PASS","HCD-I6":"PASS","HCD-I7":"PASS"}
+  "invariants": {"HCD-I1":"DEFERRED","HCD-I2":"DEFERRED","HCD-I3":"PASS","HCD-I4":"PASS","HCD-I5":"PASS","HCD-I6":"PASS","HCD-I7":"PASS"},
+  "lineage_sha256": "<hash of lineage_r{N}.json>",
+  "audit_root_sha256": "<Merkle root over repo / oracle / invariants / lineage / contract>"
 }
 ```
+(Since v2: `contract` pins the Definition-of-Done version + hash, and `audit_root_sha256` is a single
+Merkle-style digest over every binding layer — any change to source, oracle, invariants, lineage, or the
+contract moves one root.)
 `render`: a **manifest strip** (git sha • dirty • content hash • invariants N/7 PASS).
 
 ### 3.4 Generated-vs-tracked separation (resolves churn + honest `git_dirty`)
@@ -108,7 +114,7 @@ Add these globs to `.gitignore`. `make audit` regenerates them; they never dirty
 - `repomap/excerpts/oracle/converge` unchanged.
 
 ### 3.6 Make / docs
-- `make audit` → `repomap → oracle → invariants → manifest → render`.
+- `make audit` → `contract → repomap → oracle → invariants → lineage → manifest → panel-aggregate → reconcile → render → gate`.
 - README/arena-README: document the invariant DoD + manifest.
 - Pre-push gate: **unchanged blocking set** (offline invariants are already covered by its checks); it additionally *prints* the invariant summary (advisory), not blocks on it — avoids double-gating.
 

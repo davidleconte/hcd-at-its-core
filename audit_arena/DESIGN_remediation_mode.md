@@ -30,9 +30,10 @@ finding (Defender CONFIRMED + Oracle FAIL/not-fixed)
         (c) violates another HCD-I*  (d) introduces a new forbidden-pattern
         → DEFECTS {severity, evidence, invariant}
   └─ R3 ARBITER   : any BLOCKER/HIGH defect → back to R1 with the critique
-  └─ R4 ORACLE    : apply the patch in a throwaway worktree, run the offline Oracle
-        battery (bash -n, shellcheck, scorecard, pytest, dup-keys, counts) + invariants
-        → PASS/FAIL is DECISIVE (overrides Proposer & Red-Team)
+  └─ R4 ORACLE    : apply the patch in a throwaway worktree, run the offline battery —
+        the contract's invariants HCD-I1..I7 (HCD-I6 = bash-n/shellcheck/scorecard,
+        HCD-I3 = dup-keys, HCD-I4 = module-counts) + pytest, single-sourced through the
+        contract → PASS/FAIL is DECISIVE (overrides Proposer & Red-Team)
   └─ CONVERGE K=2 : two consecutive rounds with no BLOCKER/HIGH AND Oracle PASS AND
         no HCD-I* regression → status VERIFIED; else (cap reached) → UNRESOLVED
 ```

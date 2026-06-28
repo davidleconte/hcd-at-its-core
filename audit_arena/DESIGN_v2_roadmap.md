@@ -73,7 +73,7 @@ argued away by any model/vendor:
 
 **F2 — Contract spine.** `contract/contract.v1.json` = the Definition-of-Done as data: `meta`
 (semver + `effective_date` + self `content_sha256`), `dimensions` (D1–D6), `invariants` (`HCD-I1..I7`
-records: id/dim/statement/mode + offline_cmd | live_cmd+proxy_cmd), `severity_scale`, `reference_facts`.
+records: id/dim/statement/mode + offline_cmd | live_cmd+proxy_cmd), `severity_scale`, `reference_facts_ref`.
 `arena.py` **loads** it, replacing the `INVARIANTS` literal, the `SEV` map, and the inline
 `reference_facts` read. *Critic refinement:* ship the **spine** (M); expose a Python-importable parsed
 view (`arena.CONTRACT` / `arena.invariant_records()`) so existing tests bind to records, not the raw

@@ -184,7 +184,7 @@ tribunal stays advisory (run on demand); only the deterministic Oracle gates mer
 
 ## What's in `state/`
 Seeded with the **real findings from the post-PR-5 MECE audit**: 14 findings (5 BLOCKER), the
-Defender verdicts (12 confirmed, 2 false positives killed), the live Oracle battery, and the Judge's
+Defender verdicts (11 confirmed, 3 false positives killed), the live Oracle battery, and the Judge's
 tri-lens verdict (CONDITIONAL-SHIP). `courtroom.html` renders all of it.
 
 ## v2 capabilities (see [DESIGN_v2_roadmap.md](DESIGN_v2_roadmap.md))

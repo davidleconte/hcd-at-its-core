@@ -23,10 +23,13 @@
 │   ├── test_secure_profile.py  # gen-certs / fragment / overlay / entrypoint / grafana
 │   └── test_arena.py           # audit-arena invariants / manifest / harden / isolation
 ├── audit_arena/           # Adversarial audit engine (Prosecutor/Defender/Judge/Oracle)
-│   ├── bin/arena.py       # plumbing: oracle, invariants, manifest, harden, verify-fix, render
-│   ├── prompts/           # role charters (_preamble, prosecutor, defender, judge, proposer, redteam_fix)
+│   ├── bin/arena.py       # plumbing: contract, oracle, invariants, lineage, manifest, reconcile,
+│   │                      #   panel-aggregate, gate, harden, verify-fix, render (+ forge-*/vendor-panel/replay)
+│   ├── contract/          # contract.v1.json — the Definition-of-Done as versioned data
+│   ├── forge/             # forge contracts (generative artefact design, human-signed)
+│   ├── prompts/           # role charters (_preamble, prosecutor, defender, judge, proposer, redteam_fix, forge_*)
 │   ├── state/             # seed findings/verdicts/grades (generated outputs gitignored)
-│   └── DESIGN_*.md        # design docs for each pass
+│   └── DESIGN_*.md        # design docs for each pass (+ DESIGN_v2_roadmap, DESIGN_honesty_guardrails)
 ├── .github/workflows/ci.yml    # CI: lint · pytest · docker-validate · audit-arena gate
 ├── environment.yml             # conda + uv dev env (Python 3.11)
 ├── requirements-dev.txt        # uv-managed dev tooling; requirements-driver.txt (optional driver)

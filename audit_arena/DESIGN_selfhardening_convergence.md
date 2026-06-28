@@ -26,7 +26,7 @@ Today: prints `dry_2_rounds` (≥2 rounds with 0 new surviving findings). Change
 converged = dry_2_rounds AND (no HCD-I* status == "FAIL")   # PASS or DEFERRED both OK
 ```
 - Reads the latest `invariants_r*.json`. A FAILing invariant **blocks** convergence even if findings went dry (you can't "converge" with a known-broken invariant).
-- Output adds: `{"converged": bool, "blocking": ["HCD-I3", ...], "dry_2_rounds": bool}`.
+- Output: `{"converged": bool, "dry_2_rounds": bool, "blocking_invariants": ["HCD-I3", ...], "deferred_invariants": [...], "total_surviving": int, "rounds": int, "per_round": {...}}`.
 - `render`: the convergence verdict shows in the header strip (CONVERGED / NOT — blocked by Ix).
 
 ### 2.2 Blind-judge (`judge_brief()` + charter)
