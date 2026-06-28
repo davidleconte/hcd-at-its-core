@@ -27,8 +27,11 @@ overrides both Prosecutor and Defender for any finding it can run.
 > **model diversity, not vendor diversity.** True cross-vendor adjudication is **Mode B**, which is
 > now wired one-command (`arena.py mode-b`, mock-tested) but only *runs* against real third-party
 > families when you supply keys + `ARENA_MODE_B=1`. The round-1 seed remains a manual MECE pass.
-> Findings tagged `FIXED` mean the code fix landed and the *offline* Oracle passes — **not** that
-> `HCD-I1`/`I2` (live CQL / cluster-forms) were executed; those stay `DEFERRED` until the cluster boots.
+> Findings tagged `FIXED` mean the code fix landed and the *offline* Oracle passes. `HCD-I1`/`I2`
+> (live CQL / cluster-forms) and the 3 D1 Oracle checks **HAVE now been executed live** (2026-06-28,
+> secure profile) and PASS — recorded in `state/last_live.json`, so the dashboard shows them green
+> with a `last LIVE: PASS @ <ts>` stamp even when the cluster is down. A check never run live shows
+> `DEFERRED` until a cluster boots.
 
 ## MECE dimensions
 D1 technical accuracy (CQL/config vs C5.0) · D2 build & runtime wiring · D3 shell robustness ·
@@ -81,11 +84,20 @@ extract → validate → write pipeline is covered without real egress. The Pros
 `make audit-tribunal` prints the full per-round recipe.
 
 ### Live-cluster Oracle (decisive HCD adjudication)
-`bin/arena.py oracle` auto-detects a running cluster (`nodetool status`). With no cluster, the live
-checks are honestly marked **ORACLE-DEFERRED** (weighed against the artefact, never silently passed).
-Once `hcd-2.0.6-bin.tar.gz` is staged and `make up` / `make up-secure` runs, the Oracle executes:
-6×UN cluster-forms, `make verify-release` (C5.0 + Java 17), and the **Part 11 DDM CQL battery via
-`cqlsh -e`** — promoting the "verified-against-docs" findings to "executed-live".
+`bin/arena.py oracle` auto-detects a running cluster (`nodetool status`). Once `hcd-2.0.6-bin.tar.gz`
+is staged and `make up` / `make up-secure` runs, the Oracle executes the live checks — 6×UN
+cluster-forms, `make verify-release` (C5.0 + Java 17), and the **Part 11 DDM CQL battery via
+`cqlsh -e`** (plus `HCD-I1`/`I2`) — promoting "verified-against-docs" findings to "executed-live".
+**Live verdicts persist:** a live PASS is recorded to `state/last_live.json` (tracked), so when the
+cluster is later down the row renders as a green **PASS · last LIVE: PASS @ \<ts\>** (with a `✓ live`
+badge on invariant chips) — *not* lost. A check **never** run live shows amber **DEFERRED**; a live
+FAIL never promotes. This was populated live on 2026-06-28 (HCD-I1/I2 + the 3 D1 checks, all PASS).
+
+**Status legend:** `PASS` (green, verified — `· last LIVE @ ts` if from the last live run) · `FAIL`
+(red, blocks the gate) · `DEFERRED` (amber, live check, no cluster yet — never blocks) · `TIMEOUT`
+(amber, a check couldn't finish — usually a live cluster starving the CPU; inconclusive, non-blocking,
+so `make audit` is the **offline** gate). `make audit` always refreshes the **latest** tribunal round
+(the one the courtroom renders), and the pre-push hook re-refreshes it to the pushed commit.
 
 ### Formal invariants (Definition-of-Done) + provenance manifest
 
