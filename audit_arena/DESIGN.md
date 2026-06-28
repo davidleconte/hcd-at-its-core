@@ -30,6 +30,12 @@ The HCD demo is ~10k lines of shell + config + 94 didactic modules. Claims of co
 valid, the secure cluster forms, no secrets leak, module counts agree) are exactly the kind of thing
 that passes review by inspection and fails in practice. The arena turns "trust me" into "run it."
 
+> **Scope of this document.** This is the as-built design of the engine. §§1–10 describe the core v1
+> tribunal; a verified **v2 capability layer** (honesty reconciler, contract spine, lineage, scored +
+> multi-vendor panels, generative forge, interactive pupitre) was added on top — summarized in **§4.11**
+> with the full design in [`DESIGN_v2_roadmap.md`](DESIGN_v2_roadmap.md). Both keep the same binding rule:
+> the deterministic Oracle decides; everything advisory is read by no gate.
+
 ---
 
 ## 2. Goals & non-goals
@@ -161,8 +167,11 @@ Detailed rationale in [`DESIGN_invariants_manifest.md`](DESIGN_invariants_manife
 `manifest_rN.json`: git SHA (full sha256, never truncated), `git_dirty` flag, branch, signal-file
 count + content sha256 (generated artefacts excluded so the hash is stable), tool versions in an
 `env` map (`python`, `pytest`, `ruff`, `shellcheck`, `docker`, `conda`), the Oracle summary
-(+ `results_sha256`), and the seven invariant statuses. Cross-checked
-against `invariants_rN.json` by a self-test (`test_manifest_matches_invariants_if_generated`).
+(+ `results_sha256`), and the seven invariant statuses. Since v2 it also pins the **contract**
+(`version` + `content_sha256`), the **`lineage_sha256`**, and a single Merkle **`audit_root_sha256`**
+over every binding layer (repo source / oracle results / invariants / lineage / contract) — any change to
+any layer moves one root. Cross-checked against `invariants_rN.json` by a self-test
+(`test_manifest_matches_invariants_if_generated`).
 
 ### 4.5 Drivers — Mode A and Mode B
 - **Mode A (default):** the LLM roles are Claude subagents dispatched in-session. The three rounds
@@ -173,6 +182,10 @@ against `invariants_rN.json` by a self-test (`test_manifest_matches_invariants_i
   round's state, calls the provider, extracts + validates the JSON, writes the same artefact Mode A
   would. **Two safety gates:** an *egress opt-in* (`ARENA_MODE_B=1` per run) and *key-gating* (exits
   2 if no key) — either gate ⇒ fall back to Mode A. *Vendor diversity*, not just model diversity.
+- **Routine multi-vendor (v2):** `vendor-panel <role> <round>` fans the Mode-B call over an
+  `ARENA_PANEL` roster (one provider per vendor via `ARENA_PROVIDER`), each writing a per-vendor artefact;
+  a gated/bad vendor **abstains** (never aborts), and a deterministic variance artefact surfaces inter-vendor
+  dissent. The vendors are advisory — the Oracle settles any disagreement.
 
 ### 4.6 Self-hardening charter
 `harden` folds each confirmed `charter_gap` lesson (a defect class not yet in the tier-1
@@ -225,6 +238,26 @@ the 6s auto-refresh never wipes the user's exploration. Three dashboard rules ea
 - **Live verdicts persist.** A live PASS is recorded to a tracked `state/last_live.json`; an offline
   render then shows a green **PASS · last LIVE: PASS @ \<ts\>** instead of discarding the proof. A
   check never run live stays `DEFERRED`; a live FAIL never promotes.
+
+### 4.11 The v2 capability layer
+Beyond the v1 tribunal, the engine grew a verified upper layer (full design + the `adl-aqt2`/pupitre
+learnings in [`DESIGN_v2_roadmap.md`](DESIGN_v2_roadmap.md); the honesty contract in
+[`DESIGN_honesty_guardrails.md`](DESIGN_honesty_guardrails.md)). Every feature keeps the binding rule — the
+deterministic Oracle is the only arbiter; the additions are advisory and read by no gate:
+- **F1 honesty reconciler** (`reconcile`) — a numeric LLM score / vendor verdict / judge opinion is
+  advisory; a judge-green over a DEFERRED/FAILing invariant is a flagged contradiction (GREEN/AMBER/RED).
+- **F2 contract spine** (`contract`) — the Definition-of-Done as one versioned, content-hashed file
+  `arena.py` loads (`INVARIANTS`/`SEV`/`_DUPKEY` derive from it; `_battery_in` is single-sourced through it).
+- **F3 lineage** (`lineage`) — one Oracle-dominant provenance object per finding; `render` consumes it, so
+  each finding's command runs **once**, in the gated pass.
+- **T1 scored panel** (`panel-aggregate`) — an advisory judge score with the Oracle **ceiling re-derived in
+  code** (invariant FAIL → cap 5, Oracle FAIL → cap 7), clamped to 0–10, read by no gate.
+- **T2 multi-vendor panel** (`vendor-panel`) — routine vendor diversity + a variance artefact (§4.5).
+- **G1 forge** (`forge-contract`/`-sign`/`-verify`/`-record`/`-converge`) — *design* a new artefact against
+  a **human-signed** contract of executable acceptance predicates (PROVISIONAL until signed); same throwaway
+  worktree + Oracle as `verify-fix`.
+- **G2 pupitre** — `courtroom.html` as a 3-mode interactive console; `replay <ids>` is the safe execution
+  path (ids only — the trusted core supplies the stored command, never a browser-carried string).
 
 ---
 
@@ -314,6 +347,16 @@ them *is* the validation. Highlights, all fixed:
 (false VERIFIED, CI theatre) were the very "passing-but-empty-check = false confidence" trap the
 arena targets — caught only because the reviewers *ran the attacks* rather than trusting the code.
 
+**v2 held to the same discipline.** Each feature tier of the v2 build (§4.11) was adversarially verified
+*after* building, with a per-tier review workflow — and every tier the workflow found real defects the
+green tests missed: **~48 in total**. The headliners: the F1 reconciler read a `disposition` field the
+real judge never emits (its anti-theatre flag was dead code); the T2 "multi-vendor" panel queried *one*
+vendor N times (`llm.sh` ignored `ARENA_PROVIDER` for the defender/judge roles — and a mock test masked it);
+the G2 pupitre embedded the findings blob raw in a `<script>` element (a finding containing `</script>` was
+a stored-XSS breakout). A later holistic pass even caught two of the *author's own claims* — an
+overstatement ("forge proven end-to-end" tested only the pure function) and an inconsistency (an inline
+dup-key check that contradicted F2's "one source of truth"). All fixed; the discipline is recursive.
+
 ---
 
 ## 9. Honesty principles (anti-overstatement)
@@ -335,14 +378,18 @@ The arena is engineered to refuse to flatter itself, and the docs say exactly wh
 - **`last_live.json` can go stale** — it records the last live PASS with a timestamp; it does not
   re-verify. The timestamp is the honesty signal; a regression would show a green PASS with an old
   stamp until the next live run.
-- **Mode B coverage** — wired + mock-tested + run once cross-vendor; not part of CI (egress + keys).
+- **Mode B coverage** — wired + mock-tested; run once cross-vendor manually and now routinely via
+  `vendor-panel` (§4.5); still not part of CI (egress + keys).
 - **Invariant breadth** — I4/I7 are denylist/presence checks, not full grammatical proofs (a
   documented boundary, per `DESIGN_invariants_manifest.md`).
 - **`make audit` under a live cluster** — the bundled `pytest` check is CPU-bound and not meant to run
   while 6 JVMs compete; the engine reports `TIMEOUT` rather than a false FAIL, but the right workflow
   is offline gate + separate live invariant run.
-- **Future:** record live FAILs too (currently only PASS persists); a "last_live age" warning;
-  optional Mode-B-in-CI behind a secret; widening I4/I7 toward grammatical checks.
+- **Forge contract is the trust root** — a forge artefact is only as strong as its acceptance predicates;
+  `_forge_validate` rejects obvious no-ops but the human signature (`forge-sign`) is the real boundary.
+- **Done since v1:** the **last_live age** warning shipped (G4 — `ARENA_LAST_LIVE_MAX_AGE_DAYS`, surfacing
+  only). **Future:** record live FAILs too (currently only PASS persists); optional Mode-B-in-CI behind a
+  secret; widening I4/I7 toward grammatical checks; a generative forge run against a real (non-example) contract.
 
 ---
 
