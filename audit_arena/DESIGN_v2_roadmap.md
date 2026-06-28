@@ -89,10 +89,10 @@ digests.
 
 ### Tier 1 — Validation upgrades (P1; the adl-aqt2 BATAILLE-2 patterns, safe on the foundation)
 
-| # | Theme | Core delta | Effort |
-|---|---|---|---|
-| T1 | **Scored judge panel** | Numeric score with the **ceiling re-derived in Python** | L |
-| T2 | **Routine multi-vendor panel** | N-vendor adjudication per advisory role + deterministic variance artifact | M |
+| # | Theme | Core delta | Effort | Status |
+|---|---|---|---|---|
+| T1 | **Scored judge panel** | Numeric score with the **ceiling re-derived in Python** | L | ✅ Phase 1 shipped (`panel-aggregate`; advisory score, code-derived Oracle ceiling, read by no gate) |
+| T2 | **Routine multi-vendor panel** | N-vendor adjudication per advisory role + deterministic variance artifact | M | ⏳ next |
 
 **T1 — Scored judge panel.** *Phase 1 (ship first — proves the anti-theatre control):* add numeric
 `score`+`rubric` to the judge output, and **re-derive the ceiling deterministically in code** —

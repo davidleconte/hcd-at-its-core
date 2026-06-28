@@ -28,5 +28,12 @@ Return ONLY valid JSON:
   },
   "recommendations": {"must_fix_before_ship":["..."], "strategic":["..."], "moonshots":["..."]},
   "unresolved": ["..."],
-  "integrated_disposition": "..."
+  "integrated_disposition": "...",
+  "panel_scores": {"self_score": 0.0, "rubric": "what the 0-10 is anchored to"}
 }
+
+`panel_scores` is OPTIONAL and ADVISORY only. Put the numeric score INSIDE this block — never as a
+top-level `score`/`grade`/`rating` key (the reconciler REJECTS that: a score must not be a headline
+disposition surface). Your self_score is a trend signal, not a verdict: `panel-aggregate` re-derives its
+CEILING from the deterministic Oracle in code (any invariant FAIL caps it at 5; any Oracle check FAIL
+caps it at 7) and the gate reads it NEVER. Anchor the rubric to Oracle-observable facts.

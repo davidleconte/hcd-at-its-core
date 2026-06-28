@@ -689,3 +689,95 @@ def test_lineage_records_false_positive_vs_oracle_fail_disagreement():
         for f in (fp, vp, lp):
             if os.path.exists(f):
                 os.remove(f)
+
+
+# ─── T1 scored judge panel — Oracle ceiling re-derived in code (DESIGN_v2_roadmap.md Tier 1) ───────
+def _panel(rnd, grades, oracle, invariants):
+    """Drive panel-aggregate with probe artefacts at a high round; return the panel_rN.json dict."""
+    gp = os.path.join(SDIR, f"grades_r{rnd}.json")
+    op = os.path.join(SDIR, f"oracle_r{rnd}.json")
+    ip = os.path.join(SDIR, f"invariants_r{rnd}.json")
+    pp = os.path.join(SDIR, f"panel_r{rnd}.json")
+    json.dump(grades, open(gp, "w"))
+    json.dump(oracle, open(op, "w"))
+    json.dump(invariants, open(ip, "w"))
+    _arena("panel-aggregate", rnd)
+    return json.load(open(pp)), (gp, op, ip, pp)
+
+
+def test_panel_score_capped_at_5_on_invariant_fail():
+    """A judge's 9.5 self-score is capped at 5 in CODE when any invariant FAILs — the Oracle ceiling is
+    a verified fact, not a prompt request."""
+    p, files = _panel("995", {"panel_scores": {"self_score": 9.5}},
+                       {"checks": [{"check": "x", "status": "PASS"}]},
+                       {"invariants": [{"id": "HCD-I3", "status": "FAIL"}]})
+    try:
+        assert p["judge_claimed"] == 9.5 and p["capped_to"] == 5.0 and p["ceiling_applied"] is True
+    finally:
+        for f in files:
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_panel_score_capped_at_7_on_oracle_fail():
+    """An Oracle check FAIL (no invariant FAIL) caps the advisory score at 7."""
+    p, files = _panel("994", {"panel_scores": {"self_score": 9.5}},
+                       {"checks": [{"check": "ddm", "status": "FAIL"}]},
+                       {"invariants": [{"id": "HCD-I3", "status": "PASS"}]})
+    try:
+        assert p["capped_to"] == 7.0 and p["ceiling_applied"] is True and "ddm" in p["ceiling_reason"]
+    finally:
+        for f in files:
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_panel_score_not_capped_when_clean():
+    """No binding failure -> the judge's score stands (ceiling 10, not applied)."""
+    p, files = _panel("993", {"panel_scores": {"self_score": 8.0}},
+                       {"checks": [{"check": "x", "status": "PASS"}]},
+                       {"invariants": [{"id": "HCD-I3", "status": "PASS"}]})
+    try:
+        assert p["capped_to"] == 8.0 and p["ceiling_applied"] is False and p["ceiling"] == 10.0
+    finally:
+        for f in files:
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_panel_score_is_advisory_never_reaches_gate():
+    """The advisory score must be decoupled from the binding gate: a perfect score cannot rescue an
+    Oracle FAIL, and a low score cannot block a clean run."""
+    op = os.path.join(SDIR, "oracle_r992.json")
+    pp = os.path.join(SDIR, "panel_r992.json")
+    try:
+        json.dump({"capped_to": 10.0, "judge_claimed": 10.0}, open(pp, "w"))  # perfect advisory score
+        json.dump({"checks": [{"check": "x", "dimension": "D1", "status": "FAIL", "detail": "y"}]}, open(op, "w"))
+        assert _arena("gate").returncode == 1, "a perfect advisory score must not rescue an Oracle FAIL"
+    finally:
+        for f in (op, pp):
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_panel_scores_block_allowed_top_level_score_still_rejected():
+    """The sanctioned home for an advisory score is the `panel_scores` block (G1 allows it); a bare
+    top-level `score` remains forbidden."""
+    gp = os.path.join(SDIR, "grades_r991.json")
+    try:
+        json.dump({"panel_scores": {"self_score": 9.5}}, open(gp, "w"))
+        assert _arena("reconcile").returncode == 0, "panel_scores block must be allowed by G1"
+        json.dump({"score": 9.5}, open(gp, "w"))
+        assert _arena("reconcile").returncode == 2, "a top-level score must still be rejected by G1"
+    finally:
+        if os.path.exists(gp):
+            os.remove(gp)
+        _arena("reconcile")
+
+
+def test_make_audit_runs_panel_aggregate():
+    """make audit must run panel-aggregate (after invariants, before reconcile/render)."""
+    mk = open(os.path.join(REPO, "Makefile")).read()
+    seg = mk.split("audit:", 1)[1].split("\naudit-tribunal", 1)[0]
+    assert "arena.py panel-aggregate" in seg
+    assert seg.index("arena.py panel-aggregate") < seg.index("arena.py render")

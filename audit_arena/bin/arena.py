@@ -608,6 +608,44 @@ def reconcile():
     return out
 
 
+def panel_aggregate(rnd="1"):
+    """T1 — read the judge's ADVISORY self-score (grades `panel_scores.self_score`) and re-derive its
+    CEILING deterministically from the BINDING oracle + invariants, so a numeric score can show a trend
+    WITHOUT becoming theatre: any invariant FAIL caps the score at 5; else any Oracle check FAIL caps it
+    at 7. The capped score is advisory and is read by NO gate. Emits state/panel_r{rnd}.json. The score
+    lives in the sanctioned `panel_scores` block (not a top-level score key G1 forbids). See
+    DESIGN_v2_roadmap.md T1 + DESIGN_honesty_guardrails.md."""
+    oj, ij = _latest("oracle_r*.json"), _latest("invariants_r*.json")
+    grades = _by_round("grades_r*.json")
+    ps = (json.load(open(grades[-1])).get("panel_scores") if grades else None) or {}
+    try:
+        claimed = float(ps["self_score"]) if ps.get("self_score") is not None else None
+    except (TypeError, ValueError):
+        claimed = None
+    i_fail = [i["id"] for i in ij.get("invariants", []) if i.get("status") == "FAIL"]
+    o_fail = [c["check"] for c in oj.get("checks", []) if c.get("status") == "FAIL"]
+    if i_fail:
+        ceiling, reason = 5.0, f"invariant FAIL ({', '.join(i_fail)})"
+    elif o_fail:
+        ceiling, reason = 7.0, f"Oracle check FAIL ({', '.join(o_fail)})"
+    else:
+        ceiling, reason = 10.0, "no binding failure"
+    capped = min(claimed, ceiling) if claimed is not None else None
+    applied = bool(claimed is not None and capped < claimed)
+    out = {"round": int(rnd), "advisory": True, "judge_claimed": claimed, "ceiling": ceiling,
+           "ceiling_reason": reason, "capped_to": capped, "ceiling_applied": applied,
+           "rubric": ps.get("rubric"),
+           "generated_at": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}
+    os.makedirs(STATE, exist_ok=True)
+    json.dump(out, open(os.path.join(STATE, f"panel_r{rnd}.json"), "w"), indent=2, sort_keys=True)
+    if claimed is None:
+        print(f"panel r{rnd}: no judge self_score emitted (the advisory score is optional)")
+    else:
+        tail = f" -> CAPPED to {capped} ({reason})" if applied else f" (within ceiling {ceiling})"
+        print(f"panel r{rnd}: judge self_score {claimed}{tail} · advisory, read by NO gate")
+    return out
+
+
 def contract_check():
     """Validate the contract spine: semver, content_sha256 integrity, and that every invariant is
     well-formed (id/dim/statement/mode + a runnable command). The Definition-of-Done as a CHECKED
@@ -1034,8 +1072,21 @@ def render():
     grade_html = ""
     if grades:
         g = grades[-1]; L = g.get("lenses", {})
+        # T1: advisory judge score with the Oracle ceiling re-derived in code — shown subordinate to the
+        # binding verdict, explicitly "advisory · read by no gate". The Oracle CAPS a high judge claim.
+        panel = _latest("panel_r*.json")
+        score_html = ""
+        if panel.get("judge_claimed") is not None:
+            cap = panel.get("ceiling_applied")
+            col = "#b7950b" if cap else "#7fa6b0"
+            shown = panel.get("capped_to")
+            note = (f"capped to {shown} from {panel.get('judge_claimed')} — Oracle ceiling "
+                    f"{panel.get('ceiling')} ({html.escape(str(panel.get('ceiling_reason')))})") if cap \
+                else f"{shown}/10 (within Oracle ceiling {panel.get('ceiling')})"
+            score_html = (f'<div style="margin:4px 0 8px;font-size:13px;color:{col}">advisory score: '
+                          f'<b>{shown}</b>/10 — {note} · <span style="color:#7fa6b0">read by NO gate</span></div>')
         grade_html = f"""<div class="verdict"><h2>⚖️ Judge verdict (round {len(grades)})</h2>
-<p class="oneline">{html.escape(str(g.get('one_line_verdict','')))}</p><div class="lenses">
+<p class="oneline">{html.escape(str(g.get('one_line_verdict','')))}</p>{score_html}<div class="lenses">
 <div class="lens"><h3>SRE / Operations</h3><p>{html.escape(json.dumps(L.get('sre',''), ensure_ascii=False))}</p></div>
 <div class="lens"><h3>Cassandra committer / Correctness</h3><p>{html.escape(json.dumps(L.get('committer',''), ensure_ascii=False))}</p></div>
 <div class="lens"><h3>Security / Compliance</h3><p>{html.escape(json.dumps(L.get('security',''), ensure_ascii=False))}</p></div>
@@ -1262,6 +1313,7 @@ if __name__ == "__main__":
     elif cmd == "converge": converge()
     elif cmd == "lineage": lineage(sys.argv[2] if len(sys.argv) > 2 else _latest_round())
     elif cmd == "reconcile": reconcile()
+    elif cmd == "panel-aggregate": panel_aggregate(sys.argv[2] if len(sys.argv) > 2 else _latest_round())
     elif cmd == "contract": contract_check()
     elif cmd == "gate": gate()
     elif cmd == "judge-brief": judge_brief(sys.argv[2] if len(sys.argv) > 2 else "1")
