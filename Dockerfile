@@ -12,7 +12,7 @@ LABEL maintainer="HCD Docker Cluster" \
       org.opencontainers.image.title="HCD Docker Cluster" \
       org.opencontainers.image.description="IBM HCD (Hyper-Converged Database) - multi-node cluster for development, testing, and demos" \
       org.opencontainers.image.vendor="IBM" \
-      org.opencontainers.image.source="https://github.com/davidleconte/HCD_At_Its_Roots"
+      org.opencontainers.image.source="https://github.com/davidleconte/hcd-at-its-core"
 
 # Install dependencies:
 # - gettext-base for envsubst
