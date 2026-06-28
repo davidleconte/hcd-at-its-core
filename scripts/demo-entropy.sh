@@ -70,16 +70,35 @@ trap cleanup INT TERM EXIT
 
 log_info() { echo -e "${C_BLUE}[INFO]${C_RESET} $1"; }
 log_cmd() {
-    # shellcheck disable=SC2086
-    # Executes the command string via bash -c for shell interpretation (pipes,
-    # redirections, etc.). All command strings are hardcoded in this script —
-    # no user-controlled input is ever passed to this function.
+    # Executes the command string via bash -c for shell interpretation (pipes, redirections, etc.).
+    # All command strings are hardcoded in this script — no user-controlled input is ever passed.
     if [ "$DRY_RUN" = true ]; then
         echo -e "${C_YELLOW}[DRY-RUN]${C_RESET} $1"
-    else
-        echo -e "${C_GREEN}[EXEC]${C_RESET} $1"
-        bash -c "$1"
+        return 0
     fi
+    echo -e "${C_GREEN}[EXEC]${C_RESET} $1"
+    # Transient resilience for an autonomous (--no-pause) live run: this demo restarts/decommissions
+    # nodes, and a node whose CQL port is momentarily unavailable (just-restarted, not yet accepting
+    # connections) makes cqlsh exit non-zero — which under `set -e` would abort the entire demo. Retry
+    # ONLY on connection-level errors (the node is unreachable, always transient here); a genuine CQL
+    # error (bad syntax, ConfigurationException, consistency failure) still returns non-zero and aborts.
+    local attempt=1 max=12 out rc
+    while true; do
+        set +e
+        out="$(bash -c "$1" 2>&1)"
+        rc=$?
+        set -e
+        printf '%s\n' "$out"
+        [ "$rc" -eq 0 ] && return 0
+        if [ "$attempt" -lt "$max" ] && \
+           printf '%s' "$out" | grep -qiE "Connection refused|Unable to connect to any servers|NoHostAvailable|Last error: Connection refused"; then
+            echo -e "${C_YELLOW}[retry ${attempt}/${max}] target CQL endpoint not ready — waiting 5s...${C_RESET}"
+            sleep 5
+            attempt=$((attempt + 1))
+            continue
+        fi
+        return "$rc"
+    done
 }
 
 pause() {
@@ -269,6 +288,22 @@ wait_for_node_un() {
             count=$((count + 1))
             if [ $count -ge $max_retries ]; then
                 log_info "Timeout waiting for ${node_label} to reach UN. Continuing..."
+                return 0
+            fi
+        done
+        echo ""
+        # UN (gossip up) != native transport ready. After a restart a node is UN seconds before it
+        # accepts CQL on :9042, so querying it immediately gives "Connection refused" and (under
+        # set -e) aborts the whole demo. Also wait for that node's own CQL to come up. Container
+        # name derives from the static IP: 172.28.0.2->node1 ... 172.28.0.7->node6.
+        local node_ctr="hcd-node$(( ${target_ip##*.} - 1 ))"
+        local cql_count=0
+        until docker exec "$node_ctr" cqlsh -e "SELECT now() FROM system.local" >/dev/null 2>&1; do
+            echo -n "+"
+            sleep "$sleep_interval"
+            cql_count=$((cql_count + 1))
+            if [ $cql_count -ge $max_retries ]; then
+                log_info "Timeout waiting for ${node_label} CQL to accept connections. Continuing..."
                 return 0
             fi
         done

@@ -38,11 +38,16 @@ up-secure: ## Start the cluster with the HCD 2.0 secure profile (auth + CIDR + c
 	@test -d certs || (echo "ERROR: ./certs not found — run 'make gen-certs' first." >&2; exit 1)
 	$(COMPOSE_SECURE) up -d --build
 
-secure-bootstrap: ## Replicate system_auth across DCs after up-secure (run once cluster is UN)
-	@echo "Setting system_auth replication to NetworkTopologyStrategy (dc1:3, dc2:3)..."
+secure-bootstrap: ## Replicate system_auth/traces/distributed across DCs after up-secure (run once cluster is UN)
+	@echo "Setting multi-DC system keyspaces to NetworkTopologyStrategy..."
 	docker exec hcd-node1 cqlsh -e "ALTER KEYSPACE system_auth WITH replication = {'class':'NetworkTopologyStrategy','dc1':3,'dc2':3};"
-	@for n in 1 2 3 4 5 6; do docker exec hcd-node$$n nodetool repair -- system_auth || true; done
-	@echo "Done. The default superuser is now replicated; auth is resilient to node loss."
+	@# system_traces / system_distributed ship as SimpleStrategy, which has no DC awareness — so any
+	@# LOCAL_QUORUM read against them (e.g. cqlsh TRACING ON, used by demo Module 2) fails on a
+	@# multi-DC cluster with "Unable to complete the operation against any hosts". Make them NTS too.
+	docker exec hcd-node1 cqlsh -e "ALTER KEYSPACE system_traces WITH replication = {'class':'NetworkTopologyStrategy','dc1':2,'dc2':2};"
+	docker exec hcd-node1 cqlsh -e "ALTER KEYSPACE system_distributed WITH replication = {'class':'NetworkTopologyStrategy','dc1':2,'dc2':2};"
+	@for n in 1 2 3 4 5 6; do docker exec hcd-node$$n nodetool repair -- system_auth system_traces system_distributed || true; done
+	@echo "Done. system_auth/traces/distributed are DC-replicated; auth + LOCAL_QUORUM tracing resilient."
 
 down-secure: ## Stop the secure-profile cluster (preserve volumes)
 	$(COMPOSE_SECURE) down
