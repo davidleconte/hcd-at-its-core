@@ -222,6 +222,7 @@ audit: ## Run the deterministic audit (Oracle + invariants + manifest) and rende
 	# dashboard's provenance never lags behind the tribunal's current round.
 	python3 audit_arena/bin/arena.py oracle
 	python3 audit_arena/bin/arena.py invariants
+	python3 audit_arena/bin/arena.py lineage     # F3: per-finding provenance (runs each oracle_cmd ONCE; render consumes this)
 	python3 audit_arena/bin/arena.py manifest
 	python3 audit_arena/bin/arena.py reconcile   # honesty reconciler: emit reconciliation.json, exit 2 if grades wire a numeric score
 	python3 audit_arena/bin/arena.py render

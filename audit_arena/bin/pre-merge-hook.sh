@@ -60,6 +60,7 @@ fi
 # git provenance never lags HEAD. Writes ONLY gitignored generated artefacts (manifest_r*.json,
 # courtroom.html) — it never mutates a TRACKED file, so the push stays clean. Best-effort: a render
 # hiccup must never block the push, hence `|| true`. manifest/render default to the latest round.
+"$PY" audit_arena/bin/arena.py lineage  >/dev/null 2>&1 || true   # F3: per-finding provenance (render consumes it)
 "$PY" audit_arena/bin/arena.py manifest >/dev/null 2>&1 || true
 "$PY" audit_arena/bin/arena.py render   >/dev/null 2>&1 || true
 echo "OK: deterministic gate passed · courtroom refreshed to $(git rev-parse --short HEAD) (LLM tribunal is advisory — 'make audit-tribunal')."

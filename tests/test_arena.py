@@ -496,3 +496,71 @@ def test_make_audit_validates_contract():
     mk = open(os.path.join(REPO, "Makefile")).read()
     seg = mk.split("audit:", 1)[1].split("\naudit-tribunal", 1)[0]
     assert "arena.py contract" in seg, "make audit must validate the contract spine"
+
+
+# ─── F3 artefact lineage (DESIGN_v2_roadmap.md Tier 0) ────────────────────────────────────────────
+def test_lineage_emits_oracle_dominant_provenance():
+    """`lineage` emits one provenance object per finding with an Oracle-dominant status ladder."""
+    r = _arena("lineage")
+    assert r.returncode == 0, f"lineage failed: {r.stderr}"
+    lin = json.load(open(sorted(__import__("glob").glob(os.path.join(SDIR, "lineage_r*.json")))[-1]))
+    assert lin["findings"], "lineage produced no provenance objects"
+    ladder = {"FILED", "VERIFIED", "ADJUDICATED", "REMEDIATED", "LIVE_CONFIRMED"}
+    for o in lin["findings"]:
+        assert {"id", "lineage_status", "layer_refs", "content_digests"} <= set(o), f"thin object: {o}"
+        assert o["lineage_status"] in ladder
+
+
+def test_lineage_status_follows_oracle_over_defender():
+    """When the Defender (L4) says CONFIRMED but the Oracle (L5) says FIXED/PASS, the lineage status
+    follows the Oracle and the disagreement is recorded — 'Oracle beats advocates' in provenance."""
+    fp = os.path.join(SDIR, "findings_r999.json")
+    vp = os.path.join(SDIR, "verdicts_r999.json")
+    lp = os.path.join(SDIR, "lineage_r999.json")
+    try:
+        json.dump([{"id": "R9-01", "dimension": "D1", "invariant": "-", "finding": "probe",
+                    "evidence": "x", "oracle_cmd": "true"}], open(fp, "w"))  # 'true' -> rc 0 -> FIXED
+        json.dump([{"id": "R9-01", "verdict": "CONFIRMED"}], open(vp, "w"))
+        _arena("lineage", "999")
+        lin = json.load(open(lp))
+        o = next(x for x in lin["findings"] if x["id"] == "R9-01")
+        assert o["oracle_result"] == "FIXED" and o["status"] == "FIXED", o
+        assert o["lineage_status"] == "ADJUDICATED", o
+        assert "l4_l5_disagreement" in o, "Defender-vs-Oracle disagreement must be recorded"
+    finally:
+        for f in (fp, vp, lp):
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_render_consumes_lineage_not_subprocess():
+    """render() must single-source the per-finding resolution from the gated lineage pass, NOT re-run
+    each oracle_cmd at render time (the integrity win — computed once, in the gated step)."""
+    src = open(ARENA).read()
+    start = src.index("def render(")
+    rbody = src[start:src.index("\ndef ", start)]
+    assert '_latest("lineage_r*.json")' in rbody, "render must consume lineage_r*.json"
+    assert "subprocess.run(cmd" not in rbody, "render must not re-execute oracle_cmd; it consumes lineage"
+
+
+def test_manifest_has_audit_root_merkle():
+    """manifest pins a single Merkle-style root over the binding layers (repo/oracle/invariants/lineage/
+    contract) so any layer change moves one auditable digest."""
+    _arena("lineage")
+    r = _arena("manifest")
+    assert r.returncode == 0, r.stderr
+    man = json.loads(r.stdout)
+    assert "audit_root_sha256" in man and man["audit_root_sha256"], "manifest missing audit_root_sha256"
+    assert "lineage_sha256" in man, "manifest missing lineage_sha256"
+    assert man["contract"]["content_sha256"], "manifest must pin the contract hash"
+
+
+def test_make_audit_runs_lineage_before_manifest():
+    """make audit must run lineage AFTER invariants and BEFORE manifest+render, so the manifest can hash
+    it and render can consume it."""
+    mk = open(os.path.join(REPO, "Makefile")).read()
+    seg = mk.split("audit:", 1)[1].split("\naudit-tribunal", 1)[0]
+    assert "arena.py lineage" in seg, "make audit must run lineage"
+    assert seg.index("arena.py lineage") > seg.index("arena.py invariants"), "lineage after invariants"
+    assert seg.index("arena.py lineage") < seg.index("arena.py manifest"), "lineage before manifest"
+    assert seg.index("arena.py lineage") < seg.index("arena.py render"), "lineage before render"

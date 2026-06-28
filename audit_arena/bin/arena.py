@@ -396,6 +396,15 @@ def manifest(rnd="1"):
                    "results_sha256": hashlib.sha256(json.dumps(oj, sort_keys=True).encode()).hexdigest() if oj else None},
         "invariants": {i["id"]: i["status"] for i in ij.get("invariants", [])},
     }
+    # F3: a single Merkle-style root over the BINDING layers — repo source, oracle results, invariant
+    # statuses, the lineage, and the contract. Any change to any layer changes one auditable digest.
+    lj = _latest("lineage_r*.json")
+    lineage_sha = hashlib.sha256(json.dumps(lj, sort_keys=True).encode()).hexdigest() if lj else None
+    root_inputs = {"repo": man["repo"]["content_sha256"], "oracle": man["oracle"]["results_sha256"],
+                   "invariants": man["invariants"], "lineage": lineage_sha,
+                   "contract": man["contract"]["content_sha256"]}
+    man["lineage_sha256"] = lineage_sha
+    man["audit_root_sha256"] = hashlib.sha256(json.dumps(root_inputs, sort_keys=True).encode()).hexdigest()
     os.makedirs(STATE, exist_ok=True)
     json.dump(man, open(os.path.join(STATE, f"manifest_r{rnd}.json"), "w"), indent=2)
     print(json.dumps(man, indent=2))
@@ -833,25 +842,94 @@ def remediate_record(finding_id, patch_file, verdict_file, rnd="1"):
 SEV = CONTRACT["severity_scale"]  # severity->colour, from the contract spine (single source of truth)
 
 
+def lineage(rnd="1"):
+    """F3 — emit one Oracle-DOMINANT provenance object per finding -> state/lineage_r{rnd}.json. This is
+    the ONE place a finding's oracle_cmd executes (the binding ground-truth pass): render() then CONSUMES
+    this file instead of re-running commands, so the dashboard's resolution is single-sourced from the
+    gated audit rather than recomputed on every refresh. lineage_status follows L5 (the Oracle); when the
+    Defender (L4) and the Oracle (L5) disagree, both are recorded but the Oracle wins. See DESIGN_v2_roadmap.md F3."""
+    import hashlib
+
+    def _dig(obj):
+        return hashlib.sha256(json.dumps(obj, sort_keys=True).encode()).hexdigest()[:16]
+
+    finds = []
+    for fp in _by_round("findings_r*.json"):
+        d = json.load(open(fp))
+        finds += (d if isinstance(d, list) else d.get("findings", []))
+    verds = {}
+    for fp in _by_round("verdicts_r*.json"):
+        d = json.load(open(fp))
+        for v in (d if isinstance(d, list) else d.get("verdicts", [])):
+            verds[v.get("id")] = v
+    rem = {r.get("finding_id"): r for r in _latest("remediation_r*.json").get("remediations", [])}
+
+    objs = []
+    for f in finds:
+        fid = f.get("id")
+        v = verds.get(fid, {})
+        # L5 ORACLE — the single execution of the finding's binding command (FIXED iff now correct).
+        ores = f.get("oracle_result")
+        cmd = f.get("oracle_cmd")
+        if cmd and not ores:
+            try:
+                rc = subprocess.run(cmd, shell=True, cwd=ROOT, capture_output=True, timeout=60).returncode
+                ores = "FIXED" if rc == 0 else "FAIL"
+            except Exception:
+                ores = "—"
+        status = "FIXED" if ores == "FIXED" else (f.get("status") or "")
+        # L7 LIVE — a recorded live PASS for this finding's invariant (or id).
+        live = _last_live_pass(f.get("invariant") or "") or _last_live_pass(fid)
+        rstat = (rem.get(fid, {}).get("status") or "").upper()
+        dverd = (v.get("verdict") or "").upper()
+        # lineage_status — Oracle-dominant ladder.
+        if live:
+            lstat = "LIVE_CONFIRMED"
+        elif rstat == "VERIFIED":
+            lstat = "REMEDIATED"
+        elif ores in ("PASS", "FAIL", "FIXED"):
+            lstat = "ADJUDICATED"
+        elif dverd:
+            lstat = "VERIFIED"
+        else:
+            lstat = "FILED"
+        layers = {"L3_finding": fid, "L4_verdict": dverd or None, "L5_oracle": ores or None,
+                  "L6_remediation": rstat or None, "L7_live": (live.get("ts") if live else None)}
+        obj = {"id": fid, "lineage_status": lstat, "oracle_result": ores or None, "status": status,
+               "defender_verdict": dverd or None, "invariant": f.get("invariant") or None,
+               "layer_refs": {k: lv for k, lv in layers.items() if lv is not None},
+               "content_digests": {"finding": _dig(f), **({"verdict": _dig(v)} if v else {})}}
+        # L4/L5 disagreement: Defender says it survives, Oracle says resolved -> status follows the Oracle.
+        if dverd in ("CONFIRMED", "OVERSTATED") and ores in ("FIXED", "PASS"):
+            obj["l4_l5_disagreement"] = f"Defender={dverd} but Oracle={ores} — status follows the Oracle"
+        objs.append(obj)
+
+    os.makedirs(STATE, exist_ok=True)
+    ladder = ("FILED", "VERIFIED", "ADJUDICATED", "REMEDIATED", "LIVE_CONFIRMED")
+    out = {"round": int(rnd), "findings": objs,
+           "by_status": {s: sum(1 for o in objs if o["lineage_status"] == s) for s in ladder}}
+    json.dump(out, open(os.path.join(STATE, f"lineage_r{rnd}.json"), "w"), indent=2)
+    print(f"lineage r{rnd}: {len(objs)} findings · "
+          + " · ".join(f"{k}:{vv}" for k, vv in out["by_status"].items() if vv))
+    return out
+
+
 def render():
     md = open(TRANSCRIPT, encoding="utf-8").read() if os.path.exists(TRANSCRIPT) else "*(awaiting prosecution)*"
     finds, verds, oracle_idx, grades = [], {}, {}, []
     for fp in _by_round("findings_r*.json"):
         d = json.load(open(fp)); finds += (d if isinstance(d, list) else d.get("findings", []))
-    # Per-finding ground truth: run each finding's oracle_cmd so the register shows the LIVE
-    # resolution (FIXED iff the artefact is now correct) instead of a stale "—". This is what
-    # makes the latest round visibly adjudicated, not just appended.
+    # F3: CONSUME the gated lineage pass (the single place oracle_cmd ran) instead of re-executing each
+    # command here — the dashboard's resolution is single-sourced from the audit, not recomputed per refresh.
+    lin = {o["id"]: o for o in _latest("lineage_r*.json").get("findings", [])}
     for f in finds:
-        cmd = f.get("oracle_cmd")
-        if not cmd or f.get("oracle_result"):
+        o = lin.get(f.get("id"))
+        if not o:
             continue
-        try:
-            rc = subprocess.run(cmd, shell=True, cwd=ROOT, capture_output=True, timeout=60).returncode
-            f["oracle_result"] = "FIXED" if rc == 0 else "FAIL"
-            if rc == 0:
-                f["status"] = "FIXED"
-        except Exception:
-            f["oracle_result"] = "—"
+        if o.get("oracle_result"):
+            f["oracle_result"] = o["oracle_result"]
+        if o.get("status"):
+            f["status"] = o["status"]
     for fp in _by_round("verdicts_r*.json"):
         d = json.load(open(fp))
         for v in (d if isinstance(d, list) else d.get("verdicts", [])):
@@ -1125,6 +1203,7 @@ if __name__ == "__main__":
     elif cmd == "manifest": manifest(sys.argv[2] if len(sys.argv) > 2 else _latest_round())
     elif cmd == "act": act(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "converge": converge()
+    elif cmd == "lineage": lineage(sys.argv[2] if len(sys.argv) > 2 else _latest_round())
     elif cmd == "reconcile": reconcile()
     elif cmd == "contract": contract_check()
     elif cmd == "gate": gate()

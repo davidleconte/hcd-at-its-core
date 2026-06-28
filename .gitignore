@@ -64,6 +64,7 @@ audit_arena/state/manifest_r*.json
 audit_arena/state/convergence.json
 audit_arena/state/judge_brief_r*.md
 audit_arena/state/remediation_r*.json
+audit_arena/state/lineage_r*.json
 audit_arena/state/reconciliation.json
 audit_arena/state/patches/
 audit_arena/state/_modeb_*
