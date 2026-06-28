@@ -1,6 +1,7 @@
 """Tests for shell scripts, config validation, and basic behavior."""
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 
@@ -116,6 +117,24 @@ def test_prometheus_alerts_valid_yaml():
         assert "expr" in rule, f"Rule {rule['alert']} missing 'expr'"
         assert "labels" in rule, f"Rule {rule['alert']} missing 'labels'"
         assert "severity" in rule["labels"], f"Rule {rule['alert']} missing severity label"
+
+
+def test_prometheus_alert_metric_names_match_lowercasing_exporter():
+    """Discriminating check (tribunal R2-01/R2-02): config/jmx-exporter.yml sets
+    `lowercaseOutputName: true`, so every emitted metric name is all-lowercase. An alert
+    expr that carries a CamelCase metric name (a lowercase letter immediately followed by
+    `_` then an uppercase letter, e.g. `cassandra_dropped_Dropped`) references a series the
+    exporter NEVER emits — the alert is silently dead. The old shape-only test let this
+    whole class pass green; this asserts the metric names can actually fire."""
+    with open("config/jmx-exporter.yml") as f:
+        assert yaml.safe_load(f).get("lowercaseOutputName") is True, \
+            "exporter no longer lowercases — revisit this assertion"
+    with open("config/alerts.yml") as f:
+        data = yaml.safe_load(f)
+    camel = re.compile(r"[a-z]_[A-Z]")
+    offenders = [r["alert"] for g in data["groups"] for r in g["rules"]
+                 if camel.search(r["expr"])]
+    assert not offenders, f"alerts reference CamelCase metrics the lowercasing exporter never emits: {offenders}"
 
 
 def test_grafana_dashboard_valid_json():

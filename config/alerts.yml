@@ -26,7 +26,7 @@ groups:
 
       # Dropped messages indicate overload (Module 70)
       - alert: HCDDroppedMessages
-        expr: rate(cassandra_dropped_Dropped[5m]) > 0
+        expr: rate(cassandra_dropped_dropped[5m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -36,7 +36,7 @@ groups:
 
       # Compaction backlog growing (Module 70)
       - alert: HCDCompactionBacklog
-        expr: cassandra_compaction_PendingTasks > 50
+        expr: cassandra_compaction_pendingtasks > 50
         for: 10m
         labels:
           severity: warning
@@ -54,19 +54,21 @@ groups:
           summary: "High heap usage on {{ $labels.instance }}"
           description: "Heap usage at {{ $value | humanizePercentage }} on {{ $labels.instance }}. Risk of GC storms."
 
-      # Hints accumulating (node down, Module 66)
+      # Hints being written (a replica is unreachable, Module 66). The JMX exporter exposes the
+      # HintedHandOffManager counter (cassandra_hints_hints_created), not an in-progress gauge —
+      # so we alert on the RATE of hints created, matching the Grafana dashboard's series.
       - alert: HCDHintsAccumulating
-        expr: cassandra_hints_TotalHintsInProgress > 100
+        expr: rate(cassandra_hints_hints_created[5m]) > 0
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "Hints accumulating on {{ $labels.instance }}"
-          description: "{{ $value }} pending hints on {{ $labels.instance }}. A replica may be down. Check nodetool status."
+          summary: "Hints being written on {{ $labels.instance }}"
+          description: "Hints are being created on {{ $labels.instance }} — a replica may be down. Check nodetool status."
 
       # Write latency p99 exceeds 100ms
       - alert: HCDHighWriteLatency
-        expr: cassandra_client_request_Latency_99thPercentile{scope="Write"} > 100000
+        expr: cassandra_client_request_latency_99thpercentile{scope="Write"} > 100000
         for: 5m
         labels:
           severity: warning
@@ -76,7 +78,7 @@ groups:
 
       # Read latency p99 exceeds 500ms
       - alert: HCDHighReadLatency
-        expr: cassandra_client_request_Latency_99thPercentile{scope="Read"} > 500000
+        expr: cassandra_client_request_latency_99thpercentile{scope="Read"} > 500000
         for: 5m
         labels:
           severity: warning

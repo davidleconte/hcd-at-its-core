@@ -37,7 +37,7 @@ IMPLEMENTATION_PLAN.md
 *.tar.gz
 
 # HCD node directories (created by local runs)
-[hcd-node*]
+hcd-node*
 
 # Python
 __pycache__/

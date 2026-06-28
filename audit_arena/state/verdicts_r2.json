@@ -1,0 +1,45 @@
+{
+  "verdicts": [
+    {
+      "id": "R2-01",
+      "verdict": "CONFIRMED",
+      "adjusted_severity": "HIGH",
+      "counter_evidence": "config/jmx-exporter.yml:4 (lowercaseOutputName: true); config/alerts.yml:29,39,69,79; config/grafana/dashboards/hcd-cluster.json:24,168,185",
+      "reasoning": "Confirmed on direct file inspection: jmx-exporter.yml line 4 sets lowercaseOutputName: true, so the exporter emits cassandra_dropped_dropped, cassandra_compaction_pendingtasks, and cassandra_client_request_latency_99thpercentile — exactly the names the Grafana dashboard uses (hcd-cluster.json:24,168,185); alerts.yml lines 29, 39, 69, and 79 retain CamelCase variants that PromQL (case-sensitive) will never match. The oracle_cmd grep confirms 5 violating expressions exist. NOTE: the oracle_cmd also catches the hints alert (R2-03), so both R2-01 and R2-03 are covered by the same deterministic gate — defer to Oracle as final arbiter."
+    },
+    {
+      "id": "R2-02",
+      "verdict": "CONFIRMED",
+      "adjusted_severity": "MED",
+      "counter_evidence": "tests/test_scripts.py:104-118",
+      "reasoning": "Confirmed: test_prometheus_alerts_valid_yaml (lines 104-118) checks only structural YAML shape — groups key, rule count >= 5, and presence of alert/expr/labels/severity fields — with no check that metric names in expr fields are lowercase or match jmx-exporter output. This is a pure offline static-file check that could catch the R2-01/R2-03 case-mismatch without any live Prometheus, making the omission indefensible. MED severity is correct as a test-quality finding that enables rather than causes the alert defect."
+    },
+    {
+      "id": "R2-03",
+      "verdict": "CONFIRMED",
+      "adjusted_severity": "LOW",
+      "reasoning": "Confirmed on two independent grounds: (1) alerts.yml:59 uses cassandra_hints_TotalHintsInProgress which, with lowercaseOutputName: true, would be emitted as cassandra_hints_totalhintssinprogress — already broken by the same lowercasing issue as R2-01; (2) the dashboard hints panel (hcd-cluster.json:219) uses cassandra_hints_hints_created, a different attribute entirely, meaning alert and dashboard monitor different MBean attributes and at most one can be right. LOW severity is appropriate since hints monitoring is not a safety-critical code path.",
+      "counter_evidence": "config/alerts.yml:59; config/grafana/dashboards/hcd-cluster.json:219; config/jmx-exporter.yml:46-47"
+    },
+    {
+      "id": "R2-04",
+      "verdict": "CONFIRMED",
+      "adjusted_severity": "LOW",
+      "counter_evidence": ".gitignore:40; git check-ignore -q hcd-node1 returns exit 1 (NOT ignored)",
+      "reasoning": "Confirmed: .gitignore line 40 reads [hcd-node*] which is a POSIX character-class matching a single char from {h,c,d,-,n,o,e,*}, not a glob prefix. Running git check-ignore -q hcd-node1 returns exit code 1 (not ignored), validating the Prosecutor's claim deterministically. The Oracle cmd is the final arbiter here; current evidence already matches."
+    },
+    {
+      "id": "R2-05",
+      "verdict": "OVERSTATED",
+      "adjusted_severity": "LOW",
+      "counter_evidence": "docker-compose.yml:183-204; scripts/demo-entropy.sh:435-441",
+      "reasoning": "The inconsistency is real — compose uses 172.28.0.10 / RELEASE.2024-03-30T09-41-56Z while the demo script uses 172.28.0.40 / RELEASE.2024-11-07T00-52-20Z — but the Prosecutor already notes these are mutually exclusive paths. Additionally the compose service (docker-compose.yml:185,195) lacks both MINIO_API_OBJECT_LOCK_ENABLED=on and the --with-lock server flag, meaning the compose path actually cannot enforce WORM even if used; the demo path (which has both flags) is the correct path. Severity holds at LOW; the finding is accurate but the characterisation of 'unsourced inconsistency' understates that the compose MinIO variant is also functionally incomplete for WORM."
+    }
+  ],
+  "missed_strengths": [
+    {
+      "point": "The docker-compose MinIO service's missing MINIO_API_OBJECT_LOCK_ENABLED flag (docker-compose.yml:195) means the compose path is not merely inconsistent in IP/tag — it is also silently non-WORM. The demo-entropy.sh path (with both the env var and --with-lock, lines 440-441) is the only path that actually enforces Object Lock. The Prosecutor framed this as a cosmetic divergence, but the correct path is the demo script, not compose. This is an unreported defect in the compose 'make minio' path that the Prosecutor missed.",
+      "evidence": "docker-compose.yml:195 (no MINIO_API_OBJECT_LOCK_ENABLED); scripts/demo-entropy.sh:440 (MINIO_API_OBJECT_LOCK_ENABLED=on)"
+    }
+  ]
+}

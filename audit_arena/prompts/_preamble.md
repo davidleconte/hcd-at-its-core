@@ -42,4 +42,5 @@ HCD TIER-1 FORBIDDEN PATTERNS (treat as deal-breakers, like leakage in a quant a
 <!-- AUTO-HARDENED:START — appended by `arena.py harden`; human-prunable -->
 - [from R1-02] DDM mask-function arg semantics (mask_inner vs mask_outer; which chars are kept) must be checked against the Apache DDM docs, never assumed.
 - [from R1-06] Tarball-internal binary paths (sstable* tools live under resources/cassandra/{bin,tools/bin}) must be resolved at build time, not assumed to be /opt/hcd/bin.
+- [from R2-01] Prometheus alert/dashboard exprs must reference metric names as the exporter actually emits them; with jmx_exporter `lowercaseOutputName: true` the final name (post capture-group substitution) is lowercased, so any CamelCase reference silently never matches. Cross-check every PromQL metric name against the jmx-exporter rules' lowercased output.
 <!-- AUTO-HARDENED:END -->

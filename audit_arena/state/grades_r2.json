@@ -1,0 +1,46 @@
+{
+  "one_line_verdict": "All five R2 findings SURVIVE; the headline is a silent-alerting failure — 5 of 8 Prometheus alerts carry CamelCase metric names the lowercasing exporter never emits, so they look armed but never fire. Fix alerts.yml + harden the test before claiming the monitoring stack works.",
+  "surviving_findings": [
+    {
+      "id": "R2-01",
+      "severity": "HIGH",
+      "disposition": "Lowercase the 4 CamelCase metric names in alerts.yml (cassandra_dropped_dropped, cassandra_compaction_pendingtasks, cassandra_client_request_latency_99thpercentile x2) to match jmx-exporter lowercaseOutputName:true, exactly as the Grafana dashboard already does."
+    },
+    {
+      "id": "R2-03",
+      "severity": "MED",
+      "disposition": "Reconcile the hints alert (alerts.yml:59 cassandra_hints_TotalHintsInProgress) and dashboard (hcd-cluster.json:219 cassandra_hints_hints_created) onto the single lowercased series the exporter actually emits; the alert is the 5th silently-dead rule."
+    },
+    {
+      "id": "R2-02",
+      "severity": "MED",
+      "disposition": "Strengthen test_prometheus_alerts_valid_yaml (test_scripts.py:104) to assert every metric name in each expr is all-lowercase (or resolves to a jmx-exporter-producible name); current test is shape-only and stays green over the R2-01/03 dead alerts."
+    },
+    {
+      "id": "R2-04",
+      "severity": "LOW",
+      "disposition": "Replace .gitignore:40 [hcd-node*] (dead POSIX char-class) with hcd-node*/ ; oracle git check-ignore confirms the rule is non-functional, though named-volume usage means low real impact."
+    },
+    {
+      "id": "R2-05",
+      "severity": "LOW",
+      "disposition": "Single-source the MinIO IP/image-tag across demo-entropy.sh (172.28.0.40 / 2024-11-07) and docker-compose.yml (172.28.0.10 / 2024-03-30); ALSO add MINIO_API_OBJECT_LOCK_ENABLED=on + --with-lock to the compose service so the make-minio path is not silently non-WORM (Defender-surfaced strength the Prosecutor missed)."
+    }
+  ],
+  "dropped": [],
+  "lenses": {
+    "sre": "CONDITIONAL-SHIP. The cluster forms and the demo runs, but the monitoring layer is partly cosmetic: 5 of 8 alert rules (dropped messages, compaction backlog, write+read p99 latency, hints) will never fire because PromQL is case-sensitive and the exporter lowercases all names. The thing most likely to page someone at 3am is the alert that DOESN'T page — a real write-latency or dropped-message incident proceeds in silence while the dashboard (correctly lowercased) shows the pain nobody is alerted to. Block the merge of any 'monitoring is ready' claim until alerts.yml is lowercased.",
+    "committer": "This round is config/test, not CQL/cassandra.yaml, so no live CQL statement would error. As a config reviewer I would NOT merge as-is: alerts.yml ships 5 provably non-matching metric names with a test too weak to catch them, and the author already demonstrated (in the dashboard) they know the names lowercase. Grade B-: the defect is mechanical, fully offline-detectable, and the fix is one sed plus one test assertion away from A.",
+    "security": "conditions. No new auth/RBAC/CIDR/mTLS exposure introduced here. The one compliance-relevant gap is DORA/WORM: the docker-compose minio service (make minio) lacks MINIO_API_OBJECT_LOCK_ENABLED=on and --with-lock, so an operator who stands up MinIO via compose rather than the demo script gets a bucket with NO Object Lock — the WORM/immutability proof the ransomware modules assert does not hold on that path. Top obligation gap: make every documented MinIO path actually enforce Object Lock, or remove the non-WORM compose path so it cannot be mistaken for the audited one."
+  },
+  "recommendations": [
+    "Lowercase all 5 CamelCase metric names in config/alerts.yml (lines 29,39,59,69,79) to match jmx-exporter.yml lowercaseOutputName:true and the Grafana dashboard (R2-01 + R2-03).",
+    "Add a discriminating assertion to tests/test_scripts.py::test_prometheus_alerts_valid_yaml that every metric token in each expr is all-lowercase / jmx-exporter-producible, so this class of defect cannot regress green (R2-02).",
+    "Add MINIO_API_OBJECT_LOCK_ENABLED=on and the --with-lock server flag to the docker-compose minio service, and single-source its IP+image tag with demo-entropy.sh so make-minio and the demo agree and both enforce WORM (R2-05).",
+    "Fix .gitignore:40 to hcd-node*/ so the ignore rule is functional (R2-04)."
+  ],
+  "unresolved": [
+    "End-to-end firing of the corrected alerts cannot be confirmed offline — it needs a live cluster + Prometheus + JMX exporter to prove the lowercased names actually resolve to emitted series under load. The static evidence (lowercaseOutputName + dashboard parity) is strong but a live scrape is the final arbiter.",
+    "Whether the compose-path MinIO is ever used in practice (vs always the demo-script path) is a usage question the offline tribunal cannot settle; the fix is cheap enough to apply regardless."
+  ]
+}

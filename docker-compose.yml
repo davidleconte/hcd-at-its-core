@@ -179,8 +179,11 @@ services:
       <<: *hcd-healthcheck
 
   # ─── MinIO WORM Storage (optional: docker compose --profile ransomware up) ───
+  # Object-lock MUST be enabled at server start for buckets to be created `--with-lock`
+  # (the WORM guarantee the DORA demo, modules 73-79, relies on). Image pinned to match the
+  # demo script's standalone WORM reference (scripts/demo-entropy.sh).
   minio:
-    image: minio/minio:RELEASE.2024-03-30T09-41-56Z
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     container_name: minio
     profiles: ["ransomware"]
     networks:
@@ -192,6 +195,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_API_OBJECT_LOCK_ENABLED: "on"
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
