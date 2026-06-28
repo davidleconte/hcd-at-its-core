@@ -18,7 +18,7 @@ jobs:
       - name: Install ShellCheck
         run: sudo apt-get install -y shellcheck
       - name: ShellCheck
-        run: shellcheck scripts/*.sh
+        run: shellcheck -S warning scripts/*.sh   # info/style advisory; the arena gate enforces -S error
       - name: Install ruff
         run: pip install ruff
       - name: Ruff (Python linting)

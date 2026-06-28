@@ -656,6 +656,20 @@ def render():
                      f'<b style="color:{col}">{"CONVERGED" if ok else "NOT CONVERGED"}</b>'
                      f'<span style="color:#7fa6b0">{html.escape(note)} · '
                      f'{"2 dry rounds" if conv.get("dry_2_rounds") else "findings still moving"}</span></div>')
+    rem_html = ""
+    if rem:
+        rc = {"VERIFIED": "#1e8449", "REJECTED": "#c0392b", "UNRESOLVED": "#b7950b"}
+        rrows = ""
+        for r in rem:
+            st = (r.get("status") or "").upper()
+            rrows += ("<tr><td><code>" + html.escape(str(r.get("finding_id", "?"))) + "</code></td>"
+                      "<td style='color:" + rc.get(st, "#566") + ";font-weight:600'>"
+                      + html.escape(str(r.get("status", ""))) + "</td><td>"
+                      + html.escape(str((r.get("oracle_after") or {}).get("overall", "—"))) + "</td>"
+                      "<td><code>" + html.escape(str(r.get("patch", ""))) + "</code></td></tr>")
+        rem_html = ("<h2>Remediation — verified-in-isolation fixes</h2>"
+                    "<table><tr><th>Finding</th><th>Status</th><th>Oracle (worktree)</th><th>Patch</th></tr>"
+                    + rrows + "</table>")
     man_html = ""
     if man:
         g, rp = man.get("git", {}), man.get("repo", {})
@@ -702,7 +716,7 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
 <h2>Oracle — deterministic ground truth</h2>
 <table><tr><th>Check</th><th>Dim</th><th>Status</th><th>Detail</th></tr>
 {orows or '<tr><td colspan=4><i>run: bin/arena.py oracle</i></td></tr>'}</table>
-{('<h2>Remediation — verified-in-isolation fixes</h2><table><tr><th>Finding</th><th>Status</th><th>Oracle (worktree)</th><th>Patch</th></tr>' + ''.join('<tr><td><code>' + html.escape(str(r.get('finding_id', '?'))) + '</code></td><td style=\"color:' + ({'VERIFIED': '#1e8449', 'REJECTED': '#c0392b', 'UNRESOLVED': '#b7950b'}.get((r.get('status') or '').upper(), '#566')) + ';font-weight:600\">' + html.escape(str(r.get('status', ''))) + '</td><td>' + html.escape(str((r.get('oracle_after') or {}).get('overall', '—'))) + '</td><td><code>' + html.escape(str(r.get('patch', ''))) + '</code></td></tr>' for r in rem) + '</table>') if rem else ''}
+{rem_html}
 <h2>Findings register</h2>
 <table><tr><th>ID</th><th>Sev</th><th>Dim</th><th>Finding</th><th>Citation</th><th>Defender</th><th>Oracle</th><th>Inv</th></tr>
 {''.join(rows) if rows else '<tr><td colspan=8><i>awaiting the prosecutor…</i></td></tr>'}</table>

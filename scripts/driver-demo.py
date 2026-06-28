@@ -307,18 +307,18 @@ def cmd_dc_failover(args: argparse.Namespace) -> None:
             time.sleep(0.5)
 
         print(f"\n{'=' * 60}")
-        print(f"[SUMMARY]")
+        print("[SUMMARY]")
         print(f"  Total writes:    {total}")
         print(f"  Successful:      {success}")
         print(f"  Errors:          {errors}")
         print(f"  Routed to dc1:   {dc1_count}")
         print(f"  Routed to dc2:   {dc2_count}")
         if failover_detected:
-            print(f"  Failover:        DETECTED (dc1 → dc2)")
+            print("  Failover:        DETECTED (dc1 → dc2)")
         if failback_detected:
-            print(f"  Failback:        DETECTED (dc2 → dc1)")
+            print("  Failback:        DETECTED (dc2 → dc1)")
         if errors == 0:
-            print(f"  Result:          ZERO application errors during DC failure!")
+            print("  Result:          ZERO application errors during DC failure!")
         print(f"{'=' * 60}")
     finally:
         cluster.shutdown()
@@ -409,7 +409,7 @@ def cmd_retry_policies(args: argparse.Namespace) -> None:
                 print(f"[WRITE] row={i:2d}  coordinator=???           status=FAIL ({ename}: {e})")
 
         print(f"\n[SUMMARY] policy={policy_name}")
-        print(f"  Writes attempted: 20")
+        print("  Writes attempted: 20")
         print(f"  Successful:       {success}")
         print(f"  Failed:           {errors}")
 

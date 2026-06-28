@@ -21,6 +21,7 @@ LABEL maintainer="HCD Docker Cluster" \
 # - curl/ca-certificates for uv installation
 # Note: Netty native epoll warning (UnsatisfiedLinkError) on ARM64 is harmless; 
 # the service automatically falls back to NIO.
+# hadolint ignore=DL3008  # demo image: apt versions intentionally unpinned for portability
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gettext-base \
     netcat-openbsd \
@@ -52,6 +53,7 @@ RUN groupadd -r cassandra --gid=999 && \
 # We use a specific directory to avoid clobbering /opt
 # NOTE: hcd-2.0.6-bin.tar.gz must be obtained from IBM Passport Advantage (part M1442EN)
 # and placed in the project root before building. See README.md Prerequisites.
+# hadolint ignore=DL3010  # deliberate COPY+manual extract (not ADD) to control --strip-components
 COPY hcd-2.0.6-bin.tar.gz /tmp/hcd.tar.gz
 RUN mkdir -p /opt/hcd && \
     tar -xzf /tmp/hcd.tar.gz -C /opt/hcd --strip-components=1 && \
