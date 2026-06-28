@@ -22,11 +22,16 @@ deeper into new files and into any point the Judge marked UNRESOLVED.
 DELIVERABLES (exact paths):
 1. audit_arena/state/findings_r{ROUND}.json — ONLY valid JSON:
    {"findings":[
-     {"id":"R{ROUND}-NN","dimension":"D1..D6","claim_under_attack":"...","finding":"...",
+     {"id":"R{ROUND}-NN","dimension":"D1..D6","invariant":"HCD-I1..HCD-I7",
+      "claim_under_attack":"...","finding":"...",
       "severity":"BLOCKER|HIGH|MED|LOW","evidence":"path:line",
       "strongest_rebuttal":"...","survives_rebuttal":true,"what_would_resolve_it":"...",
       "oracle_cmd":"<optional shell that returns 0 iff the artefact is CORRECT>"}
    ]}
+   Every finding MUST name the `invariant` (HCD-I1..I7) it violates — the formal
+   Definition-of-Done in audit_arena/DESIGN_invariants_manifest.md (mirrors the adl-aqt2
+   red-team's `{… invariant: <I..>}`). If a finding fits no invariant, the DoD is incomplete:
+   say so explicitly rather than forcing a bad mapping.
    Every finding MUST carry a real `path:line` you actually read. No citation → drop it.
 2. audit_arena/acts/prosecutor_r{ROUND}.md — terse markdown, one bullet per finding
    `[SEV][Dim] finding — path:line`, grouped by dimension, worst first.

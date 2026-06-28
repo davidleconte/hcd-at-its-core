@@ -208,9 +208,11 @@ clean: ## Remove dangling images and build cache
 	docker builder prune -f
 
 # ─── Adversarial audit arena ────────────────────────────────────────────────────
-audit: ## Run the deterministic audit Oracle + render courtroom.html
+audit: ## Run the deterministic audit (Oracle + invariants + manifest) and render courtroom.html
 	python3 audit_arena/bin/arena.py repomap
 	python3 audit_arena/bin/arena.py oracle 1
+	python3 audit_arena/bin/arena.py invariants 1
+	python3 audit_arena/bin/arena.py manifest 1
 	python3 audit_arena/bin/arena.py render
 	@echo "Open: audit_arena/courtroom.html"
 

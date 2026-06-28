@@ -1,0 +1,12 @@
+{
+  "_comment": "Pinned HCD 2.0 / Cassandra 5.0 facts (verified against the DataStax HCD 2.0 release notes). HCD-I7 PASSes iff every fact below still appears verbatim in the repo — a drift to a wrong version/date fails the invariant offline.",
+  "facts": [
+    "Cassandra 5.0",
+    "Java 17",
+    "2.0.6",
+    "2026-06-17",
+    "4.1.133",
+    "2.2.7",
+    "2.0.0.M27"
+  ]
+}

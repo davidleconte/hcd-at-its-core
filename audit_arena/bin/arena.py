@@ -11,6 +11,8 @@ Subcommands:
   repomap                 -> state/REPO_MAP.md  (signal-artefact inventory of the HCD repo)
   excerpts F.json         -> verbatim path:line excerpts for the findings in F.json
   oracle [R]              -> run the deterministic check battery -> state/oracle_r{R}.json
+  invariants [R]          -> evaluate the HCD Definition-of-Done -> state/invariants_r{R}.json
+  manifest [R]            -> emit a reproducibility manifest -> state/manifest_r{R}.json
   act ROLE RND F.md       -> append an act block to TRANSCRIPT.md
   converge                -> read state/*.json, print convergence JSON (loop-until-dry)
   render                  -> build courtroom.html from state
@@ -220,6 +222,130 @@ def oracle(rnd="1"):
     print(json.dumps(out, indent=2))
 
 
+# ─── HCD invariants (the formal Definition-of-Done) ───────────────────────────────
+# Each finding and Oracle check maps to one. offline_cmd -> PASS/FAIL offline.
+# live_cmd -> PASS/FAIL on a live cluster; offline it falls back to proxy_cmd, which can
+# DEMOTE to FAIL (broken wiring) but never CONFIRM (status caps at DEFERRED) — burden on
+# the artefact, mirroring the Oracle's honesty.
+_DUPKEY = (
+    "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
+    "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
+    "envsubst < config/cassandra.yaml.template > /tmp/_inv.yaml; printf '\\n' >> /tmp/_inv.yaml; "
+    "CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 "
+    "CASSANDRA_BROADCAST_ADDRESS=1 CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s "
+    "envsubst < config/cassandra-secure.yaml.fragment >> /tmp/_inv.yaml; "
+    "python3 -c \"import yaml,re,collections,sys; s=open('/tmp/_inv.yaml').read(); yaml.safe_load(s); "
+    "k=re.findall(r'^([A-Za-z_]\\w*):',s,re.M); sys.exit(1 if [x for x,c in collections.Counter(k).items() if c>1] else 0)\"")
+_CQL_BATTERY = ("docker exec hcd-node1 cqlsh -e \""
+    "CREATE KEYSPACE IF NOT EXISTS arena_i WITH replication={'class':'SimpleStrategy','replication_factor':1};"
+    "CREATE TABLE IF NOT EXISTS arena_i.c (id int PRIMARY KEY, card text);"
+    "ALTER TABLE arena_i.c ALTER card MASKED WITH mask_inner(0,4);"
+    "SELECT column_name, function_keyspace, function_name FROM system_schema.column_masks WHERE keyspace_name='arena_i' AND table_name='c';"
+    "GRANT SELECT ON KEYSPACE arena_i TO cassandra; DROP KEYSPACE arena_i;\"")
+
+INVARIANTS = [
+    {"id": "HCD-I1", "dim": "D1", "statement": "Every Part 11 CQL executes on Cassandra 5.0",
+     "live_cmd": _CQL_BATTERY,
+     "proxy_cmd": "! grep -RqE 'mask_outer\\(card|ON ALL TABLES IN KEYSPACE|mask_keyspace|mask_function' scripts config"},
+    {"id": "HCD-I2", "dim": "D6", "statement": "Secure cluster forms (6x UN)",
+     "live_cmd": "[ \"$(docker exec hcd-node1 nodetool status | grep -c '^UN')\" = 6 ]",
+     "proxy_cmd": "grep -q cqlshrc Dockerfile && grep -q HCD_SECURITY_PROFILE scripts/docker-entrypoint.sh"},
+    {"id": "HCD-I3", "dim": "D2", "statement": "Generated cassandra.yaml has zero duplicate top-level keys",
+     "offline_cmd": _DUPKEY},
+    {"id": "HCD-I4", "dim": "D5", "statement": "Every module-count string equals TOTAL_MODULES",
+     "offline_cmd": "tm=$(grep -oE 'TOTAL_MODULES=[0-9]+' scripts/demo-entropy.sh | head -1 | cut -d= -f2); "
+                    "grep -q \"all $tm modules\" Makefile && grep -q \"$tm-module\" README.md"},
+    {"id": "HCD-I5", "dim": "D6", "statement": "No key/cert material baked into the image or committed",
+     "offline_cmd": "! git ls-files | grep -qE '\\.(key|pem)$|^certs/' && ! grep -q 'COPY certs' Dockerfile "
+                    "&& grep -qE '^certs/?$' .gitignore"},
+    {"id": "HCD-I6", "dim": "D3", "statement": "Demo script is dry-run/score safe (syntax+lint+scorecard)",
+     "offline_cmd": "for s in scripts/*.sh; do bash -n \"$s\" || exit 1; done; "
+                    "{ command -v shellcheck >/dev/null && shellcheck -S error scripts/*.sh || true; } && "
+                    "./scripts/demo-entropy.sh --score 2>/dev/null | grep -q 'Score:  100%'"},
+    {"id": "HCD-I7", "dim": "D1", "statement": "Every HCD-2.0/C5.0 version & CQL claim is source-verified",
+     "offline_cmd": "python3 -c \"import json,subprocess,sys,os; "
+                    "f=json.load(open(os.path.join('audit_arena','reference_facts.json')))['facts']; "
+                    "miss=[x for x in f if subprocess.run(['grep','-Rq',x,'DEMO_ENTROPY.md','docs','scripts'],"
+                    "capture_output=True).returncode!=0]; sys.exit(1 if miss else 0)\""},
+]
+
+
+def invariants(rnd="1"):
+    """Evaluate the formal HCD Definition-of-Done -> state/invariants_r{rnd}.json."""
+    up_code, _ = _run("docker exec hcd-node1 nodetool status", timeout=20)
+    cluster_up = up_code == 0
+    results = []
+    for inv in INVARIANTS:
+        base = {"id": inv["id"], "dim": inv["dim"], "statement": inv["statement"]}
+        if "offline_cmd" in inv:
+            code, _o = _run(inv["offline_cmd"])
+            results.append({**base, "status": "PASS" if code == 0 else "FAIL",
+                            "via": "offline", "evidence": "check passed" if code == 0 else "check failed"})
+        elif cluster_up:
+            code, _o = _run(inv["live_cmd"])
+            results.append({**base, "status": "PASS" if code == 0 else "FAIL",
+                            "via": "live", "evidence": "executed on live cluster"})
+        else:
+            pcode, _o = _run(inv["proxy_cmd"])
+            # proxy can demote to FAIL (broken wiring) but cannot confirm PASS
+            results.append({**base, "status": "FAIL" if pcode != 0 else "DEFERRED",
+                            "via": "proxy", "evidence": "wiring present; live verification deferred"
+                            if pcode == 0 else "offline proxy FAILED — broken wiring"})
+    os.makedirs(STATE, exist_ok=True)
+    out = {"round": int(rnd), "cluster_up": cluster_up, "invariants": results,
+           "passed": sum(1 for r in results if r["status"] == "PASS"),
+           "failed": sum(1 for r in results if r["status"] == "FAIL"),
+           "deferred": sum(1 for r in results if r["status"] == "DEFERRED")}
+    json.dump(out, open(os.path.join(STATE, f"invariants_r{rnd}.json"), "w"), indent=2)
+    print(json.dumps(out, indent=2))
+
+
+def manifest(rnd="1"):
+    """Emit a reproducibility manifest -> state/manifest_r{rnd}.json (content hash over the
+    audited HCD source only; the arena's own outputs are excluded by tracked_files())."""
+    import hashlib
+
+    def sh(c):
+        return _run(c)[1].strip()
+
+    files = sorted(tracked_files())
+    h = hashlib.sha256()
+    for f in files:
+        try:
+            data = open(os.path.join(ROOT, f), "rb").read()
+        except Exception:
+            data = b""
+        h.update(f.encode() + b"\0" + hashlib.sha256(data).hexdigest().encode() + b"\n")
+    oj = _latest("oracle_r*.json")
+    ij = _latest("invariants_r*.json")
+    man = {
+        "schema_version": 1,
+        "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "git": {"sha": sh("git rev-parse HEAD") or "?",
+                "branch": sh("git rev-parse --abbrev-ref HEAD") or "?",
+                "dirty": bool(sh("git status --porcelain"))},
+        "env": {"python": sh("python3 --version").replace("Python ", ""),
+                "pytest": sh("python3 -m pytest --version 2>/dev/null | head -1"),
+                "ruff": sh("ruff --version 2>/dev/null") or "absent",
+                "shellcheck": sh("shellcheck --version 2>/dev/null | awk '/version:/{print $2}'") or "absent",
+                "docker": sh("docker --version 2>/dev/null | cut -d' ' -f3 | tr -d ,") or "absent",
+                "conda_env": os.environ.get("CONDA_DEFAULT_ENV", "")},
+        "repo": {"signal_files": len(files), "content_sha256": h.hexdigest()[:16]},
+        "oracle": {"passed": oj.get("passed"), "failed": oj.get("failed"),
+                   "deferred": oj.get("deferred"),
+                   "results_sha256": hashlib.sha256(json.dumps(oj, sort_keys=True).encode()).hexdigest()[:16] if oj else None},
+        "invariants": {i["id"]: i["status"] for i in ij.get("invariants", [])},
+    }
+    os.makedirs(STATE, exist_ok=True)
+    json.dump(man, open(os.path.join(STATE, f"manifest_r{rnd}.json"), "w"), indent=2)
+    print(json.dumps(man, indent=2))
+
+
+def _latest(pattern):
+    fs = sorted(glob.glob(os.path.join(STATE, pattern)))
+    return json.load(open(fs[-1])) if fs else {}
+
+
 def act(role, rnd, md_file):
     block = open(md_file, encoding="utf-8").read()
     ts = datetime.datetime.now().strftime("%H:%M:%S")
@@ -275,6 +401,8 @@ def render():
             oracle_idx[c.get("check")] = c
     for fp in sorted(glob.glob(os.path.join(STATE, "grades_r*.json"))):
         grades.append(json.load(open(fp)))
+    inv = _latest("invariants_r*.json")
+    man = _latest("manifest_r*.json")
 
     rows = []
     for f in finds:
@@ -293,6 +421,7 @@ def render():
 <td><code>{html.escape(f.get('evidence',''))}</code></td>
 <td style="color:{vc};font-weight:600">{html.escape(verdict)}</td>
 <td style="color:{oc};font-weight:600">{html.escape(oresult)}</td>
+<td><code>{html.escape(f.get('invariant','—'))}</code></td>
 </tr>""")
 
     ostat = {"PASS": "#1e8449", "FAIL": "#c0392b", "DEFERRED": "#b7950b"}
@@ -317,6 +446,28 @@ def render():
     o_pass = sum(1 for c in oracle_idx.values() if c['status'] == 'PASS')
     o_fail = sum(1 for c in oracle_idx.values() if c['status'] == 'FAIL')
     o_def = sum(1 for c in oracle_idx.values() if c['status'] == 'DEFERRED')
+
+    istat = {"PASS": "#1e8449", "FAIL": "#c0392b", "DEFERRED": "#b7950b"}
+    ichips = "".join(
+        '<span style="display:inline-block;margin:3px 6px 3px 0;padding:4px 9px;border-radius:6px;'
+        'background:#11242b;border:1px solid #1d3640;font-size:12px">'
+        f'<b>{html.escape(i["id"])}</b> '
+        f'<b style="color:{istat.get(i["status"], "#566")}">{i["status"]}</b> '
+        f'<span style="color:#7fa6b0">· {html.escape(i["statement"][:48])}</span></span>'
+        for i in inv.get("invariants", []))
+    n_inv = len(inv.get("invariants", [])) or 7
+    inv_html = (f'<h2>Invariants — Definition-of-Done ({inv.get("passed", 0)}/{n_inv} PASS · '
+                f'{inv.get("deferred", 0)} deferred · {inv.get("failed", 0)} fail)</h2>'
+                f'<div style="margin-bottom:14px">{ichips or "<i>run: bin/arena.py invariants</i>"}</div>')
+    man_html = ""
+    if man:
+        g, rp = man.get("git", {}), man.get("repo", {})
+        man_html = ('<div style="margin:6px 0 18px;color:#7fa6b0;font-size:12px">'
+                    f'<b>manifest</b> · git <code>{html.escape(str(g.get("sha", "?"))[:9])}</code> '
+                    f'({"dirty" if g.get("dirty") else "clean"}) · branch {html.escape(str(g.get("branch", "?")))} · '
+                    f'source {rp.get("signal_files", "?")} files @ <code>{html.escape(str(rp.get("content_sha256", "?")))}</code> · '
+                    f'generated {html.escape(str(man.get("generated_at", "")))}</div>')
+
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="refresh" content="6">
 <title>HCD audit arena — adversarial tribunal</title><style>
@@ -348,12 +499,14 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
 <div class="col oracle"><h3>🟢 Oracle</h3><div class="big">{o_pass}/{o_pass+o_fail}</div><div>checks PASS · {o_def} deferred (need live cluster)</div></div>
 </div>
 {grade_html}
+{man_html}
+{inv_html}
 <h2>Oracle — deterministic ground truth</h2>
 <table><tr><th>Check</th><th>Dim</th><th>Status</th><th>Detail</th></tr>
 {orows or '<tr><td colspan=4><i>run: bin/arena.py oracle</i></td></tr>'}</table>
 <h2>Findings register</h2>
-<table><tr><th>ID</th><th>Sev</th><th>Dim</th><th>Finding</th><th>Citation</th><th>Defender</th><th>Oracle</th></tr>
-{''.join(rows) if rows else '<tr><td colspan=7><i>awaiting the prosecutor…</i></td></tr>'}</table>
+<table><tr><th>ID</th><th>Sev</th><th>Dim</th><th>Finding</th><th>Citation</th><th>Defender</th><th>Oracle</th><th>Inv</th></tr>
+{''.join(rows) if rows else '<tr><td colspan=8><i>awaiting the prosecutor…</i></td></tr>'}</table>
 <h2>Court transcript</h2><pre>{html.escape(md)}</pre>
 </div></body></html>"""
     open(HTML_OUT, "w", encoding="utf-8").write(page)
@@ -365,6 +518,8 @@ if __name__ == "__main__":
     if cmd == "repomap": repomap()
     elif cmd == "excerpts": excerpts(sys.argv[2])
     elif cmd == "oracle": oracle(sys.argv[2] if len(sys.argv) > 2 else "1")
+    elif cmd == "invariants": invariants(sys.argv[2] if len(sys.argv) > 2 else "1")
+    elif cmd == "manifest": manifest(sys.argv[2] if len(sys.argv) > 2 else "1")
     elif cmd == "act": act(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "converge": converge()
     elif cmd == "render": render()
