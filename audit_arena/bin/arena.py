@@ -265,9 +265,15 @@ INVARIANTS = [
      "proxy_cmd": "grep -q cqlshrc Dockerfile && grep -q HCD_SECURITY_PROFILE scripts/docker-entrypoint.sh"},
     {"id": "HCD-I3", "dim": "D2", "statement": "Generated cassandra.yaml has zero duplicate top-level keys",
      "offline_cmd": _DUPKEY},
-    {"id": "HCD-I4", "dim": "D5", "statement": "Every module-count string equals TOTAL_MODULES",
-     "offline_cmd": "tm=$(grep -oE 'TOTAL_MODULES=[0-9]+' scripts/demo-entropy.sh | head -1 | cut -d= -f2); "
-                    "grep -q \"all $tm modules\" Makefile && grep -q \"$tm-module\" README.md"},
+    {"id": "HCD-I4", "dim": "D5", "statement": "No module-COUNT claim disagrees with TOTAL_MODULES (all docs)",
+     # PRECISE count-claim patterns ('94-module', 'all 94 modules', '94 modules numbered') so a
+     # part ordinal like 'Part 11 modules 86-92' is NOT mistaken for a count. Catches drift in any doc.
+     "offline_cmd": "python3 -c \"import re,sys; "
+                    "tm=int(re.search(r'TOTAL_MODULES=(\\d+)',open('scripts/demo-entropy.sh').read()).group(1)); "
+                    "docs=['README.md','CLAUDE.md','AGENTS.md','DEMO_ENTROPY.md','Makefile']; "
+                    "pat=re.compile(r'(\\d+)-module\\b|all (\\d+) modules\\b|(\\d+) modules numbered\\b'); "
+                    "bad=[(d,n) for d in docs for tup in pat.findall(open(d).read()) for n in tup if n and int(n)!=tm]; "
+                    "sys.exit(1 if bad else 0)\""},
     {"id": "HCD-I5", "dim": "D6", "statement": "No key/cert material baked into the image or committed",
      # filename denylist + CONTENT scan for PEM private keys (catches a key under any name) + (COPY|ADD).*cert
      "offline_cmd": "! git ls-files | grep -qiE '\\.(key|pem|crt|p12|pfx|jks|der)$|(^|/)certs/' "
@@ -280,11 +286,14 @@ INVARIANTS = [
      "offline_cmd": "for s in scripts/*.sh; do bash -n \"$s\" || exit 1; done; "
                     "if command -v shellcheck >/dev/null; then shellcheck -S warning scripts/*.sh || exit 1; fi; "
                     "./scripts/demo-entropy.sh --score 2>/dev/null | grep -q 'Score:  100%'"},
-    {"id": "HCD-I7", "dim": "D1", "statement": "Every HCD-2.0/C5.0 version & CQL claim is source-verified",
+    {"id": "HCD-I7", "dim": "D1", "statement": "Pinned HCD-2.0/C5.0 version facts present in the docs (drift denylist)",
+     # honest scope: this is a version-DRIFT denylist (each pinned fact must still appear), NOT a
+     # proof that every claim is correct or free of contradictions. Widened to all the doc sites.
      "offline_cmd": "python3 -c \"import json,subprocess,sys,os; "
                     "f=json.load(open(os.path.join('audit_arena','reference_facts.json')))['facts']; "
-                    "miss=[x for x in f if subprocess.run(['grep','-Rq',x,'DEMO_ENTROPY.md','docs','scripts'],"
-                    "capture_output=True).returncode!=0]; sys.exit(1 if miss else 0)\""},
+                    "scope=['DEMO_ENTROPY.md','docs','scripts','README.md','CLAUDE.md','AGENTS.md','Dockerfile','Makefile']; "
+                    "miss=[x for x in f if subprocess.run(['grep','-Rq',x]+scope,capture_output=True).returncode!=0]; "
+                    "sys.exit(1 if miss else 0)\""},
 ]
 
 
@@ -561,32 +570,62 @@ def remediate_clean():
     print((_git(["worktree", "remove", "--force", WT]).stderr or "worktree removed").strip())
 
 
+# The battery EXECUTES these as code (arena.py = invariant runner, demo-entropy.sh = --score,
+# tests/ = pytest). A patch to any could FORGE an all-PASS and self-certify, so it cannot earn
+# VERIFIED (-> UNTRUSTED). config/Makefile are read as DATA — tampering is CAUGHT, not hidden,
+# so they are not harness.
+_HARNESS = ("audit_arena/", "scripts/demo-entropy.sh", "tests/")
+
+
+def _patch_touches_harness(patch_file):
+    try:
+        txt = open(os.path.abspath(patch_file)).read()
+    except Exception:
+        return []
+    paths = set(re.findall(r"^[+-]{3} [ab]/(.+?)\s*$", txt, re.M))
+    return sorted(p for p in paths if any(p.startswith(h) for h in _HARNESS))
+
+
 def verify_fix(fix_patch, base_patch=None):
-    """Apply (base then) fix patch in a throwaway worktree, run the Oracle battery there,
-    and report — NEVER touching the user's tree. Status VERIFIED iff the battery PASSes."""
+    """Apply (base then) fix patch in a throwaway, PER-RUN worktree, run the Oracle battery
+    there, and report — NEVER touching the user's tree. Status VERIFIED iff the battery PASSes
+    AND the patch does not modify the verification harness (else UNTRUSTED — it could self-certify).
+    Note: the worktree is built from HEAD, so a fix is verified against COMMITTED state."""
     if _git(["rev-parse", "--is-inside-work-tree"]).stdout.strip() != "true":
         print(json.dumps({"error": "not a git repo — refusing to run"})); return
-    _git(["worktree", "remove", "--force", WT])
-    add = _git(["worktree", "add", "--detach", WT, "HEAD"])
+    wt = tempfile.mkdtemp(prefix="hcd-arena-vf-")
+    os.rmdir(wt)  # unique name; `git worktree add` needs the path to not exist
+    add = _git(["worktree", "add", "--detach", wt, "HEAD"])
     if add.returncode != 0:
         print(json.dumps({"error": "worktree add failed", "detail": add.stderr[:300]})); return
-    verdict = {"fix_patch": fix_patch, "base_patch": base_patch}
+    tainted = sorted(set(_patch_touches_harness(fix_patch) + (_patch_touches_harness(base_patch) if base_patch else [])))
+    verdict = {"fix_patch": fix_patch, "base_patch": base_patch,
+               "verified_against": "committed HEAD", "harness_touched": tainted}
     try:
         if base_patch:
-            a = _git(["apply", os.path.abspath(base_patch)], cwd=WT)
+            a = _git(["apply", os.path.abspath(base_patch)], cwd=wt)
             verdict["base_applies"] = a.returncode == 0
-            verdict["oracle_before"] = _battery_in(WT)["overall"] if a.returncode == 0 else "n/a"
-        a = _git(["apply", os.path.abspath(fix_patch)], cwd=WT)
+            verdict["oracle_before"] = _battery_in(wt)["overall"] if a.returncode == 0 else "n/a"
+        a = _git(["apply", os.path.abspath(fix_patch)], cwd=wt)
         verdict["fix_applies"] = a.returncode == 0
-        if a.returncode == 0:
-            res = _battery_in(WT)
-            verdict["oracle_after"] = res
-            verdict["status"] = "VERIFIED" if res["overall"] == "PASS" else "REJECTED"
-        else:
+        if a.returncode != 0:
             verdict["status"] = "REJECTED"
             verdict["detail"] = a.stderr[:200]
+        else:
+            res = _battery_in(wt)
+            verdict["oracle_after"] = res
+            if res["overall"] != "PASS":
+                verdict["status"] = "REJECTED"
+            elif tainted:
+                # battery passed, but the patch can subvert the verifier -> cannot self-certify
+                verdict["status"] = "UNTRUSTED"
+                verdict["reason"] = f"patch modifies the verification harness ({', '.join(tainted)}); Oracle PASS not trusted"
+            else:
+                verdict["status"] = "VERIFIED"
     finally:
-        _git(["worktree", "remove", "--force", WT])
+        _git(["worktree", "remove", "--force", wt])
+        import shutil
+        shutil.rmtree(wt, ignore_errors=True)  # belt-and-suspenders cleanup
     print(json.dumps(verdict, indent=2))
     return verdict
 

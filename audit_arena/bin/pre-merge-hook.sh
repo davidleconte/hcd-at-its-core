@@ -9,7 +9,16 @@ cd "$ROOT" || exit 1
 fail=0
 say() { printf '  %-44s %s\n' "$1" "$2"; }
 
-echo "── HCD arena pre-merge gate ─────────────────────────────"
+# Prefer the project's Python 3.11 (conda env hcd-at-its-core) so the LOCAL gate matches CI's
+# 3.11 — system python3 here is often newer and accepts code that fails on 3.11. Falls back to
+# python3 if the env is absent.
+PY=python3
+if command -v conda >/dev/null 2>&1; then
+  _envpy="$(conda info --base 2>/dev/null)/envs/hcd-at-its-core/bin/python"
+  [ -x "$_envpy" ] && PY="$_envpy"
+fi
+
+echo "── HCD arena pre-merge gate ($("$PY" --version 2>&1)) ────"
 
 # D3 — shell syntax
 if for s in scripts/*.sh; do bash -n "$s" || exit 1; done; then say "bash -n (scripts)" "PASS"; else say "bash -n (scripts)" "FAIL"; fail=1; fi
@@ -26,7 +35,7 @@ if grep -q "Score:  100%" /tmp/_arena_score; then say "make demo-score (100%)" "
 
 # D4 — pytest: gate on the EXIT CODE (0 = pass, skips ok). A collection/import error
 # exits non-zero without printing " failed" — the old substring check let it through.
-if python3 -m pytest tests/ -q >/tmp/_arena_pytest 2>&1; then say "pytest" "PASS"; else
+if "$PY" -m pytest tests/ -q >/tmp/_arena_pytest 2>&1; then say "pytest" "PASS"; else
   say "pytest" "FAIL"; tail -1 /tmp/_arena_pytest; fail=1; fi
 
 # D2 — combined cassandra.yaml: no duplicate keys
@@ -35,7 +44,7 @@ if CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 CASSAND
    && printf '\n' >> /tmp/_a.yaml \
    && CASSANDRA_CLUSTER_NAME=t CASSANDRA_SEEDS=1 CASSANDRA_LISTEN_ADDRESS=1 CASSANDRA_BROADCAST_ADDRESS=1 \
       CASSANDRA_RPC_ADDRESS=0 CASSANDRA_ENDPOINT_SNITCH=s envsubst < config/cassandra-secure.yaml.fragment >> /tmp/_a.yaml 2>/dev/null \
-   && python3 -c "import yaml,re,collections,sys; s=open('/tmp/_a.yaml').read(); yaml.safe_load(s); k=re.findall(r'^([A-Za-z_]\w*):',s,re.M); sys.exit(1 if [x for x,c in collections.Counter(k).items() if c>1] else 0)"; then
+   && "$PY" -c "import yaml,re,collections,sys; s=open('/tmp/_a.yaml').read(); yaml.safe_load(s); k=re.findall(r'^([A-Za-z_]\w*):',s,re.M); sys.exit(1 if [x for x,c in collections.Counter(k).items() if c>1] else 0)"; then
   say "config: no duplicate keys" "PASS"; else say "config: no duplicate keys" "FAIL"; fail=1; fi
 
 # D5 — count single-source-of-truth

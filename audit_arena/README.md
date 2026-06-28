@@ -122,18 +122,28 @@ The arena can also *fix*, not just *find* — the `adl-aqt2` generation-adversar
 Oracle as the decisive verifier. Per confirmed finding: **Propose** a minimal patch → **Red-Team** it
 (4 lenses: incomplete / regression / violates another I* / new forbidden-pattern) → **`verify-fix`**.
 
-`bin/arena.py verify-fix <fix.diff> [base.diff]` applies the patch(es) in a **throwaway `git worktree`**,
-runs the offline Oracle battery + invariants there, and reports `VERIFIED` (Oracle PASS, no `HCD-I*`
-regression) or `REJECTED` — **never touching your working tree** (a human always lands the patch):
+`bin/arena.py verify-fix <fix.diff> [base.diff]` applies the patch(es) in a **per-run throwaway
+`git worktree`** (concurrency-safe), runs the offline Oracle battery + invariants there, and reports:
+- **`VERIFIED`** — Oracle PASS, no `HCD-I*` regression, and the patch does **not** touch the
+  verification harness;
+- **`UNTRUSTED`** — Oracle PASS *but* the patch modifies the harness the battery executes
+  (`audit_arena/`, `scripts/demo-entropy.sh`, `tests/`), so it could self-certify — a human must
+  review (you cannot earn VERIFIED by patching the verifier);
+- **`REJECTED`** — the patch doesn't apply or the Oracle FAILs.
+
+It **never touches your working tree** (a human always lands the patch), and it verifies against
+**committed HEAD** (`verified_against` is recorded). Example — the demo fix patches `demo-entropy.sh`
+(harness), so it is honestly `UNTRUSTED`, not `VERIFIED`:
 
 ```bash
 make verify-fix FIX=audit_arena/state/patches/fix.diff BASE=audit_arena/state/patches/defect.diff
-# -> { oracle_before: FAIL, oracle_after: PASS, status: VERIFIED }   (main tree byte-identical)
+# -> { oracle_before: FAIL, oracle_after: PASS, harness_touched: ["scripts/demo-entropy.sh"], status: UNTRUSTED }
 ```
 
-Safety rails: isolation (worktree only, auto-removed), verified-patch output (human merges),
-VERIFIED requires an executable Oracle PASS, egress-gated drivers (Mode B), and round/patch caps.
-Charters: `prompts/proposer.md`, `prompts/redteam_fix.md`. Design: `DESIGN_remediation_mode.md`.
+Safety rails: isolation (unique worktree, auto-removed), verified-patch output (human merges),
+VERIFIED requires an executable Oracle PASS **and** an untouched harness, egress-gated drivers
+(Mode B), and round/patch caps. Charters: `prompts/proposer.md`, `prompts/redteam_fix.md`.
+Design: `DESIGN_remediation_mode.md`.
 
 ### `make audit` + deterministic pre-merge gate
 ```bash

@@ -157,6 +157,34 @@ def test_harden_sanitizes_malicious_lesson():
             os.remove(evil)
 
 
+def test_verify_fix_flags_harness_patches():
+    """A patch touching the verification harness must be detected (-> UNTRUSTED, not VERIFIED)."""
+    import tempfile
+    arena = _load_arena()
+    harness = tempfile.NamedTemporaryFile("w", suffix=".diff", delete=False)
+    harness.write("--- a/scripts/demo-entropy.sh\n+++ b/scripts/demo-entropy.sh\n@@ -1 +1 @@\n-x\n+y\n")
+    harness.close()
+    safe = tempfile.NamedTemporaryFile("w", suffix=".diff", delete=False)
+    safe.write("--- a/config/cassandra.yaml.template\n+++ b/config/cassandra.yaml.template\n@@ -1 +1 @@\n-x\n+y\n")
+    safe.close()
+    try:
+        assert arena._patch_touches_harness(harness.name) == ["scripts/demo-entropy.sh"]
+        assert arena._patch_touches_harness(safe.name) == []  # config is data, not harness
+    finally:
+        os.remove(harness.name)
+        os.remove(safe.name)
+
+
+def test_i4_count_pattern_ignores_part_ordinals():
+    """HCD-I4 must catch real count drift but NOT mistake 'Part 11 modules ...' for a count."""
+    pat = re.compile(r"(\d+)-module\b|all (\d+) modules\b|(\d+) modules numbered\b")
+    part = [n for tup in pat.findall("Part 11 modules 86-92 demonstrate") for n in tup if n]
+    assert part == [], "part ordinal mistaken for a module count"
+    counts = [n for tup in pat.findall("a 94-module demo; all 94 modules; 94 modules numbered 0-93")
+              for n in tup if n]
+    assert counts == ["94", "94", "94"]
+
+
 def test_remediation_functions_present():
     arena = _load_arena()
     for fn in ("verify_fix", "remediate_worktree", "remediate_clean", "_battery_in"):
