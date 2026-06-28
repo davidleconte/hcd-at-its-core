@@ -106,6 +106,7 @@ does). Subcommands:
 | `lineage` | Per-finding Oracle-dominant provenance → `lineage_rN.json` (runs each `oracle_cmd` **once**; `render` consumes it). Status ladder FILED→VERIFIED→ADJUDICATED→REMEDIATED→LIVE_CONFIRMED |
 | `reconcile` | Honesty reconciler — cross-join advisory grades vs binding oracle+invariants → `reconciliation.json` (GREEN/AMBER/RED); REJECT (exit 2) any grades wiring a numeric score. See [DESIGN_honesty_guardrails.md](DESIGN_honesty_guardrails.md) |
 | `panel-aggregate` | Advisory judge self-score with the **Oracle ceiling re-derived in code** (invariant FAIL → cap 5; Oracle FAIL → cap 7) → `panel_rN.json`; read by no gate (v2 Tier 1) |
+| `vendor-panel <role> <round>` | Routine multi-vendor advisory panel — fans Mode B over N vendors (`ARENA_PANEL`), emits a deterministic variance artifact `vendor_panel_rN_<role>.json`; egress-gated, a bad/gated vendor *abstains* (never aborts). Advisory; the Oracle settles disagreements (v2 Tier 1) |
 | `contract` | Validate the contract spine `contract/contract.v1.json` (semver + content_sha256 integrity + invariant well-formedness). The Definition-of-Done is loaded from it, not hardcoded |
 | `gate` | Exit non-zero on any FAILing Oracle check / invariant (what makes the gate *gate*) |
 | `harden` | Fold confirmed `charter_gap` lessons into the prosecutor charter (idempotent) |
@@ -228,6 +229,7 @@ not re-executed at render time. Three dashboard rules earned the hard way:
 | `remediation_rN.json` | no (gitignored) | `verify-fix` / `remediate-record` | recorded remediation verdicts (patch + Oracle-after) |
 | `reconciliation.json` | no (gitignored) | `reconcile` | honesty verdict (GREEN/AMBER/RED) + any judge-vs-Oracle contradictions |
 | `panel_rN.json` | no (gitignored) | `panel-aggregate` | advisory judge score + the code-derived Oracle ceiling (`judge_claimed`/`ceiling`/`capped_to`/`ceiling_applied`) |
+| `vendor_panel_rN_<role>.json` · `<role>_rN__<vendor>.json` | no (gitignored) | `vendor-panel` | per-vendor outputs + the inter-vendor variance/dissent artifact (advisory) |
 | `lineage_rN.json` | no (gitignored) | `lineage` | one Oracle-dominant provenance object per finding (layer_refs L3–L7 + content digests + lineage_status) |
 | `patches/*.diff` | no (gitignored) | `verify-fix` / red-team | candidate-fix + defect-injection diffs applied in the throwaway worktree |
 | `REPO_MAP.md` · `convergence.json` · `judge_brief_rN.md` · `courtroom.html` | no | generated | local artefacts |

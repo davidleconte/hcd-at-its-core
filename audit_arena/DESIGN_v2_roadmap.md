@@ -87,12 +87,12 @@ oracle re-execution is **deleted** — single-sourcing the binding result from t
 biggest integrity win). `manifest()` gains a Merkle `audit_root_sha256` over the content/oracle/lineage
 digests.
 
-### Tier 1 — Validation upgrades (P1; the adl-aqt2 BATAILLE-2 patterns, safe on the foundation)
+### Tier 1 — Validation upgrades (P1; the adl-aqt2 BATAILLE-2 patterns, safe on the foundation) — ✅ BUILT
 
 | # | Theme | Core delta | Effort | Status |
 |---|---|---|---|---|
 | T1 | **Scored judge panel** | Numeric score with the **ceiling re-derived in Python** | L | ✅ Phase 1 shipped (`panel-aggregate`; advisory score, code-derived Oracle ceiling, read by no gate) |
-| T2 | **Routine multi-vendor panel** | N-vendor adjudication per advisory role + deterministic variance artifact | M | ⏳ next |
+| T2 | **Routine multi-vendor panel** | N-vendor adjudication per advisory role + deterministic variance artifact | M | ✅ shipped (`vendor-panel`; egress-gated fan-out, abstain-not-abort, variance/dissent artifact) |
 
 **T1 — Scored judge panel.** *Phase 1 (ship first — proves the anti-theatre control):* add numeric
 `score`+`rubric` to the judge output, and **re-derive the ceiling deterministically in code** —

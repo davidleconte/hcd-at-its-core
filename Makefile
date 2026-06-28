@@ -244,6 +244,9 @@ audit-tribunal: ## Show how to run the LLM tribunal rounds (Mode A subagents / M
 audit-mode-b: ## Drive a tribunal role with an EXTERNAL family (egress-gated): make audit-mode-b ROLE=defender ROUND=2
 	ARENA_MODE_B=1 python3 audit_arena/bin/arena.py mode-b $(ROLE) $(ROUND)
 
+audit-vendor-panel: ## Multi-vendor advisory panel for a role (egress-gated): make audit-vendor-panel ROLE=judge ROUND=3 PANEL=glm,gemini,zai
+	ARENA_MODE_B=1 ARENA_PANEL=$(PANEL) python3 audit_arena/bin/arena.py vendor-panel $(ROLE) $(ROUND)
+
 verify-fix: ## Verify a fix patch in an ISOLATED worktree (never touches your tree): make verify-fix FIX=p.diff [BASE=b.diff]
 	python3 audit_arena/bin/arena.py verify-fix $(FIX) $(BASE)
 

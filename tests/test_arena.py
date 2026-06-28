@@ -781,3 +781,83 @@ def test_make_audit_runs_panel_aggregate():
     seg = mk.split("audit:", 1)[1].split("\naudit-tribunal", 1)[0]
     assert "arena.py panel-aggregate" in seg
     assert seg.index("arena.py panel-aggregate") < seg.index("arena.py render")
+
+
+# ─── T2 routine multi-vendor panel (DESIGN_v2_roadmap.md Tier 1) ───────────────────────────────────
+def _clean_panel(role="defender", rnd="1"):
+    import glob as _g
+    for f in (_g.glob(os.path.join(SDIR, f"vendor_panel_r{rnd}_{role}.json"))
+              + _g.glob(os.path.join(SDIR, f"verdicts_r{rnd}__*.json"))
+              + _g.glob(os.path.join(SDIR, f"grades_r{rnd}__*.json"))
+              + _g.glob(os.path.join(SDIR, "_modeb_*"))):
+        if os.path.exists(f):
+            os.remove(f)
+
+
+def _run_vendor_panel(env_extra, role="defender", rnd="1"):
+    env = dict(os.environ)
+    env.pop("ARENA_MODE_B", None)
+    env.update(env_extra)
+    subprocess.run([sys.executable, ARENA, "vendor-panel", role, rnd], cwd=REPO,
+                   capture_output=True, text=True, env=env)
+    return json.load(open(os.path.join(SDIR, f"vendor_panel_r{rnd}_{role}.json")))
+
+
+def test_vendor_panel_egress_gated_all_abstain():
+    """Without ARENA_MODE_B=1, every vendor is egress-gated and ABSTAINS — the panel still completes
+    (never aborts) and records the abstentions. Egress discipline intact."""
+    try:
+        p = _run_vendor_panel({"ARENA_PANEL": "glm,gemini"})
+        assert p["participated"] == [], f"no vendor should participate without egress opt-in: {p}"
+        assert {a["vendor"] for a in p["abstained"]} == {"glm", "gemini"}
+        assert all(a["kind"] == "egress_off" for a in p["abstained"])
+    finally:
+        _clean_panel()
+
+
+def test_vendor_panel_detects_inter_vendor_dissent():
+    """With mock vendors that disagree on a finding's verdict, the deterministic variance artifact flags
+    the dissent — the inter-vendor divergence signal (the Oracle still settles it)."""
+    mock = os.path.join(SDIR, "_mock_vendor.sh")
+    try:
+        with open(mock, "w") as fh:
+            fh.write('#!/usr/bin/env bash\ncase "$ARENA_PROVIDER" in\n'
+                     '  glm) echo \'{"verdicts":[{"id":"R1-01","verdict":"CONFIRMED"}]}\' ;;\n'
+                     '  gemini) echo \'{"verdicts":[{"id":"R1-01","verdict":"FALSE_POSITIVE"}]}\' ;;\n'
+                     '  *) echo \'{"verdicts":[{"id":"R1-01","verdict":"CONFIRMED"}]}\' ;;\nesac\n')
+        os.chmod(mock, 0o755)
+        p = _run_vendor_panel({"ARENA_PANEL": "glm,gemini", "ARENA_LLM_CMD": mock})
+        assert set(p["participated"]) == {"glm", "gemini"}, p
+        assert p["variance"]["agree"] is False
+        assert "R1-01" in p["variance"]["dissent"], f"dissent not detected: {p['variance']}"
+    finally:
+        if os.path.exists(mock):
+            os.remove(mock)
+        _clean_panel()
+
+
+def test_vendor_panel_abstain_does_not_abort_panel():
+    """A vendor returning invalid JSON ABSTAINS; the other vendor still participates — one bad vendor
+    must not sink the whole panel."""
+    mock = os.path.join(SDIR, "_mock_vendor.sh")
+    try:
+        with open(mock, "w") as fh:
+            fh.write('#!/usr/bin/env bash\ncase "$ARENA_PROVIDER" in\n'
+                     '  glm) echo \'{"verdicts":[{"id":"R1-01","verdict":"CONFIRMED"}]}\' ;;\n'
+                     '  *) echo \'not json at all\' ;;\nesac\n')
+        os.chmod(mock, 0o755)
+        p = _run_vendor_panel({"ARENA_PANEL": "glm,gemini", "ARENA_LLM_CMD": mock})
+        assert p["participated"] == ["glm"], p
+        assert any(a["vendor"] == "gemini" and a["kind"] == "invalid_json" for a in p["abstained"]), p
+    finally:
+        if os.path.exists(mock):
+            os.remove(mock)
+        _clean_panel()
+
+
+def test_mode_b_call_helper_returns_status_without_exiting():
+    """The extracted _mode_b_call helper returns a (status, payload) tuple and never sys.exits — so the
+    panel driver can map a failure to 'abstain' instead of aborting."""
+    arena = _load_arena()
+    status, payload = arena._mode_b_call("defender", "99999")  # no findings_r99999 -> precondition error
+    assert status == "error" and "findings" in str(payload), (status, payload)

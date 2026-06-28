@@ -1244,11 +1244,9 @@ def _extract_json(text):
     return json.loads(t[i:j + 1])
 
 
-def mode_b(role, rnd="1"):
-    """The REAL Mode B: assemble the role prompt from charter + arena state, call the external
-    provider via bin/llm.sh (or $ARENA_LLM_CMD, used by tests), extract+validate the JSON, and
-    write the SAME artifact Mode A would. Egress-gated: if the provider exits 2 (ARENA_MODE_B
-    unset or no API key) this propagates exit 2 so the orchestrator falls back to Mode A."""
+def _mode_b_assemble(role, rnd):
+    """Build the role prompt from charter + arena state and resolve (prompt_file, out_file, req_key).
+    Raises ValueError on a precondition miss (missing findings/brief, or a bad role)."""
     role = role.lower()
     prompts = os.path.join(ARENA, "prompts")
     parts = []
@@ -1256,11 +1254,10 @@ def mode_b(role, rnd="1"):
         fp = os.path.join(prompts, p)
         if os.path.isfile(fp):
             parts.append(open(fp, encoding="utf-8").read())
-
     if role == "defender":
         findings = os.path.join(STATE, f"findings_r{rnd}.json")
         if not os.path.isfile(findings):
-            print(f"[mode-B] no findings_r{rnd}.json — run the prosecutor first", file=sys.stderr); sys.exit(1)
+            raise ValueError(f"no findings_r{rnd}.json — run the prosecutor first")
         rc, ex = _run([sys.executable, os.path.abspath(__file__), "excerpts", findings])
         parts.append("## FINDINGS UNDER REVIEW\n```json\n" + open(findings, encoding="utf-8").read() + "\n```")
         parts.append("## CITED EXCERPTS\n" + (ex if rc == 0 else "(excerpts unavailable)"))
@@ -1268,39 +1265,132 @@ def mode_b(role, rnd="1"):
     elif role == "judge":
         brief = os.path.join(STATE, f"judge_brief_r{rnd}.md")
         if not os.path.isfile(brief):
-            print(f"[mode-B] no judge_brief_r{rnd}.md — run `judge-brief {rnd}` first", file=sys.stderr); sys.exit(1)
+            raise ValueError(f"no judge_brief_r{rnd}.md — run `judge-brief {rnd}` first")
         parts.append("## JUDGE BRIEF (severities stripped)\n" + open(brief, encoding="utf-8").read())
         verdicts = os.path.join(STATE, f"verdicts_r{rnd}.json")
         if os.path.isfile(verdicts):
             parts.append("## DEFENDER VERDICTS\n```json\n" + open(verdicts, encoding="utf-8").read() + "\n```")
         out_file, req_key = os.path.join(STATE, f"grades_r{rnd}.json"), "one_line_verdict"
     else:
-        print(f"[mode-B] role must be 'defender' or 'judge', got {role!r}", file=sys.stderr); sys.exit(1)
-
+        raise ValueError(f"role must be 'defender' or 'judge', got {role!r}")
     parts.append("OUTPUT: reply with ONLY the JSON object specified in your charter — "
                  "no prose, no explanation, no markdown fences.")
+    os.makedirs(STATE, exist_ok=True)
     prompt_file = os.path.join(STATE, f"_modeb_{role}_r{rnd}_prompt.md")
     open(prompt_file, "w", encoding="utf-8").write("\n\n".join(parts))
+    return prompt_file, out_file, req_key
 
+
+def _mode_b_call(role, rnd, provider=None):
+    """Core Mode-B call WITHOUT sys.exit. Returns (status, payload):
+      ("ok", {obj,out_file,req_key}) · ("egress_off", reason) · ("error", reason) · ("invalid_json", reason).
+    With `provider` set, exports ARENA_PROVIDER for this call (llm.sh already honors it — NO signature
+    change). Callers map the status to exit codes (the mode_b wrapper) or to a per-vendor 'abstain'
+    (vendor-panel). Egress stays gated: an un-opted-in call returns ("egress_off", ...), never calls out."""
+    role = role.lower()
+    try:
+        prompt_file, out_file, req_key = _mode_b_assemble(role, rnd)
+    except ValueError as e:
+        return ("error", str(e))
+    env = dict(os.environ)
+    if provider:
+        env["ARENA_PROVIDER"] = provider
     llm = os.environ.get("ARENA_LLM_CMD") or os.path.join(ARENA, "bin", "llm.sh")
-    r = subprocess.run([llm, role, prompt_file], capture_output=True, text=True)
-    if r.returncode == 2:  # egress off / no key — the deliberate Mode-A fallback path
-        sys.stderr.write(r.stderr)
-        print(f"[mode-B] {role}: external family unavailable — use Mode A (subagent).", file=sys.stderr)
-        sys.exit(2)
+    r = subprocess.run([llm, role, prompt_file], capture_output=True, text=True, env=env)
+    if r.returncode == 2:
+        return ("egress_off", (r.stderr.strip() or "egress gated (ARENA_MODE_B unset / no key)")[:200])
     if r.returncode != 0:
-        print(f"[mode-B] {role}: provider call failed (exit {r.returncode}): {r.stderr[:300]}", file=sys.stderr); sys.exit(1)
+        return ("error", f"provider exit {r.returncode}: {r.stderr[:200]}")
     try:
         obj = _extract_json(r.stdout)
     except Exception as e:
-        raw = os.path.join(STATE, f"_modeb_{role}_r{rnd}_raw.txt")
-        open(raw, "w", encoding="utf-8").write(r.stdout)
-        print(f"[mode-B] {role}: response was not valid JSON ({e}); raw saved to {raw}", file=sys.stderr); sys.exit(3)
+        return ("invalid_json", f"response not valid JSON: {e}")
     if req_key not in obj:
-        print(f"[mode-B] {role}: JSON missing required key '{req_key}'", file=sys.stderr); sys.exit(3)
+        return ("invalid_json", f"JSON missing required key '{req_key}'")
+    return ("ok", {"obj": obj, "out_file": out_file, "req_key": req_key})
+
+
+def mode_b(role, rnd="1"):
+    """The REAL Mode B (back-compat exit-based wrapper around _mode_b_call): write the SAME artifact Mode
+    A would; propagate exit 2 on egress-off so the orchestrator falls back to Mode A, 3 on bad JSON."""
+    status, payload = _mode_b_call(role, rnd)
+    if status == "egress_off":
+        print(f"[mode-B] {role}: {payload} — use Mode A (subagent).", file=sys.stderr)
+        sys.exit(2)
+    if status == "error":
+        print(f"[mode-B] {role}: {payload}", file=sys.stderr)
+        sys.exit(1)
+    if status == "invalid_json":
+        print(f"[mode-B] {role}: {payload}", file=sys.stderr)
+        sys.exit(3)
+    obj, out_file, req_key = payload["obj"], payload["out_file"], payload["req_key"]
     json.dump(obj, open(out_file, "w", encoding="utf-8"), indent=2)
     print(f"[mode-B] {role} (external family) -> {os.path.relpath(out_file, ROOT)}  ✓ valid JSON ('{req_key}' present)")
 
+
+# ─── T2 ROUTINE MULTI-VENDOR PANEL: vendor diversity as a structured advisory panel ─────────────────
+def _vendor_view(role, obj):
+    """A compact, comparable view of ONE vendor's output, for inter-vendor variance analysis."""
+    if role == "judge":
+        lenses = obj.get("lenses", {}) if isinstance(obj, dict) else {}
+        committer = lenses.get("committer") if isinstance(lenses, dict) else None
+        return {"disposition": _judge_disposition(obj),
+                "committer_grade": committer.get("grade") if isinstance(committer, dict) else None}
+    verds = obj if isinstance(obj, list) else (obj.get("verdicts", []) if isinstance(obj, dict) else [])
+    return {"verdicts": {v.get("id"): (v.get("verdict") or "").upper() for v in verds if isinstance(v, dict)}}
+
+
+def _vendor_variance(role, participating):
+    """Surface where the vendors DISAGREE — the variance signal (the deterministic Oracle still settles
+    it; this only flags that a vendor diverged, e.g. ignoring an Oracle=FIXED marker)."""
+    if role == "judge":
+        disps = {p["vendor"]: p["view"]["disposition"] for p in participating}
+        distinct = sorted({d for d in disps.values() if d})
+        return {"dispositions": disps, "agree": len(distinct) <= 1, "distinct": distinct}
+    allids = sorted({fid for p in participating for fid in p["view"]["verdicts"]})
+    dissent = {}
+    for fid in allids:
+        votes = {p["vendor"]: p["view"]["verdicts"].get(fid) for p in participating}
+        distinct = {v for v in votes.values() if v}
+        if len(distinct) > 1:
+            dissent[fid] = votes
+    return {"findings_compared": len(allids), "dissent": dissent, "agree": not dissent}
+
+
+def vendor_panel(role, rnd="1"):
+    """T2 — fan the Mode-B call over N vendors (ARENA_PANEL roster) and emit a deterministic VARIANCE
+    artifact. Egress discipline intact: a vendor that is egress-gated or returns bad JSON ABSTAINS — it
+    never aborts the panel. The vendors are ADVISORY; the deterministic Oracle settles any disagreement
+    and the panel is read by NO gate. This turns inter-vendor divergence into a routine signal. See
+    DESIGN_v2_roadmap.md T2."""
+    role = role.lower()
+    roster = [v.strip() for v in os.environ.get("ARENA_PANEL", "glm,gemini,zai").split(",") if v.strip()]
+    results = []
+    for vendor in roster:
+        status, payload = _mode_b_call(role, rnd, provider=vendor)
+        if status == "ok":
+            out = os.path.join(STATE, f"{'verdicts' if role == 'defender' else 'grades'}_r{rnd}__{vendor}.json")
+            json.dump(payload["obj"], open(out, "w", encoding="utf-8"), indent=2)
+            results.append({"vendor": vendor, "status": "ok", "view": _vendor_view(role, payload["obj"]),
+                            "artifact": os.path.relpath(out, ROOT)})
+        else:
+            results.append({"vendor": vendor, "status": "abstain", "kind": status, "reason": str(payload)[:160]})
+    participating = [r for r in results if r["status"] == "ok"]
+    oj = _latest("oracle_r*.json")
+    out = {"role": role, "round": int(rnd), "roster": roster,
+           "participated": [r["vendor"] for r in participating],
+           "abstained": [{"vendor": r["vendor"], "kind": r["kind"]} for r in results if r["status"] == "abstain"],
+           "variance": _vendor_variance(role, participating),
+           "oracle_absent": not bool(oj.get("checks")),
+           "note": "ADVISORY — the deterministic Oracle settles any disagreement; vendors are read by no gate",
+           "generated_at": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}
+    os.makedirs(STATE, exist_ok=True)
+    json.dump(out, open(os.path.join(STATE, f"vendor_panel_r{rnd}_{role}.json"), "w"), indent=2, sort_keys=True)
+    agree = out["variance"].get("agree")
+    print(f"vendor-panel {role} r{rnd}: {len(participating)}/{len(roster)} participated "
+          f"({', '.join(out['participated']) or 'none'}), {len(out['abstained'])} abstained · "
+          f"vendors {'AGREE' if agree else 'DISAGREE'} · advisory, the Oracle settles it")
+    return out
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -1325,4 +1415,5 @@ if __name__ == "__main__":
                                                       sys.argv[5] if len(sys.argv) > 5 else "1")
     elif cmd == "render": render()
     elif cmd == "mode-b": mode_b(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "1")
+    elif cmd == "vendor-panel": vendor_panel(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "1")
     else: print(__doc__); sys.exit(1)

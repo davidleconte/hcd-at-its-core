@@ -66,6 +66,8 @@ audit_arena/state/judge_brief_r*.md
 audit_arena/state/remediation_r*.json
 audit_arena/state/lineage_r*.json
 audit_arena/state/panel_r*.json
+audit_arena/state/vendor_panel_r*.json
+audit_arena/state/*_r*__*.json
 audit_arena/state/reconciliation.json
 audit_arena/state/patches/
 audit_arena/state/_modeb_*
