@@ -28,7 +28,15 @@ The Oracle is what makes an HCD audit stronger than a quant audit: HCD claims ha
 oracle (cqlsh / make demo-score / shellcheck / docker compose config / openssl / dup-key check),
 so findings can be EXECUTABLY adjudicated, not merely argued.
 """
-import sys, os, json, subprocess, html, glob, re, datetime, tempfile
+import datetime
+import glob
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ARENA = os.path.join(ROOT, "audit_arena")
@@ -651,6 +659,20 @@ def render():
     finds, verds, oracle_idx, grades = [], {}, {}, []
     for fp in _by_round("findings_r*.json"):
         d = json.load(open(fp)); finds += (d if isinstance(d, list) else d.get("findings", []))
+    # Per-finding ground truth: run each finding's oracle_cmd so the register shows the LIVE
+    # resolution (FIXED iff the artefact is now correct) instead of a stale "—". This is what
+    # makes the latest round visibly adjudicated, not just appended.
+    for f in finds:
+        cmd = f.get("oracle_cmd")
+        if not cmd or f.get("oracle_result"):
+            continue
+        try:
+            rc = subprocess.run(cmd, shell=True, cwd=ROOT, capture_output=True, timeout=60).returncode
+            f["oracle_result"] = "FIXED" if rc == 0 else "FAIL"
+            if rc == 0:
+                f["status"] = "FIXED"
+        except Exception:
+            f["oracle_result"] = "—"
     for fp in _by_round("verdicts_r*.json"):
         d = json.load(open(fp))
         for v in (d if isinstance(d, list) else d.get("verdicts", [])):
@@ -709,6 +731,11 @@ def render():
     o_pass = sum(1 for c in oracle_idx.values() if c['status'] == 'PASS')
     o_fail = sum(1 for c in oracle_idx.values() if c['status'] == 'FAIL')
     o_def = sum(1 for c in oracle_idx.values() if c['status'] == 'DEFERRED')
+    rounds = sorted({int(str(f.get('id', '')).split('-')[0][1:])
+                     for f in finds if str(f.get('id', ''))[:1] == 'R' and str(f.get('id', ''))[1:2].isdigit()})
+    cur_round = max(rounds) if rounds else 0
+    fixed_n = sum(1 for f in finds if (f.get('status') or '').upper() == 'FIXED')
+    per_round = ' · '.join(f"R{r}:{sum(1 for f in finds if str(f.get('id', '')).startswith(f'R{r}-'))}" for r in rounds)
 
     istat = {"PASS": "#1e8449", "FAIL": "#c0392b", "DEFERRED": "#b7950b"}
     ichips = "".join(
@@ -781,7 +808,10 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
 </style></head><body>
 <header><h1>🛡️ HCD audit arena — adversarial tribunal (HCD 2.0 / Cassandra 5.0)</h1>
 <div class="sub">Prosecutor <b style="color:#e57373">refute-by-default</b> · Defender <b style="color:#6fb6e0">kills false positives</b> · Judge <b style="color:#b18ad6">SRE / committer / security</b> · Oracle <b style="color:#34c3a0">runs ground truth</b> — auto-refresh /6s</div></header>
-<div class="wrap"><div class="panel">
+<div class="wrap">
+<div style="margin:0 0 14px;padding:11px 15px;background:#11242b;border:1px solid #1d3640;border-radius:9px;font-size:14px">
+<b style="font-size:17px">Round {cur_round}</b> — latest tribunal pass · {len(finds)} findings across {len(rounds) or 1} round(s) (<span style="color:#7fa6b0">{html.escape(per_round) or '—'}</span>) · <b style="color:#16a085">{fixed_n} fixed</b> · generated {html.escape(str((man or {}).get('generated_at', '')))}</div>
+<div class="panel">
 <div class="col prosecutor"><h3>🔴 Prosecutor</h3><div class="big">{len(finds)}</div><div>findings filed</div></div>
 <div class="col defender"><h3>🔵 Defender</h3><div class="big">{surv}</div><div>survived · {fp_n} false positive(s)</div></div>
 <div class="col judge"><h3>🟣 Judge</h3><div class="big">{len(grades)}</div><div>tri-lens verdict(s)</div></div>

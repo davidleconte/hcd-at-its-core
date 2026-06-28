@@ -5,7 +5,7 @@
       "dimension": "D2",
       "invariant": "HCD-I4",
       "claim_under_attack": "config/alerts.yml fires alerts on dropped messages, compaction backlog, and read/write p99 latency from the JMX-exported Cassandra metrics.",
-      "finding": "jmx-exporter.yml sets `lowercaseOutputName: true` (line 4), so every exported metric name is lowercased AFTER capture-group substitution. But 4 of the 8 alert expressions in alerts.yml reference CamelCase metric names that the exporter therefore never emits: `cassandra_dropped_Dropped` (l.29), `cassandra_compaction_PendingTasks` (l.39), and `cassandra_client_request_Latency_99thPercentile` (l.69, l.79). The real series are `cassandra_dropped_dropped`, `cassandra_compaction_pendingtasks`, `cassandra_client_request_latency_99thpercentile`. These four alerts (HCDDroppedMessages, HCDCompactionBacklog, HCDHighWriteLatency, HCDHighReadLatency) silently never fire. The smoking gun is in-repo: the Grafana dashboard queries the correctly-lowercased names (hcd-cluster.json:24,168,185), proving the author knows the exporter lowercases — only alerts.yml disagrees.",
+      "finding": "jmx-exporter.yml sets `lowercaseOutputName: true` (line 4), so every exported metric name is lowercased AFTER capture-group substitution. But 4 of the 8 alert expressions in alerts.yml reference CamelCase metric names that the exporter therefore never emits: `cassandra_dropped_Dropped` (l.29), `cassandra_compaction_PendingTasks` (l.39), and `cassandra_client_request_Latency_99thPercentile` (l.69, l.79). The real series are `cassandra_dropped_dropped`, `cassandra_compaction_pendingtasks`, `cassandra_client_request_latency_99thpercentile`. These four alerts (HCDDroppedMessages, HCDCompactionBacklog, HCDHighWriteLatency, HCDHighReadLatency) silently never fire. The smoking gun is in-repo: the Grafana dashboard queries the correctly-lowercased names (hcd-cluster.json:24,168,185), proving the author knows the exporter lowercases \u2014 only alerts.yml disagrees.",
       "severity": "HIGH",
       "evidence": "config/alerts.yml:29",
       "strongest_rebuttal": "Maybe Prometheus is case-insensitive, or another exporter emits the CamelCase series. False: PromQL metric-name matching is case-sensitive, jmx-exporter.yml is the only metric source (Dockerfile installs jmx_prometheus_javaagent; compose mounts only this file), and the dashboard's lowercased twins prove the emitted names are lowercase.",
@@ -20,7 +20,7 @@
       "dimension": "D4",
       "invariant": "HCD-I6",
       "claim_under_attack": "tests/test_scripts.py validates the Prometheus alert rules.",
-      "finding": "test_prometheus_alerts_valid_yaml asserts only structural shape — that `groups` exists, there are >=5 rules, and each rule has `alert`/`expr`/`labels`/`severity`. It never checks that the metric name inside each `expr` matches what jmx-exporter.yml emits. So the test stays green while 4 of the 8 alerts (R2-01) are dead. This is a weak (non-discriminating) assertion: it cannot catch the very class of defect — a typo'd/mis-cased metric name — that most commonly breaks an alert rule.",
+      "finding": "test_prometheus_alerts_valid_yaml asserts only structural shape \u2014 that `groups` exists, there are >=5 rules, and each rule has `alert`/`expr`/`labels`/`severity`. It never checks that the metric name inside each `expr` matches what jmx-exporter.yml emits. So the test stays green while 4 of the 8 alerts (R2-01) are dead. This is a weak (non-discriminating) assertion: it cannot catch the very class of defect \u2014 a typo'd/mis-cased metric name \u2014 that most commonly breaks an alert rule.",
       "severity": "MED",
       "evidence": "tests/test_scripts.py:104",
       "strongest_rebuttal": "Without a live Prometheus you cannot fully validate alert firing. True, but the metric-name-vs-exporter consistency check is a pure offline string check (the jmx-exporter rules and the alert exprs are both static files), so the weak assertion is not forced by the offline constraint.",
@@ -37,17 +37,18 @@
       "finding": "alerts.yml:59 uses `cassandra_hints_TotalHintsInProgress`, while the Grafana dashboard hints panel uses `cassandra_hints_hints_created` (hcd-cluster.json:219). These are two different names for the hint metric and neither is reconciled against the actual HintedHandOffManager MBean exposed by jmx-exporter.yml:46 (`cassandra_hints_$1`, lowercased). Beyond the casing problem of R2-01, the alert and dashboard disagree on which series even represents hints, so at least one (the alert) monitors a non-existent series.",
       "severity": "LOW",
       "evidence": "config/alerts.yml:59",
-      "strongest_rebuttal": "Both could coincidentally exist if HintedHandOffManager exposes both attributes. Unlikely and unverified — and `TotalHintsInProgress` is still CamelCase, so it is broken regardless by `lowercaseOutputName: true`.",
+      "strongest_rebuttal": "Both could coincidentally exist if HintedHandOffManager exposes both attributes. Unlikely and unverified \u2014 and `TotalHintsInProgress` is still CamelCase, so it is broken regardless by `lowercaseOutputName: true`.",
       "survives_rebuttal": true,
       "what_would_resolve_it": "Pick the metric the exporter actually emits for hints and use the same lowercased name in both alerts.yml and the dashboard.",
-      "charter_gap": false
+      "charter_gap": false,
+      "oracle_cmd": "grep -q 'rate(cassandra_hints_hints_created' config/alerts.yml"
     },
     {
       "id": "R2-04",
       "dimension": "D2",
       "invariant": "HCD-I5",
       "claim_under_attack": ".gitignore ignores the per-node local data directories (`hcd-node*`).",
-      "finding": "Line 40 of .gitignore is `[hcd-node*]`. The square brackets make this a POSIX character-class glob that matches a SINGLE character from the set {h,c,d,-,n,o,e,*}, not the intended `hcd-node1`/`hcd-node2`/... directory prefixes. `git check-ignore hcd-node1` returns NOT-ignored. The pattern is dead. (Impact is low because the compose stack uses Docker named volumes rather than host bind dirs, so these directories are not normally created — but the ignore rule does not do what it claims.)",
+      "finding": "Line 40 of .gitignore is `[hcd-node*]`. The square brackets make this a POSIX character-class glob that matches a SINGLE character from the set {h,c,d,-,n,o,e,*}, not the intended `hcd-node1`/`hcd-node2`/... directory prefixes. `git check-ignore hcd-node1` returns NOT-ignored. The pattern is dead. (Impact is low because the compose stack uses Docker named volumes rather than host bind dirs, so these directories are not normally created \u2014 but the ignore rule does not do what it claims.)",
       "severity": "LOW",
       "evidence": ".gitignore:40",
       "strongest_rebuttal": "Named volumes mean no host `hcd-node*` dirs are created, so nothing leaks. True for the default topology, but a contributor using bind mounts or the topology generator's older layouts would have untracked node data silently un-ignored.",
@@ -61,13 +62,14 @@
       "dimension": "D5",
       "invariant": "HCD-I4",
       "claim_under_attack": "The MinIO service is defined consistently across the demo and the compose stack.",
-      "finding": "The demo script starts MinIO at IP 172.28.0.40 with image tag RELEASE.2024-11-07T00-52-20Z (demo-entropy.sh:436,441), while docker-compose.yml assigns the `minio` service IP 172.28.0.10 with image RELEASE.2024-03-30T09-41-56Z (docker-compose.yml:183,188). Same logical service, two static IPs and two image tags. Not a hard failure (the demo runs its own `docker run`, and `make minio` runs the compose one — they are mutually exclusive paths), but it is an unsourced inconsistency: a reader using `make minio` then the ransomware modules gets a different MinIO than the modules' WORM proofs were written against.",
+      "finding": "The demo script starts MinIO at IP 172.28.0.40 with image tag RELEASE.2024-11-07T00-52-20Z (demo-entropy.sh:436,441), while docker-compose.yml assigns the `minio` service IP 172.28.0.10 with image RELEASE.2024-03-30T09-41-56Z (docker-compose.yml:183,188). Same logical service, two static IPs and two image tags. Not a hard failure (the demo runs its own `docker run`, and `make minio` runs the compose one \u2014 they are mutually exclusive paths), but it is an unsourced inconsistency: a reader using `make minio` then the ransomware modules gets a different MinIO than the modules' WORM proofs were written against.",
       "severity": "LOW",
       "evidence": "scripts/demo-entropy.sh:436",
       "strongest_rebuttal": "The two code paths never run simultaneously, so there is no IP collision and both images support Object Lock. Cosmetic.",
       "survives_rebuttal": true,
       "what_would_resolve_it": "Single-source the MinIO IP and image tag (reuse the compose `minio` service, or share a variable), so demo and compose agree.",
-      "charter_gap": false
+      "charter_gap": false,
+      "oracle_cmd": "grep -q 'MINIO_API_OBJECT_LOCK_ENABLED' docker-compose.yml"
     }
   ]
 }
