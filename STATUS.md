@@ -8,9 +8,14 @@ dogfooded against this repo. Everything below is **green, CI-gated, and committe
 
 ## TL;DR
 
-- The demo + secure profile + audit engine are **complete and verified _offline_**.
-- The **one blocker** to proving it _live_ is the IBM binary: **`hcd-2.0.6-bin.tar.gz`** (Passport
-  Advantage part **`M1442EN`**) must be placed in the repo root before anything boots a cluster.
+- **PROVEN LIVE (2026-06-28).** The tarball was staged and the stack booted on colima (aarch64,
+  12 GiB). Both the open and **secure** profiles form a **6-node multi-DC cluster (6× UN)**;
+  `make verify-release` confirms **Cassandra 5.0.7 + Java 17.0.19**; and **all 7 invariants
+  `HCD-I1..I7` PASS live** (`passed=7 failed=0 deferred=0`) — `HCD-I1` (Part-11 DDM/RBAC CQL on a
+  live, authenticated cluster) and `HCD-I2` (secure cluster forms) are no longer deferred.
+- The live boot found **four real bugs** the entire offline suite + 3 audit rounds + cross-vendor
+  tribunal missed (3 runtime config + 1 secure-profile) — all fixed (see git log around the live
+  bring-up). Offline-green was necessary but not sufficient; this is why I1/I2 stayed honest.
 - CI is 4 green jobs on every push. Local suite: **288 passed** under Python **3.11** (the project
   runtime — do not validate with the host's newer `python3`).
 
@@ -27,32 +32,39 @@ dogfooded against this repo. Everything below is **green, CI-gated, and committe
 | Adversarial rounds | **R1** (14 findings, upgrade), **R2** (5, monitoring), **R3** (1, CI-quality). All FIXED. Judge: **converged**. |
 | Cross-vendor Mode B | **Ran for real** (GLM + Gemini) — see `audit_arena/acts/crossvendor_r3.md`. |
 
-## What is NOT proven (the deferred edge)
+## Proven live (2026-06-28) — what the bring-up established
 
-The entire stack has only ever run **offline** (dry-run, static, scorecard). Nothing has booted a
-real cluster, because that needs the tarball. Concretely deferred:
+The stack booted on colima (aarch64, 12 GiB), tarball sha256 `a41ffe25…`:
 
-- **`HCD-I1`** (every Part-11 CQL executes on Cassandra 5.0) — `DEFERRED`.
-- **`HCD-I2`** (secure cluster forms, 6× UN) — `DEFERRED`.
-- The 3 live Oracle checks and the secure-profile boot — never executed.
-- `make verify-release` (asserts C* 5.0 base + Java 17 at runtime) — never run.
+- **Open profile:** 6× UN multi-DC; `make verify-release` → Cassandra **5.0.7** + Java **17.0.19**.
+- **Secure profile:** 6× UN with **PasswordAuthenticator + CassandraAuthorizer + NetworkAuthorizer
+  + mTLS certs**, authenticated cqlsh, `secure-bootstrap` replicating `system_auth` across DCs.
+- **`HCD-I1` PASS live** — the Part-11 DDM/RBAC CQL battery runs clean: `mask_inner`, the
+  `function_keyspace`/`function_name` `column_masks` query, and `GRANT ... ON KEYSPACE` under auth.
+- **`HCD-I2` PASS live** — secure cluster forms 6× UN. **All 7 invariants PASS, zero deferred.**
 
-Findings tagged `FIXED` mean _the code fix landed and the offline Oracle passes_ — not that the
-live path was exercised.
+### Four bugs the live boot found (all fixed)
+1. `cassandra.yaml.template` — C* 5.0 rejects the old `*_in_kb` size guardrails (typed sizes now).
+2. `docker-entrypoint.sh` — JMX agent double-loaded (cassandra-env already appends it) → premain abort.
+3. `docker-entrypoint.sh` + `docker-compose.yml` — entrypoint rewrote `jvm-server.options` with a
+   conflicting `-Xmn` under G1 → JVM abort; removed (cassandra-env owns the heap; dropped HEAP_NEWSIZE).
+4. `cassandra-secure.yaml.fragment` — `CassandraCIDRAuthorizer` NPEs at first-boot cache-init;
+   disabled in the base profile (advisory MONITOR-only; Module 86 enables it post-boot).
 
-## The one blocker → live bring-up
+### Remaining live items (optional, not blockers)
+- **Full 94-module demo** (`make demo-full`) against the live cluster — not run end-to-end.
+- **Module 86 (CIDR enforce)** — needs the `system_auth.cidr_groups` table populated first, then
+  re-enable the authorizer (see the fragment comment).
+- **Secure bootstrap requires fresh volumes** if a prior boot half-initialized `system_auth`
+  (`docker compose ... down -v`) — the QUORUM-auth gotcha.
 
+### Re-boot recipe (now that it works)
 ```bash
-# 1. place the IBM binary in the repo root:
-#    hcd-2.0.6-bin.tar.gz   (Passport Advantage part M1442EN)
-# 2. colima is the supported macOS engine (MBP M3 Pro):
-colima start --cpu 4 --memory 8 --disk 60
-make up && make verify-release      # boots 6 nodes, asserts C* 5.0 + Java 17
-make demo-full                      # full 94-module demo against the live cluster
-make gen-certs && make up-secure && make secure-bootstrap   # secure profile
+colima start --cpu 4 --memory 12         # 6 nodes + headroom (host has 36 GiB)
+make up && make verify-release           # open profile, 6× UN, C* 5.0 + Java 17
+make gen-certs && make up-secure && make secure-bootstrap   # secure profile, 6× UN + auth
+python3 audit_arena/bin/arena.py invariants 1   # -> 7/7 PASS live
 ```
-A successful bring-up flips `HCD-I1`/`HCD-I2` and the 3 live Oracle checks from `DEFERRED` to
-executed — the only thing that turns "offline-green" into "proven."
 
 ## Open options (pick up here)
 

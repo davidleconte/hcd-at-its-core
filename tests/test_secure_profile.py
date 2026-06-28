@@ -60,7 +60,14 @@ def test_secure_fragment_no_dup_keys_when_appended():
     combined = re.sub(r"\$\{[^}]+\}", "x", tmpl + "\n" + frag)
     parsed = yaml.safe_load(combined)
     assert parsed.get("authenticator") == "PasswordAuthenticator"
-    assert "cidr_authorizer" in parsed
+    assert parsed.get("authorizer") == "CassandraAuthorizer"
+    assert "network_authorizer" in parsed  # core DC-level RBAC stays enabled
+    # cidr_authorizer is DELIBERATELY disabled (commented) in the base secure profile: enabling
+    # CassandraCIDRAuthorizer crashes every node at first boot (NPE in AuthCacheService.register,
+    # confirmed on a live HCD 2.0.6 boot 2026-06-28). Module 86 enables it AFTER the cluster is up
+    # and system_auth.cidr_groups is populated.
+    assert "cidr_authorizer" not in parsed, \
+        "CIDR authorizer must stay disabled in the base secure profile (it crashes first boot)"
     top_keys = re.findall(r"^([A-Za-z_]\w*):", combined, re.M)
     dups = [k for k, c in collections.Counter(top_keys).items() if c > 1]
     assert not dups, f"duplicate top-level keys after append: {dups}"
