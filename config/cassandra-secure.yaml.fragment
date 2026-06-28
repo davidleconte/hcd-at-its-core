@@ -30,21 +30,25 @@ credentials_validity: 2000ms
 #     {'class':'NetworkTopologyStrategy','dc1':3,'dc2':3};  + nodetool repair system_auth
 # This cannot be set in cassandra.yaml — it must be applied via CQL once the cluster is up.
 #
-# Module 86 — CIDR / IP allowlist authorizer.
-# DISABLED in the base secure profile: on a live HCD 2.0.6 boot (2026-06-28) enabling
-# CassandraCIDRAuthorizer here crashes EVERY node at startup before it can serve CQL —
+# Module 86 — CIDR / IP allowlist authorizer. DISABLED in the base secure profile.
+# CONFIRMED LIVE (HCD 2.0.6, 2026-06-28): enabling CassandraCIDRAuthorizer crashes every node at
+# first boot, before it can serve CQL, so the cluster never forms:
 #   java.lang.NullPointerException
 #     at org.apache.cassandra.auth.AuthCacheService.register(AuthCacheService.java:43)
 #     at org.apache.cassandra.auth.CassandraCIDRAuthorizer.initCaches(CassandraCIDRAuthorizer.java:74)
-# i.e. its auth-cache can't register at first boot (the system_auth.cidr_groups table doesn't
-# exist yet), so the cluster never forms. It is advisory MONITOR-mode only and not required by the
-# core RBAC/mTLS the demo proves. Module 86 enables it deliberately AFTER the cluster is up and the
-# cidr_groups table is populated. Leaving it unset uses the default AllowAllCIDRAuthorizer.
+# This is NOT a missing-parameter issue — it reproduces with the FULL stock param set
+# (cidr_authorizer_mode + cidr_groups_cache_refresh_interval + ip_cache_max_size all present and
+# parsed). It is a first-boot bootstrap catch-22: initCaches reads system_auth.cidr_groups, but that
+# table is created BY the authorizer, so on a fresh cluster the cache registration NPEs. The core
+# RBAC/mTLS the demo proves does not need it. Leaving it unset uses the default AllowAllCIDRAuthorizer
+# (no IP allowlisting). Enabling CIDR enforce on HCD 2.0.6 needs a documented post-boot table-seed
+# step from IBM/DataStax that this build does not provide out of the box.
 # cidr_authorizer:
 #     class_name: CassandraCIDRAuthorizer
 #     parameters:
 #         cidr_authorizer_mode: MONITOR
 #         cidr_groups_cache_refresh_interval: 5
+#         ip_cache_max_size: 100
 
 # Module 88 — mTLS authentication (commented; enabled per-node in the module).
 # Requires client encryption with optional client auth and the PEM material from

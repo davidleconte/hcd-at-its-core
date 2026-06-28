@@ -51,10 +51,31 @@ The stack booted on colima (aarch64, 12 GiB), tarball sha256 `a41ffe25…`:
 4. `cassandra-secure.yaml.fragment` — `CassandraCIDRAuthorizer` NPEs at first-boot cache-init;
    disabled in the base profile (advisory MONITOR-only; Module 86 enables it post-boot).
 
-### Remaining live items (optional, not blockers)
-- **Full 94-module demo** (`make demo-full`) against the live cluster — not run end-to-end.
-- **Module 86 (CIDR enforce)** — needs the `system_auth.cidr_groups` table populated first, then
-  re-enable the authorizer (see the fragment comment).
+### Live exploration of the two optional items (2026-06-28)
+
+**`demo-full` autonomously — partially, then accepted as interactive-by-design.** Running
+`demo-entropy.sh --no-pause` against the live 6-node secure cluster surfaced **3 real, general
+robustness bugs, all fixed** (commit `2ae4a0a`): (1) `system_traces`/`system_distributed` were
+SimpleStrategy → `LOCAL_QUORUM` tracing failed on multi-DC (now NTS in `secure-bootstrap`); (2)
+`wait_for_node_un` waited for UN but not CQL-readiness → restart-then-query race; (3) `log_cmd` had
+no retry → a transient cqlsh connection error aborted the whole run (now retries connection-level
+errors only). It then hit a 4th issue that is **design, not a bug**: the destructive modules
+(DC-failover/decommission/chaos, e.g. Module 3) `docker exec` a **hardcoded coordinator** that may
+be the node they just stopped. Making all 94 modules run autonomously end-to-end would need
+per-module coordinator-failover + MinIO/Data-API orchestration — i.e. turning an interactive
+teaching tool into a CI runner. Decision: keep the 3 fixes; the demo stays interactive; the bulk
+(pure-CQL) modules run fine live.
+
+**Module 86 CIDR enforce — BLOCKED by a confirmed HCD 2.0.6 limitation.** `CassandraCIDRAuthorizer`
+throws `NullPointerException` in `AuthCacheService.register` ← `initCaches` at **first boot**, before
+any node serves CQL, so the cluster never forms. **Refuted the missing-param hypothesis**: it
+reproduces with the full stock param set (`cidr_authorizer_mode` + `cidr_groups_cache_refresh_interval`
++ `ip_cache_max_size` all parsed). It is a bootstrap catch-22 — `initCaches` reads
+`system_auth.cidr_groups`, a table the authorizer itself is supposed to create. Disabling it in the
+base profile (default `AllowAllCIDRAuthorizer`) is correct; enabling CIDR enforce would need a
+post-boot table-seed step IBM/DataStax does not document for this build. The rest of the secure
+profile (Password/Authorizer/NetworkAuthorizer/mTLS) is unaffected and proven live.
+
 - **Secure bootstrap requires fresh volumes** if a prior boot half-initialized `system_auth`
   (`docker compose ... down -v`) — the QUORUM-auth gotcha.
 
