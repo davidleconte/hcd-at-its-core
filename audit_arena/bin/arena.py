@@ -17,13 +17,17 @@ Subcommands:
   converge                -> verdict: 2-dry-rounds AND no FAILing invariant -> convergence.json
   judge-brief [R]         -> Judge input with severities stripped (anti-anchoring)
   harden                  -> fold charter_gap lessons into prompts/_preamble.md (AUTO block)
+  verify-fix FIX [BASE]   -> apply patch(es) in a THROWAWAY worktree, run the Oracle there,
+                             report VERIFIED/REJECTED — never touches your tree
+  remediate-worktree      -> create the isolated worktree;  remediate-clean -> remove it
+  remediate-record ID PATCH VERDICT [R] -> record a remediation verdict
   render                  -> build courtroom.html from state
 
 The Oracle is what makes an HCD audit stronger than a quant audit: HCD claims have a runnable
 oracle (cqlsh / make demo-score / shellcheck / docker compose config / openssl / dup-key check),
 so findings can be EXECUTABLY adjudicated, not merely argued.
 """
-import sys, os, json, subprocess, html, glob, re, datetime
+import sys, os, json, subprocess, html, glob, re, datetime, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ARENA = os.path.join(ROOT, "audit_arena")
@@ -468,6 +472,98 @@ def harden():
         print("  " + e)
 
 
+# ─── REMEDIATION (generative mode) — propose a fix, verify it in ISOLATION ────────
+# SAFETY: every fix is applied/verified ONLY in a throwaway git worktree; the user's
+# working tree is never modified. A fix is VERIFIED only if the offline Oracle battery
+# PASSes there and no HCD-I* regresses. A human always lands the patch.
+WT = os.path.join(tempfile.gettempdir(), "hcd-arena-worktree")
+
+
+def _git(args, cwd=ROOT):
+    return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
+
+
+def _battery_in(cwd):
+    """Run the offline Oracle battery + invariants against a checkout at `cwd`."""
+    checks = {}
+
+    def ck(name, cmd, ok):
+        r = subprocess.run(cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=300)
+        checks[name] = "PASS" if ok(r.returncode, (r.stdout or "") + (r.stderr or "")) else "FAIL"
+
+    ck("bash-n", 'for s in scripts/*.sh; do bash -n "$s" || exit 1; done', lambda c, o: c == 0)
+    ck("demo-score", "./scripts/demo-entropy.sh --score 2>/dev/null", lambda c, o: "Score:  100%" in o)
+    ck("pytest", "python3 -m pytest tests/ -q 2>&1", lambda c, o: " failed" not in o)
+    ck("dup-keys", _DUPKEY, lambda c, o: c == 0)
+    ck("counts", "tm=$(grep -oE 'TOTAL_MODULES=[0-9]+' scripts/demo-entropy.sh | head -1 | cut -d= -f2); "
+                 "grep -q \"all $tm modules\" Makefile", lambda c, o: c == 0)
+    r = subprocess.run(["python3", "audit_arena/bin/arena.py", "invariants", "0"],
+                       cwd=cwd, capture_output=True, text=True)
+    try:
+        inv = json.loads(r.stdout)
+    except Exception:
+        # invariants must be evaluable; an unrunnable check is a conservative FAIL, never skipped
+        return {"checks": checks, "invariant_fail": ["<invariants-unrunnable>"], "overall": "FAIL"}
+    inv_fail = [i["id"] for i in inv.get("invariants", []) if i["status"] == "FAIL"]
+    overall = all(v == "PASS" for v in checks.values()) and not inv_fail
+    return {"checks": checks, "invariant_fail": inv_fail, "overall": "PASS" if overall else "FAIL"}
+
+
+def remediate_worktree():
+    if _git(["rev-parse", "--is-inside-work-tree"]).stdout.strip() != "true":
+        print("ERROR: not a git repo — cannot isolate."); sys.exit(1)
+    _git(["worktree", "remove", "--force", WT])
+    r = _git(["worktree", "add", "--detach", WT, "HEAD"])
+    print((r.stdout + r.stderr).strip())
+    print(f"worktree: {WT}")
+
+
+def remediate_clean():
+    print((_git(["worktree", "remove", "--force", WT]).stderr or "worktree removed").strip())
+
+
+def verify_fix(fix_patch, base_patch=None):
+    """Apply (base then) fix patch in a throwaway worktree, run the Oracle battery there,
+    and report — NEVER touching the user's tree. Status VERIFIED iff the battery PASSes."""
+    if _git(["rev-parse", "--is-inside-work-tree"]).stdout.strip() != "true":
+        print(json.dumps({"error": "not a git repo — refusing to run"})); return
+    _git(["worktree", "remove", "--force", WT])
+    add = _git(["worktree", "add", "--detach", WT, "HEAD"])
+    if add.returncode != 0:
+        print(json.dumps({"error": "worktree add failed", "detail": add.stderr[:300]})); return
+    verdict = {"fix_patch": fix_patch, "base_patch": base_patch}
+    try:
+        if base_patch:
+            a = _git(["apply", os.path.abspath(base_patch)], cwd=WT)
+            verdict["base_applies"] = a.returncode == 0
+            verdict["oracle_before"] = _battery_in(WT)["overall"] if a.returncode == 0 else "n/a"
+        a = _git(["apply", os.path.abspath(fix_patch)], cwd=WT)
+        verdict["fix_applies"] = a.returncode == 0
+        if a.returncode == 0:
+            res = _battery_in(WT)
+            verdict["oracle_after"] = res
+            verdict["status"] = "VERIFIED" if res["overall"] == "PASS" else "REJECTED"
+        else:
+            verdict["status"] = "REJECTED"
+            verdict["detail"] = a.stderr[:200]
+    finally:
+        _git(["worktree", "remove", "--force", WT])
+    print(json.dumps(verdict, indent=2))
+    return verdict
+
+
+def remediate_record(finding_id, patch_file, verdict_file, rnd="1"):
+    v = json.load(open(verdict_file))
+    fp = os.path.join(STATE, f"remediation_r{rnd}.json")
+    data = json.load(open(fp)) if os.path.exists(fp) else {"remediations": []}
+    data["remediations"] = [r for r in data["remediations"] if r.get("finding_id") != finding_id]
+    data["remediations"].append({"finding_id": finding_id, "patch": patch_file,
+                                 "status": v.get("status"), "oracle_after": v.get("oracle_after")})
+    os.makedirs(STATE, exist_ok=True)
+    json.dump(data, open(fp, "w"), indent=2)
+    print(f"recorded remediation for {finding_id}: {v.get('status')}")
+
+
 SEV = {"BLOCKER": "#c0392b", "CRITICAL": "#c0392b", "HIGH": "#d35400",
        "MED": "#b7950b", "MEDIUM": "#b7950b", "LOW": "#7f8c8d"}
 
@@ -491,6 +587,7 @@ def render():
     man = _latest("manifest_r*.json")
     cfp = os.path.join(STATE, "convergence.json")
     conv = json.load(open(cfp)) if os.path.exists(cfp) else {}
+    rem = _latest("remediation_r*.json").get("remediations", [])
 
     rows = []
     for f in finds:
@@ -605,6 +702,7 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
 <h2>Oracle — deterministic ground truth</h2>
 <table><tr><th>Check</th><th>Dim</th><th>Status</th><th>Detail</th></tr>
 {orows or '<tr><td colspan=4><i>run: bin/arena.py oracle</i></td></tr>'}</table>
+{('<h2>Remediation — verified-in-isolation fixes</h2><table><tr><th>Finding</th><th>Status</th><th>Oracle (worktree)</th><th>Patch</th></tr>' + ''.join('<tr><td><code>' + html.escape(str(r.get('finding_id', '?'))) + '</code></td><td style=\"color:' + ({'VERIFIED': '#1e8449', 'REJECTED': '#c0392b', 'UNRESOLVED': '#b7950b'}.get((r.get('status') or '').upper(), '#566')) + ';font-weight:600\">' + html.escape(str(r.get('status', ''))) + '</td><td>' + html.escape(str((r.get('oracle_after') or {}).get('overall', '—'))) + '</td><td><code>' + html.escape(str(r.get('patch', ''))) + '</code></td></tr>' for r in rem) + '</table>') if rem else ''}
 <h2>Findings register</h2>
 <table><tr><th>ID</th><th>Sev</th><th>Dim</th><th>Finding</th><th>Citation</th><th>Defender</th><th>Oracle</th><th>Inv</th></tr>
 {''.join(rows) if rows else '<tr><td colspan=8><i>awaiting the prosecutor…</i></td></tr>'}</table>
@@ -625,5 +723,10 @@ if __name__ == "__main__":
     elif cmd == "converge": converge()
     elif cmd == "judge-brief": judge_brief(sys.argv[2] if len(sys.argv) > 2 else "1")
     elif cmd == "harden": harden()
+    elif cmd == "verify-fix": verify_fix(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+    elif cmd == "remediate-worktree": remediate_worktree()
+    elif cmd == "remediate-clean": remediate_clean()
+    elif cmd == "remediate-record": remediate_record(sys.argv[2], sys.argv[3], sys.argv[4],
+                                                      sys.argv[5] if len(sys.argv) > 5 else "1")
     elif cmd == "render": render()
     else: print(__doc__); sys.exit(1)

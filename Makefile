@@ -16,7 +16,7 @@ EXPECTED_CASSANDRA_MAJOR ?= 5.0
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part demo-2.0 gen-certs up-secure down-secure secure-bootstrap minio minio-down check-prereqs verify-release env test-env test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down audit audit-tribunal audit-harden audit-install-hook
+.PHONY: help build up down destroy restart status logs cqlsh demo demo-dry demo-full demo-score demo-ransomware demo-part demo-2.0 gen-certs up-secure down-secure secure-bootstrap minio minio-down check-prereqs verify-release env test-env test test-integration lint validate pin-digests wait clean monitoring monitoring-down api api-down audit audit-tribunal audit-harden verify-fix audit-install-hook
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -226,6 +226,9 @@ audit-tribunal: ## Show how to run the LLM tribunal rounds (Mode A subagents / M
 	@echo "  6. Judge:     ARENA_MODE_B=1 audit_arena/bin/llm.sh judge <prompt>     (needs GEMINI_API_KEY) OR subagent (Mode A)"
 	@echo "     (Mode B is opt-in: without ARENA_MODE_B=1 it refuses to call out and you use Mode A.)"
 	@echo "  7. python3 audit_arena/bin/arena.py converge && render"
+
+verify-fix: ## Verify a fix patch in an ISOLATED worktree (never touches your tree): make verify-fix FIX=p.diff [BASE=b.diff]
+	python3 audit_arena/bin/arena.py verify-fix $(FIX) $(BASE)
 
 audit-harden: ## Self-harden the prosecutor charter from confirmed charter_gap lessons (deliberate)
 	python3 audit_arena/bin/arena.py harden

@@ -112,3 +112,23 @@ def test_harden_is_idempotent():
     assert "from R1-02" in block and "from R1-06" in block, "seeded lessons not in AUTO block"
     # hand-authored prose (everything outside the markers) is identical
     assert before.split("AUTO-HARDENED:START")[0] == after.split("AUTO-HARDENED:START")[0]
+
+
+def test_remediation_functions_present():
+    arena = _load_arena()
+    for fn in ("verify_fix", "remediate_worktree", "remediate_clean", "_battery_in"):
+        assert hasattr(arena, fn), f"arena missing {fn}"
+
+
+def test_worktree_isolation_leaves_main_tree_untouched():
+    """The remediation worktree plumbing must never modify the user's tracked source."""
+    before = subprocess.run(["git", "status", "--porcelain", "scripts/"],
+                            cwd=REPO, capture_output=True, text=True).stdout
+    _arena("remediate-worktree")
+    _arena("remediate-clean")
+    after = subprocess.run(["git", "status", "--porcelain", "scripts/"],
+                           cwd=REPO, capture_output=True, text=True).stdout
+    assert before == after, "worktree plumbing modified the main tree's source"
+    # no stray arena worktree registered
+    wl = subprocess.run(["git", "worktree", "list"], cwd=REPO, capture_output=True, text=True).stdout
+    assert "hcd-arena-worktree" not in wl, "stray remediation worktree left behind"
