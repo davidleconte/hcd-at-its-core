@@ -67,7 +67,7 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-          failure-threshold: warning
+          failure-threshold: error   # style/info/warning reported but don't fail a demo image
 
   arena:
     name: Audit arena gate + manifest
