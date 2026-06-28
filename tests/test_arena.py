@@ -7,8 +7,23 @@ the finding↔invariant linkage, and the reference-facts integrity — all pure/
 import importlib.util
 import json
 import os
+import re
+import subprocess
+import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ARENA = os.path.join(REPO, "audit_arena", "bin", "arena.py")
+PREAMBLE = os.path.join(REPO, "audit_arena", "prompts", "_preamble.md")
+
+
+def _arena(*args):
+    return subprocess.run([sys.executable, ARENA, *args], cwd=REPO,
+                          capture_output=True, text=True)
+
+
+def _auto_block(text):
+    m = re.search(r"AUTO-HARDENED:START.*?AUTO-HARDENED:END", text, re.S)
+    return m.group(0) if m else ""
 
 
 def _load_arena():
@@ -63,3 +78,37 @@ def test_manifest_matches_invariants_if_generated():
     man = json.load(open(mp))
     inv = {i["id"]: i["status"] for i in json.load(open(ip))["invariants"]}
     assert man["invariants"] == inv, "manifest invariant map drifted from invariants_r1.json"
+
+
+def test_judge_brief_strips_severity():
+    """The Judge brief carries surviving findings but NO structured severity field."""
+    r = _arena("judge-brief", "1")
+    assert r.returncode == 0, r.stderr
+    brief = open(os.path.join(REPO, "audit_arena/state/judge_brief_r1.md")).read()
+    assert "## R1-" in brief, "brief has no findings"
+    # no leaked severity field (header prose may mention the word; a FIELD must not appear)
+    assert not re.search(r'(?m)^- severity|"severity"\s*:', brief), "severity field leaked to Judge"
+
+
+def test_convergence_schema_and_keys():
+    """converge emits a verdict with the invariant-aware fields."""
+    r = _arena("converge")
+    assert r.returncode == 0, r.stderr
+    c = json.loads(r.stdout)
+    for k in ("converged", "dry_2_rounds", "blocking_invariants", "deferred_invariants"):
+        assert k in c, f"convergence missing {k}"
+    assert isinstance(c["converged"], bool)
+
+
+def test_harden_is_idempotent():
+    """harden folds charter_gap lessons once; a second run is a no-op and never touches
+    hand-authored prose (the AUTO block is the only thing that can change)."""
+    before = open(PREAMBLE).read()
+    r = _arena("harden")  # lessons already folded in the seed -> expect no-op
+    assert r.returncode == 0, r.stderr
+    after = open(PREAMBLE).read()
+    assert before == after, "harden mutated the charter on a no-op run"
+    block = _auto_block(after)
+    assert "from R1-02" in block and "from R1-06" in block, "seeded lessons not in AUTO block"
+    # hand-authored prose (everything outside the markers) is identical
+    assert before.split("AUTO-HARDENED:START")[0] == after.split("AUTO-HARDENED:START")[0]

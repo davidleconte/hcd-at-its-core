@@ -14,7 +14,9 @@ Subcommands:
   invariants [R]          -> evaluate the HCD Definition-of-Done -> state/invariants_r{R}.json
   manifest [R]            -> emit a reproducibility manifest -> state/manifest_r{R}.json
   act ROLE RND F.md       -> append an act block to TRANSCRIPT.md
-  converge                -> read state/*.json, print convergence JSON (loop-until-dry)
+  converge                -> verdict: 2-dry-rounds AND no FAILing invariant -> convergence.json
+  judge-brief [R]         -> Judge input with severities stripped (anti-anchoring)
+  harden                  -> fold charter_gap lessons into prompts/_preamble.md (AUTO block)
   render                  -> build courtroom.html from state
 
 The Oracle is what makes an HCD audit stronger than a quant audit: HCD claims have a runnable
@@ -378,8 +380,92 @@ def converge():
             seen.add(_norm(f))
         per_round.append({"round": rnd, "surviving": len(survive), "new": len(new)})
     dry = len(per_round) >= 2 and all(r["new"] == 0 for r in per_round[-2:])
-    print(json.dumps({"total_surviving": len(seen), "per_round": per_round,
-                      "dry_2_rounds": dry, "rounds": len(per_round)}, indent=2))
+    # Convergence requires BOTH no-new-findings-for-2-rounds AND no FAILing invariant.
+    # A DEFERRED invariant (live, no cluster) does NOT block — but is reported so
+    # "converged-offline" is never mistaken for "converged-live".
+    inv = _latest("invariants_r*.json").get("invariants", [])
+    blocking = [i["id"] for i in inv if i["status"] == "FAIL"]
+    deferred = [i["id"] for i in inv if i["status"] == "DEFERRED"]
+    converged = dry and not blocking
+    out = {"total_surviving": len(seen), "rounds": len(per_round), "per_round": per_round,
+           "dry_2_rounds": dry, "blocking_invariants": blocking,
+           "deferred_invariants": deferred, "converged": converged}
+    os.makedirs(STATE, exist_ok=True)
+    json.dump(out, open(os.path.join(STATE, "convergence.json"), "w"), indent=2)
+    print(json.dumps(out, indent=2))
+
+
+def _all_findings():
+    out = []
+    for fp in sorted(glob.glob(os.path.join(STATE, "findings_r*.json"))):
+        d = json.load(open(fp))
+        out += (d if isinstance(d, list) else d.get("findings", []))
+    return out
+
+
+def judge_brief(rnd="1"):
+    """Write the Judge's input with the Prosecutor's SEVERITY stripped, so the Judge
+    re-derives severity from the finding + Oracle (anti-anchoring; the adl-aqt2 move)."""
+    verds = {}
+    for fp in sorted(glob.glob(os.path.join(STATE, "verdicts_r*.json"))):
+        d = json.load(open(fp))
+        for v in (d if isinstance(d, list) else d.get("verdicts", [])):
+            verds[v.get("id")] = v
+    lines = [f"# JUDGE BRIEF (round {rnd}) — severities deliberately withheld.",
+             "Re-derive severity yourself from the finding + Oracle result. Do not anchor.\n"]
+    for f in _all_findings():
+        v = verds.get(f.get("id"), {})
+        verdict = (v.get("verdict") or "CONFIRMED").upper()
+        if verdict == "FALSE_POSITIVE":
+            continue  # only surviving findings reach the Judge
+        lines.append(f"## {f.get('id')} [dim {f.get('dimension','')} / {f.get('invariant','—')}] "
+                     f"defender={verdict} oracle={f.get('oracle_result','—')}")
+        lines.append(f"- finding: {f.get('finding','')}")
+        lines.append(f"- evidence: {f.get('evidence','')}")
+        lines.append(f"- would resolve: {f.get('what_would_resolve_it','')}\n")
+    os.makedirs(STATE, exist_ok=True)
+    open(os.path.join(STATE, f"judge_brief_r{rnd}.md"), "w").write("\n".join(lines))
+    print(f"judge_brief_r{rnd}.md written ({sum(1 for l in lines if l.startswith('## '))} surviving findings, severities stripped)")
+
+
+AUTO_START = "<!-- AUTO-HARDENED:START — appended by `arena.py harden`; human-prunable -->"
+AUTO_END = "<!-- AUTO-HARDENED:END -->"
+
+
+def harden():
+    """Self-hardening: fold confirmed defect-CLASSES the charter missed (findings with
+    charter_gap:true + lesson) into a delimited, append-only, idempotent AUTO block in
+    prompts/_preamble.md. Never touches hand-authored prose. The adl-aqt2 §8 analog."""
+    preamble = os.path.join(ARENA, "prompts", "_preamble.md")
+    text = open(preamble).read()
+    m = re.search(re.escape(AUTO_START) + r"(.*?)" + re.escape(AUTO_END), text, re.S)
+    existing_entries = re.findall(r"^- .*$", m.group(1), re.M) if m else []
+
+    def norm(s):
+        return re.sub(r"\s+", " ", re.sub(r"^- \[from [^\]]+\]\s*", "- ", s)).lower().strip()
+
+    have = {norm(e) for e in existing_entries}
+    new_entries, seen_now = [], set()
+    for f in _all_findings():
+        if f.get("charter_gap") and f.get("lesson"):
+            entry = f"- [from {f.get('id')}] {f['lesson'].strip()}"
+            k = norm(entry)
+            if k in have or k in seen_now:
+                continue
+            seen_now.add(k)
+            new_entries.append(entry)
+    if not new_entries:
+        print("harden: no new lessons — charter unchanged (idempotent).")
+        return
+    block = AUTO_START + "\n" + "\n".join(existing_entries + new_entries) + "\n" + AUTO_END
+    if m:
+        text = text[:m.start()] + block + text[m.end():]
+    else:
+        text = text.rstrip() + "\n\n## Self-hardened forbidden-patterns (auto)\n" + block + "\n"
+    open(preamble, "w").write(text)
+    print(f"harden: folded {len(new_entries)} lesson(s) into the charter:")
+    for e in new_entries:
+        print("  " + e)
 
 
 SEV = {"BLOCKER": "#c0392b", "CRITICAL": "#c0392b", "HIGH": "#d35400",
@@ -403,6 +489,8 @@ def render():
         grades.append(json.load(open(fp)))
     inv = _latest("invariants_r*.json")
     man = _latest("manifest_r*.json")
+    cfp = os.path.join(STATE, "convergence.json")
+    conv = json.load(open(cfp)) if os.path.exists(cfp) else {}
 
     rows = []
     for f in finds:
@@ -459,6 +547,18 @@ def render():
     inv_html = (f'<h2>Invariants — Definition-of-Done ({inv.get("passed", 0)}/{n_inv} PASS · '
                 f'{inv.get("deferred", 0)} deferred · {inv.get("failed", 0)} fail)</h2>'
                 f'<div style="margin-bottom:14px">{ichips or "<i>run: bin/arena.py invariants</i>"}</div>')
+    conv_html = ""
+    if conv:
+        ok = conv.get("converged")
+        col = "#1e8449" if ok else "#d35400"
+        bl = conv.get("blocking_invariants") or []
+        df = conv.get("deferred_invariants") or []
+        note = (f" — blocked by {', '.join(bl)}" if bl else
+                (f" (offline; live invariants {', '.join(df)} deferred)" if df else ""))
+        conv_html = (f'<div style="margin:6px 0;font-size:13px">Convergence: '
+                     f'<b style="color:{col}">{"CONVERGED" if ok else "NOT CONVERGED"}</b>'
+                     f'<span style="color:#7fa6b0">{html.escape(note)} · '
+                     f'{"2 dry rounds" if conv.get("dry_2_rounds") else "findings still moving"}</span></div>')
     man_html = ""
     if man:
         g, rp = man.get("git", {}), man.get("repo", {})
@@ -499,6 +599,7 @@ pre{{white-space:pre-wrap;font-size:12px;line-height:1.5;background:#081016;bord
 <div class="col oracle"><h3>🟢 Oracle</h3><div class="big">{o_pass}/{o_pass+o_fail}</div><div>checks PASS · {o_def} deferred (need live cluster)</div></div>
 </div>
 {grade_html}
+{conv_html}
 {man_html}
 {inv_html}
 <h2>Oracle — deterministic ground truth</h2>
@@ -522,5 +623,7 @@ if __name__ == "__main__":
     elif cmd == "manifest": manifest(sys.argv[2] if len(sys.argv) > 2 else "1")
     elif cmd == "act": act(sys.argv[2], sys.argv[3], sys.argv[4])
     elif cmd == "converge": converge()
+    elif cmd == "judge-brief": judge_brief(sys.argv[2] if len(sys.argv) > 2 else "1")
+    elif cmd == "harden": harden()
     elif cmd == "render": render()
     else: print(__doc__); sys.exit(1)

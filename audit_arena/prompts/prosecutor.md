@@ -32,6 +32,10 @@ DELIVERABLES (exact paths):
    Definition-of-Done in audit_arena/DESIGN_invariants_manifest.md (mirrors the adl-aqt2
    red-team's `{… invariant: <I..>}`). If a finding fits no invariant, the DoD is incomplete:
    say so explicitly rather than forcing a bad mapping.
+   If a confirmed defect-CLASS is NOT covered by the tier-1 forbidden-patterns in
+   `_preamble.md` (the charter would not have caught it from first principles), add
+   `"charter_gap": true` and a one-line `"lesson"` — `arena.py harden` folds it back into
+   the charter so future rounds catch the class (the self-hardening §8 loop).
    Every finding MUST carry a real `path:line` you actually read. No citation → drop it.
 2. audit_arena/acts/prosecutor_r{ROUND}.md — terse markdown, one bullet per finding
    `[SEV][Dim] finding — path:line`, grouped by dimension, worst first.

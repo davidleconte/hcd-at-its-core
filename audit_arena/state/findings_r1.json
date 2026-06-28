@@ -26,7 +26,9 @@
       "what_would_resolve_it": "Use mask_inner(card,0,4).",
       "oracle_result": "FIXED",
       "status": "FIXED",
-      "invariant": "HCD-I1"
+      "invariant": "HCD-I1",
+      "charter_gap": true,
+      "lesson": "DDM mask-function arg semantics (mask_inner vs mask_outer; which chars are kept) must be checked against the Apache DDM docs, never assumed."
     },
     {
       "id": "R1-03",
@@ -82,7 +84,9 @@
       "what_would_resolve_it": "Resolve each command's real dir before writing the wrapper.",
       "oracle_result": "FIXED",
       "status": "FIXED",
-      "invariant": "HCD-I1"
+      "invariant": "HCD-I1",
+      "charter_gap": true,
+      "lesson": "Tarball-internal binary paths (sstable* tools live under resources/cassandra/{bin,tools/bin}) must be resolved at build time, not assumed to be /opt/hcd/bin."
     },
     {
       "id": "R1-07",

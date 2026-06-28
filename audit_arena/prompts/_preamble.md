@@ -37,3 +37,9 @@ HCD TIER-1 FORBIDDEN PATTERNS (treat as deal-breakers, like leakage in a quant a
  - Module-count drift: any "NN modules / 0-NN" string disagreeing with TOTAL_MODULES.
  - Dry-run-unsafe shell (a module that executes real docker/cqlsh under --dry-run or --score).
  - A version/CQL fact stated as HCD-2.0/C5.0 truth but NOT verifiable against source/release notes.
+
+## Self-hardened forbidden-patterns (auto — managed by `arena.py harden`; human-prunable)
+<!-- AUTO-HARDENED:START — appended by `arena.py harden`; human-prunable -->
+- [from R1-02] DDM mask-function arg semantics (mask_inner vs mask_outer; which chars are kept) must be checked against the Apache DDM docs, never assumed.
+- [from R1-06] Tarball-internal binary paths (sstable* tools live under resources/cassandra/{bin,tools/bin}) must be resolved at build time, not assumed to be /opt/hcd/bin.
+<!-- AUTO-HARDENED:END -->
