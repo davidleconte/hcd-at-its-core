@@ -26,11 +26,18 @@ if [ "${ARENA_MODE_B:-0}" != "1" ]; then
   exit 2
 fi
 
-case "$ROLE" in
-  defender) PROVIDER="${ARENA_DEFENDER_PROVIDER:-glm}" ;;
-  judge)    PROVIDER="${ARENA_JUDGE_PROVIDER:-gemini}" ;;
-  *)        PROVIDER="${ARENA_PROVIDER:-$ROLE}" ;;   # allow direct provider name
-esac
+# An explicit ARENA_PROVIDER OVERRIDES the role default — this is what the multi-vendor vendor-panel
+# relies on to fan one role across vendors (without it, defender/judge would collapse to a single
+# provider regardless of ARENA_PROVIDER). Role defaults apply only when ARENA_PROVIDER is unset.
+if [ -n "${ARENA_PROVIDER:-}" ]; then
+  PROVIDER="$ARENA_PROVIDER"
+else
+  case "$ROLE" in
+    defender) PROVIDER="${ARENA_DEFENDER_PROVIDER:-glm}" ;;
+    judge)    PROVIDER="${ARENA_JUDGE_PROVIDER:-gemini}" ;;
+    *)        PROVIDER="$ROLE" ;;   # allow direct provider name
+  esac
+fi
 
 need() { # need KEYVAR -> exit 2 if absent (Mode B unavailable; use Mode A)
   if [ -z "${!1:-}" ]; then

@@ -229,7 +229,7 @@ not re-executed at render time. Three dashboard rules earned the hard way:
 | `remediation_rN.json` | no (gitignored) | `verify-fix` / `remediate-record` | recorded remediation verdicts (patch + Oracle-after) |
 | `reconciliation.json` | no (gitignored) | `reconcile` | honesty verdict (GREEN/AMBER/RED) + any judge-vs-Oracle contradictions |
 | `panel_rN.json` | no (gitignored) | `panel-aggregate` | advisory judge score + the code-derived Oracle ceiling (`judge_claimed`/`ceiling`/`capped_to`/`ceiling_applied`) |
-| `vendor_panel_rN_<role>.json` · `<role>_rN__<vendor>.json` | no (gitignored) | `vendor-panel` | per-vendor outputs + the inter-vendor variance/dissent artifact (advisory) |
+| `vendor_panel_rN_<role>.json` · `verdicts_rN__<vendor>.json` · `grades_rN__<vendor>.json` | no (gitignored) | `vendor-panel` | per-vendor outputs (the `__<vendor>` namespace, excluded from binding pipelines) + the inter-vendor variance/dissent artifact (advisory) |
 | `lineage_rN.json` | no (gitignored) | `lineage` | one Oracle-dominant provenance object per finding (layer_refs L3–L7 + content digests + lineage_status) |
 | `patches/*.diff` | no (gitignored) | `verify-fix` / red-team | candidate-fix + defect-injection diffs applied in the throwaway worktree |
 | `REPO_MAP.md` · `convergence.json` · `judge_brief_rN.md` · `courtroom.html` | no | generated | local artefacts |

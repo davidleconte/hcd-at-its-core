@@ -861,3 +861,61 @@ def test_mode_b_call_helper_returns_status_without_exiting():
     arena = _load_arena()
     status, payload = arena._mode_b_call("defender", "99999")  # no findings_r99999 -> precondition error
     assert status == "error" and "findings" in str(payload), (status, payload)
+
+
+# ─── Tier 1 verification fixes (adversarial review of T1/T2) ───────────────────────────────────────
+def test_llm_sh_honors_arena_provider_override():
+    """vendor-panel routes per-vendor via ARENA_PROVIDER; llm.sh must let it OVERRIDE the role default,
+    else defender/judge collapse to one provider regardless of vendor (a single-vendor 'multi-vendor'
+    panel). Discriminating: a sentinel provider must surface as 'unknown provider <sentinel>', NOT the
+    role's glm default. This test FAILS against the pre-fix llm.sh."""
+    llm = os.path.join(REPO, "audit_arena/bin/llm.sh")
+    promptf = os.path.join(SDIR, "_p_routing.md")
+    try:
+        open(promptf, "w").write("test")
+        env = dict(os.environ, ARENA_MODE_B="1", ARENA_PROVIDER="ZZSENTINEL")
+        r = subprocess.run(["bash", llm, "defender", promptf], cwd=REPO, capture_output=True, text=True, env=env)
+        out = (r.stdout + r.stderr).lower()
+        assert "zzsentinel" in out, f"ARENA_PROVIDER override ignored for defender role: {out}"
+        assert "glm" not in out, f"defender collapsed to its glm default despite ARENA_PROVIDER: {out}"
+    finally:
+        if os.path.exists(promptf):
+            os.remove(promptf)
+
+
+def test_panel_score_floored_at_zero():
+    """A negative advisory self_score is clamped to the rubric floor (0), not rendered as a grade — and
+    it is a rubric clamp, not an Oracle ceiling (no binding failure occurred)."""
+    p, files = _panel("988", {"panel_scores": {"self_score": -3.0}},
+                       {"checks": [{"check": "x", "status": "PASS"}]},
+                       {"invariants": [{"id": "HCD-I3", "status": "PASS"}]})
+    try:
+        assert p["capped_to"] == 0.0 and p["rubric_clamped"] is True and p["ceiling_applied"] is False
+    finally:
+        for f in files:
+            if os.path.exists(f):
+                os.remove(f)
+
+
+def test_per_vendor_artifacts_excluded_from_binding_pipelines():
+    """Per-vendor advisory artifacts (`__<vendor>`) must NOT leak into the canonical _by_round globs that
+    feed the binding/aggregation pipelines (converge/render/lineage) — vendor diversity stays advisory."""
+    arena = _load_arena()
+    vp = os.path.join(SDIR, "verdicts_r3__glm.json")
+    try:
+        json.dump([{"id": "X", "verdict": "CONFIRMED"}], open(vp, "w"))
+        got = arena._by_round("verdicts_r*.json")
+        assert not any("__" in os.path.basename(f) for f in got), \
+            "per-vendor __<vendor> artifact leaked into the binding verdicts glob"
+    finally:
+        if os.path.exists(vp):
+            os.remove(vp)
+
+
+def test_vendor_variance_handles_verdict_without_id():
+    """A vendor verdict missing 'id' must not crash variance (a None key would break the cross-vendor
+    sorted({ids}) with a TypeError)."""
+    arena = _load_arena()
+    part = [{"vendor": "glm", "view": arena._vendor_view("defender", [{"verdict": "CONFIRMED"}])}]
+    v = arena._vendor_variance("defender", part)  # must not raise
+    assert v["findings_compared"] == 0 and v["agree"] is True

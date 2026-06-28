@@ -439,8 +439,12 @@ def _round_of(path):
 
 
 def _by_round(pattern):
-    """state/<x>_r{N}.json sorted by NUMERIC round (lexical sort puts r10 before r2)."""
-    return sorted(glob.glob(os.path.join(STATE, pattern)), key=_round_of)
+    """state/<x>_r{N}.json sorted by NUMERIC round (lexical sort puts r10 before r2). Per-vendor panel
+    artifacts (`<x>_rN__<vendor>.json`, the `__` namespace) are EXCLUDED so the advisory vendor outputs
+    never leak into the binding/aggregation pipelines (converge/render/lineage/judge-brief) that glob the
+    canonical `verdicts_r*`/`grades_r*` patterns — vendor diversity stays advisory, read by no gate."""
+    return sorted((f for f in glob.glob(os.path.join(STATE, pattern))
+                   if "__" not in os.path.basename(f)), key=_round_of)
 
 
 def _latest(pattern):
@@ -615,9 +619,16 @@ def panel_aggregate(rnd="1"):
     at 7. The capped score is advisory and is read by NO gate. Emits state/panel_r{rnd}.json. The score
     lives in the sanctioned `panel_scores` block (not a top-level score key G1 forbids). See
     DESIGN_v2_roadmap.md T1 + DESIGN_honesty_guardrails.md."""
-    oj, ij = _latest("oracle_r*.json"), _latest("invariants_r*.json")
-    grades = _by_round("grades_r*.json")
-    ps = (json.load(open(grades[-1])).get("panel_scores") if grades else None) or {}
+    # Round-matched reads (fall back to latest if the round-specific file is absent), so a panel for round
+    # N reflects round N's binding state, not whatever happens to be latest.
+    def _round_or_latest(pat, rn):
+        p = os.path.join(STATE, pat.replace("*", rn))
+        return json.load(open(p)) if os.path.exists(p) else _latest(pat)
+    oj, ij = _round_or_latest("oracle_r*.json", rnd), _round_or_latest("invariants_r*.json", rnd)
+    gp = os.path.join(STATE, f"grades_r{rnd}.json")
+    grades_doc = json.load(open(gp)) if os.path.exists(gp) else (
+        json.load(open(_by_round("grades_r*.json")[-1])) if _by_round("grades_r*.json") else {})
+    ps = grades_doc.get("panel_scores") or {}
     try:
         claimed = float(ps["self_score"]) if ps.get("self_score") is not None else None
     except (TypeError, ValueError):
@@ -630,18 +641,27 @@ def panel_aggregate(rnd="1"):
         ceiling, reason = 7.0, f"Oracle check FAIL ({', '.join(o_fail)})"
     else:
         ceiling, reason = 10.0, "no binding failure"
-    capped = min(claimed, ceiling) if claimed is not None else None
-    applied = bool(claimed is not None and capped < claimed)
+    # Clamp into the rubric range [0, ceiling]: the floor stops a negative score reading as a grade; the
+    # ceiling is the Oracle bound. ceiling_applied is True ONLY when a binding failure (i_fail/o_fail)
+    # genuinely lowered the score below the claim — not for a pure 0-10 rubric clamp of an out-of-range claim.
+    capped = max(0.0, min(claimed, ceiling)) if claimed is not None else None
+    applied = bool(claimed is not None and (i_fail or o_fail) and capped < claimed)
+    rubric_clamped = bool(claimed is not None and (claimed < 0.0 or claimed > 10.0))
     out = {"round": int(rnd), "advisory": True, "judge_claimed": claimed, "ceiling": ceiling,
            "ceiling_reason": reason, "capped_to": capped, "ceiling_applied": applied,
-           "rubric": ps.get("rubric"),
+           "rubric_clamped": rubric_clamped, "rubric": ps.get("rubric"),
            "generated_at": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}
     os.makedirs(STATE, exist_ok=True)
     json.dump(out, open(os.path.join(STATE, f"panel_r{rnd}.json"), "w"), indent=2, sort_keys=True)
     if claimed is None:
         print(f"panel r{rnd}: no judge self_score emitted (the advisory score is optional)")
     else:
-        tail = f" -> CAPPED to {capped} ({reason})" if applied else f" (within ceiling {ceiling})"
+        if applied:
+            tail = f" -> Oracle-CAPPED to {capped} ({reason})"
+        elif rubric_clamped:
+            tail = f" -> clamped to {capped} (rubric range 0-10)"
+        else:
+            tail = f" (within ceiling {ceiling})"
         print(f"panel r{rnd}: judge self_score {claimed}{tail} · advisory, read by NO gate")
     return out
 
@@ -1304,7 +1324,9 @@ def _mode_b_call(role, rnd, provider=None):
     try:
         obj = _extract_json(r.stdout)
     except Exception as e:
-        return ("invalid_json", f"response not valid JSON: {e}")
+        raw = os.path.join(STATE, f"_modeb_{role}_r{rnd}_raw.txt")  # keep the debugging aid (back-compat)
+        open(raw, "w", encoding="utf-8").write(r.stdout)
+        return ("invalid_json", f"response not valid JSON: {e}; raw saved to {os.path.relpath(raw, ROOT)}")
     if req_key not in obj:
         return ("invalid_json", f"JSON missing required key '{req_key}'")
     return ("ok", {"obj": obj, "out_file": out_file, "req_key": req_key})
@@ -1337,7 +1359,9 @@ def _vendor_view(role, obj):
         return {"disposition": _judge_disposition(obj),
                 "committer_grade": committer.get("grade") if isinstance(committer, dict) else None}
     verds = obj if isinstance(obj, list) else (obj.get("verdicts", []) if isinstance(obj, dict) else [])
-    return {"verdicts": {v.get("id"): (v.get("verdict") or "").upper() for v in verds if isinstance(v, dict)}}
+    # require a usable id: a None key would make the cross-vendor `sorted({...ids...})` raise TypeError
+    return {"verdicts": {v["id"]: (v.get("verdict") or "").upper()
+                         for v in verds if isinstance(v, dict) and v.get("id")}}
 
 
 def _vendor_variance(role, participating):
