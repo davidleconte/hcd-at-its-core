@@ -411,17 +411,29 @@ PY
 )
     [ -z "$meta" ] && return 0
     profile="${meta%%|*}"; rest="${meta#*|}"; deps="${rest%%|*}"; destr="${rest##*|}"
-    # 1. cluster reachable
-    if ! docker exec hcd-node1 nodetool status >/dev/null 2>&1; then
+    # 1. cluster reachable — retry: a CPU-starved host can drop a single `docker exec`, and a
+    # transient miss must not false-block a jump (observed live under 6 secure nodes + MinIO).
+    local nstat="" _t=0
+    while [ "$_t" -lt 3 ]; do
+        nstat=$(docker exec hcd-node1 nodetool status 2>/dev/null || true)
+        [ -n "$nstat" ] && break
+        _t=$((_t + 1)); sleep 2
+    done
+    if [ -z "$nstat" ]; then
         echo "  ✗ preflight: cluster not reachable — run:  make up && make wait" >&2; return 1
     fi
-    local un; un=$(docker exec hcd-node1 nodetool status 2>/dev/null | grep -c '^UN' || true)
+    local un; un=$(printf '%s\n' "$nstat" | grep -c '^UN' || true)
     if [ "${un:-0}" -lt "$PF_EXPECTED_UN" ]; then
         echo "  ⚠ preflight: only ${un:-0}/${PF_EXPECTED_UN} nodes UN — run:  make wait" >&2
     fi
-    # 2. secure profile
+    # 2. secure profile — retry the env read for the same reason (an empty read ≠ open profile).
     if [ "$profile" = "secure" ]; then
-        local sp; sp=$(docker exec hcd-node1 printenv HCD_SECURITY_PROFILE 2>/dev/null || true)
+        local sp="" _t2=0
+        while [ "$_t2" -lt 3 ]; do
+            sp=$(docker exec hcd-node1 printenv HCD_SECURITY_PROFILE 2>/dev/null || true)
+            [ -n "$sp" ] && break
+            _t2=$((_t2 + 1)); sleep 1
+        done
         if [ "$sp" != "secure" ]; then
             echo "  ✗ preflight: module $mod requires the SECURE profile — run:  make gen-certs && make up-secure && make secure-bootstrap" >&2; return 1
         fi
@@ -595,6 +607,13 @@ mc_cmd() {
             minio/mc:latest ${cmd} 2>&1 || true
     fi
 }
+
+# Preflight GATE — block a single-module jump whose prerequisite is unmet BEFORE any setup
+# side-effects below (keyspace creation, MinIO start). A gate must precede provisioning, else a
+# secure-only module would spin up MinIO / create keyspaces only to be rejected afterwards.
+if [ -n "$SELECTED_MODULE" ]; then
+    preflight "$SELECTED_MODULE" || exit 1
+fi
 
 # When running a single module (not from Module 0/1), ensure keyspace exists
 if [ -n "$SELECTED_MODULE" ] && [ "$SELECTED_MODULE" -gt 1 ] 2>/dev/null; then
@@ -10697,7 +10716,7 @@ if [ -n "$TAG_FILTER" ]; then
     exit 0
 fi
 if [ -n "$SELECTED_MODULE" ]; then
-    preflight "$SELECTED_MODULE" || exit 1
+    # preflight already ran as a gate above (before setup side-effects)
     run_module "$SELECTED_MODULE"
 else
     DEMO_START_TIME=$(date +%s)
