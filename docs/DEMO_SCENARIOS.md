@@ -44,7 +44,7 @@ make demo-ransomware                    # DORA series (73–79)
 ```bash
 ./scripts/demo-entropy.sh --list                  # full catalog: mod · dim · profile · deps · ⚠ · title
 ./scripts/demo-entropy.sh --list --tag security   # filter the listing by tag
-./scripts/demo-entropy.sh --tag dora              # RUN every module carrying a tag (preflighted)
+./scripts/demo-entropy.sh --tag security          # run a tag's NON-destructive members (safe to batch)
 ./scripts/demo-entropy.sh 86                       # a preflight guard runs first
 ./scripts/demo-entropy.sh 86 --no-preflight        # bypass the guard
 ```
@@ -52,9 +52,16 @@ make demo-ransomware                    # DORA series (73–79)
 A **preflight guard** runs before any single-module or `--tag` jump: it asserts the cluster is UN, the
 required **profile** is active, and any external **service** is up — and **fails fast with the exact
 `make` command** if not (e.g. a `secure`-only module on the open profile → *"run: make up-secure …"*).
-`--list` needs no cluster. Tags: the 12 dimension names (orientation, consistency, topology, modeling,
-storage, transactions, ops, observability, security, resilience, driver, enterprise) plus `dora`,
-`secure`, `destructive`. Source of truth: [`scripts/scenario_catalog.json`](../scripts/scenario_catalog.json).
+
+**`--tag` is batch-safe by design:** it **skips destructive modules** (node stop/pause/kill or data
+wipe) rather than chaining them — chaining would leave the cluster degraded for the next module, the
+exact hazard the navigator exists to prevent. It reports the skipped ones so you run each by number
+(`./scripts/demo-entropy.sh <N> && make wait`); a failed prerequisite skips just that module (the rest
+of the tag still runs). Override with `--no-preflight` (explicitly unsafe). `--list` needs no cluster.
+Tags: the 12 dimension names (orientation, consistency, topology, modeling, storage, transactions, ops,
+observability, security, resilience, driver, enterprise) plus `dora`, `secure`, `destructive`. Source of
+truth: [`scripts/scenario_catalog.json`](../scripts/scenario_catalog.json), whose `destructive` flag is
+CI-verified against the script (`tests/test_scripts.py::test_catalog_destructive_covers_every_executed_destructive_module`).
 
 > ⚠ **Destructive modules** stop/pause/kill nodes or `TRUNCATE` data (26 of 94 — flagged in §4). Run
 > them **one at a time** and wait for recovery (`make wait`) before the next. They are *not* safe to
@@ -78,7 +85,10 @@ exit criterion. Stages 0–1 are mandatory; 2–5 are scoped to what you intend 
 | **5** | Destructive / chaos | each `⚠` module individually, `make wait` between | cluster returns to 6× UN after each | ~30 min |
 
 **Acceptance for "full demo works"** = Stage 0 + Stage 1 green, **and** a representative module from each
-MECE dimension (§4) passes `rc=0` live, **and** every destructive module recovers to 6× UN.
+MECE dimension (§4) passes `rc=0` live, **and** every destructive module recovers to 6× UN. Note this is
+**representative-sample** acceptance, not exhaustive: the offline scorecard validates all 94 modules'
+*structure*, but live coverage to date is a curated subset (~30 modules across the dimensions) — a green
+result means "the sampled scenarios work live," not "every one of the 94 has been live-executed."
 
 ### Known caveats to bake into Stage 2/5
 

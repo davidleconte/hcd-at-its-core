@@ -201,3 +201,52 @@ def test_demo_unknown_tag_fails():
     r = subprocess.run(["bash", "scripts/demo-entropy.sh", "--tag", "nonsense"],
                        capture_output=True, text=True)
     assert r.returncode != 0
+
+
+def _derive_destructive_mods():
+    """Re-derive, from the script itself, the modules that EXECUTE a destructive op (node
+    stop/pause/kill/restart/decommission, or a TRUNCATE/DROP run via log_cmd/docker exec) — the
+    ground truth the catalog's `destructive` flag must cover. Mirrors the arena Oracle check."""
+    src = open("scripts/demo-entropy.sh").read().splitlines()
+    hdr = re.compile(r'^\s*header\s+(\d+)\s')
+    idx = [(i, int(hdr.match(ln).group(1))) for i, ln in enumerate(src) if hdr.match(ln)]
+    wipe = re.compile(r'(TRUNCATE\b|DROP\s+KEYSPACE\b|DROP\s+TABLE\b)', re.I)
+    nodeop = re.compile(r'(docker\s+(stop|pause|kill|restart)\s+hcd|\$\{COMPOSE\}\s+(stop|kill|restart)\s+hcd'
+                        r'|nodetool\s+(decommission|removenode|assassinate|stopdaemon|disablebinary))')
+    def executed(s):
+        s = s.strip()
+        if s.startswith(("#", "echo", "lookfor", "log_info", "cprintf")):
+            return False
+        return s.startswith(("log_cmd ", "docker ", "${COMPOSE}")) or "docker exec" in s
+    derived = set()
+    for k, (i, m) in enumerate(idx):
+        end = idx[k + 1][0] if k + 1 < len(idx) else len(src)
+        if any(executed(ln) and (wipe.search(ln) or nodeop.search(ln)) for ln in src[i:end]):
+            derived.add(m)
+    return derived
+
+
+def test_catalog_destructive_covers_every_executed_destructive_module():
+    """SAFETY (arena PH-01/PH-02): the preflight guard trusts the catalog's `destructive` flag, so
+    every module that actually executes a destructive op MUST be flagged. Re-derive from the script
+    and assert the catalog is a superset — a misflag (the PH-02 bug: DROP-KEYSPACE module marked
+    safe) fails CI instead of silently suppressing the 'wipes data / stops nodes' warning."""
+    cat = {e["mod"]: e for e in json.load(open("scripts/scenario_catalog.json"))}
+    derived = _derive_destructive_mods()
+    missing = sorted(m for m in derived if not cat[m]["destructive"])
+    assert not missing, f"modules execute a destructive op but are catalog destructive=false: {missing}"
+
+
+def test_demo_tag_skips_destructive_modules():
+    """SAFETY (arena PC-01/PH-03): `--tag` must NOT chain destructive modules. A dora-tag run skips
+    the destructive members (76/77/79) and reports them for individual runs, rather than chaining."""
+    r = subprocess.run(["bash", "scripts/demo-entropy.sh", "--tag", "dora", "--dry-run", "--no-pause"],
+                       capture_output=True, text=True)
+    out = r.stdout + r.stderr
+    assert "skipped destructive" in out, out[-400:]
+    cat = {e["mod"]: e for e in json.load(open("scripts/scenario_catalog.json"))}
+    dora_destr = [m for m in range(73, 80) if cat[m]["destructive"]]
+    # the skipped-destructive summary line must name each destructive dora module
+    skip_line = next((ln for ln in out.splitlines() if "skipped destructive" in ln), "")
+    for m in dora_destr:
+        assert str(m) in skip_line, f"module {m} not reported skipped: {skip_line!r}"

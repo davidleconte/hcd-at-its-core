@@ -392,6 +392,16 @@ print(" ".join(str(e["mod"]) for e in cat if tag in e.get("tags", [])))
 PY
 }
 
+scenario_mod_destructive() {  # echo 1 if module $1 is flagged destructive in the catalog, else 0
+    if [ ! -f "$SCENARIO_CATALOG" ] || ! command -v python3 >/dev/null 2>&1; then echo 0; return; fi
+    python3 - "$SCENARIO_CATALOG" "$1" <<'PY'
+import json, sys
+cat = json.load(open(sys.argv[1])); mod = int(sys.argv[2])
+e = next((x for x in cat if x["mod"] == mod), None)
+print("1" if (e and e.get("destructive")) else "0")
+PY
+}
+
 # preflight <mod> — assert the module's prerequisites are met before running it.
 # Returns 0 (ok; may print advisories) or 1 (blocked; prints the exact fix command).
 preflight() {
@@ -10705,14 +10715,29 @@ fi
 # Main Execution Loop
 # ══════════════════════════════════════════════════════════════════
 if [ -n "$TAG_FILTER" ]; then
-    # Direct-jump: run every module carrying a tag (e.g. --tag security), preflighting each.
+    # Direct-jump: run the modules carrying a tag. SAFETY (arena PC-01/PH-03): destructive modules
+    # (node stop/pause/kill or data wipe) must NOT be chained — they need recovery (`make wait`)
+    # between them. The tag runner SKIPS them and tells you to run each by number; the single-module
+    # path preflights + advises. A failed prerequisite SKIPS that module (it does not abort the whole
+    # run, so a mixed-profile tag still runs its eligible members). Override with --no-preflight.
     _tag_mods=$(scenario_tag_mods "$TAG_FILTER" || true)
     if [ -z "$_tag_mods" ]; then echo "no scenarios match tag '$TAG_FILTER' (try --list)"; exit 1; fi
     echo -e "${C_BOLD}Scenario tag '${TAG_FILTER}' → modules:${C_RESET} ${_tag_mods}"
+    _ran=""; _skip_d=""; _skip_p=""
     for i in $_tag_mods; do
-        preflight "$i" || { echo "  → aborting tag run at module $i (prerequisite unmet — see fix above)"; exit 1; }
-        run_module "$i"
+        if [ "$NO_PREFLIGHT" = false ] && [ "$(scenario_mod_destructive "$i")" = "1" ]; then
+            _skip_d="$_skip_d $i"; continue
+        fi
+        if ! preflight "$i"; then _skip_p="$_skip_p $i"; continue; fi
+        run_module "$i"; _ran="$_ran $i"
     done
+    echo ""
+    echo -e "${C_BOLD}Tag '${TAG_FILTER}' summary —${C_RESET} ran:${_ran:- (none)}"
+    if [ -n "$_skip_d" ]; then
+        echo -e "  ${C_YELLOW}skipped destructive (chaining is unsafe):${C_RESET}${_skip_d}"
+        echo -e "    run each individually with recovery between: ${C_DIM}./scripts/demo-entropy.sh <N> && make wait${C_RESET}  ·  force-include: ${C_DIM}--no-preflight${C_RESET}"
+    fi
+    [ -n "$_skip_p" ] && echo -e "  ${C_YELLOW}skipped (prerequisite unmet):${C_RESET}${_skip_p}"
     exit 0
 fi
 if [ -n "$SELECTED_MODULE" ]; then
