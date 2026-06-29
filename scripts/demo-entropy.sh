@@ -13,6 +13,13 @@ DRY_RUN=false
 NO_PAUSE=false
 SCORE_MODE=false
 SELECTED_MODULE=""
+# Direct-jump (scenario navigator): list/tag/preflight. See docs/DEMO_SCENARIOS.md §8.
+LIST_MODE=false
+TAG_FILTER=""
+NO_PREFLIGHT=false
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCENARIO_CATALOG="${SCENARIO_CATALOG:-${SCRIPT_DIR}/scenario_catalog.json}"
+PF_EXPECTED_UN="${EXPECTED_NODES:-6}"
 
 # ─── Compose Command Detection ──────────────────────────────────
 if docker compose version >/dev/null 2>&1; then
@@ -331,11 +338,17 @@ wait_for_all_un() {
 }
 
 # ─── Parse Arguments ──────────────────────────────────────────────
+_tag_next=false
 for arg in "$@"; do
+    if [ "$_tag_next" = true ]; then TAG_FILTER="$arg"; _tag_next=false; continue; fi
     case $arg in
         --dry-run) DRY_RUN=true ;;
         --no-pause) NO_PAUSE=true ;;
         --score) SCORE_MODE=true; DRY_RUN=true; NO_PAUSE=true ;;
+        --list) LIST_MODE=true ;;
+        --tag) _tag_next=true ;;
+        --tag=*) TAG_FILTER="${arg#--tag=}" ;;
+        --no-preflight) NO_PREFLIGHT=true ;;
         [0-9]*) SELECTED_MODULE=$arg ;;
     esac
 done
@@ -348,6 +361,86 @@ if [[ -n "$SELECTED_MODULE" ]]; then
         exit 1
     fi
 fi
+
+# ─── Scenario navigator (direct-jump) ─────────────────────────────
+# scripts/scenario_catalog.json is the single source of truth (also drives docs/DEMO_SCENARIOS.md).
+# Requires python3 for JSON parsing (already a project prerequisite); degrades gracefully if absent.
+scenario_list() {
+    if [ ! -f "$SCENARIO_CATALOG" ]; then echo "catalog not found: $SCENARIO_CATALOG" >&2; return 1; fi
+    if ! command -v python3 >/dev/null 2>&1; then echo "python3 required for --list" >&2; return 1; fi
+    python3 - "$SCENARIO_CATALOG" "$TAG_FILTER" <<'PY'
+import json, sys
+cat = json.load(open(sys.argv[1])); tag = sys.argv[2]
+rows = [e for e in cat if (not tag or tag in e.get("tags", []))]
+if not rows:
+    sys.stderr.write("no scenarios match tag '%s'\n" % tag); sys.exit(1)
+print("%3s  %-3s %-6s %-10s %1s  %s" % ("MOD", "DIM", "PROF", "DEPS", "D", "TITLE"))
+for e in rows:
+    deps = ",".join(e.get("external_deps", [])) or "-"
+    d = "!" if e.get("destructive") else " "
+    print("%3d  %-3s %-6s %-10s %1s  %s" % (e["mod"], e.get("dim", "?"), e["profile"], deps, d, e["title"]))
+PY
+}
+
+scenario_tag_mods() {  # echo space-separated mod numbers carrying tag $1, in order
+    [ -f "$SCENARIO_CATALOG" ] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 - "$SCENARIO_CATALOG" "$1" <<'PY'
+import json, sys
+cat = json.load(open(sys.argv[1])); tag = sys.argv[2]
+print(" ".join(str(e["mod"]) for e in cat if tag in e.get("tags", [])))
+PY
+}
+
+# preflight <mod> — assert the module's prerequisites are met before running it.
+# Returns 0 (ok; may print advisories) or 1 (blocked; prints the exact fix command).
+preflight() {
+    local mod="$1"
+    [ "$DRY_RUN" = true ] && return 0
+    [ "$NO_PREFLIGHT" = true ] && return 0
+    [ -f "$SCENARIO_CATALOG" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    local meta profile deps destr rest
+    meta=$(python3 - "$SCENARIO_CATALOG" "$mod" <<'PY' || true
+import json, sys
+cat = json.load(open(sys.argv[1])); mod = int(sys.argv[2])
+e = next((x for x in cat if x["mod"] == mod), None)
+if e:
+    print("%s|%s|%s" % (e["profile"], ",".join(e.get("external_deps", [])), "1" if e.get("destructive") else "0"))
+PY
+)
+    [ -z "$meta" ] && return 0
+    profile="${meta%%|*}"; rest="${meta#*|}"; deps="${rest%%|*}"; destr="${rest##*|}"
+    # 1. cluster reachable
+    if ! docker exec hcd-node1 nodetool status >/dev/null 2>&1; then
+        echo "  ✗ preflight: cluster not reachable — run:  make up && make wait" >&2; return 1
+    fi
+    local un; un=$(docker exec hcd-node1 nodetool status 2>/dev/null | grep -c '^UN' || true)
+    if [ "${un:-0}" -lt "$PF_EXPECTED_UN" ]; then
+        echo "  ⚠ preflight: only ${un:-0}/${PF_EXPECTED_UN} nodes UN — run:  make wait" >&2
+    fi
+    # 2. secure profile
+    if [ "$profile" = "secure" ]; then
+        local sp; sp=$(docker exec hcd-node1 printenv HCD_SECURITY_PROFILE 2>/dev/null || true)
+        if [ "$sp" != "secure" ]; then
+            echo "  ✗ preflight: module $mod requires the SECURE profile — run:  make gen-certs && make up-secure && make secure-bootstrap" >&2; return 1
+        fi
+    fi
+    # 3. external services
+    case "$deps" in *MinIO*)
+        if ! docker ps --filter name=minio --filter status=running -q | grep -q .; then
+            echo "  ✗ preflight: module $mod needs MinIO/WORM — run:  make minio" >&2; return 1
+        fi ;; esac
+    case "$deps" in *DataAPI*)
+        if ! docker ps --filter name=data-api --filter status=running -q | grep -q .; then
+            echo "  ✗ preflight: module $mod needs the Data API — run:  make api" >&2; return 1
+        fi ;; esac
+    case "$deps" in *Monitoring*)
+        docker inspect grafana >/dev/null 2>&1 || echo "  ⚠ preflight: module $mod is best with monitoring — run:  make monitoring (continuing)" >&2 ;; esac
+    # 4. destructive advisory (does not block)
+    [ "$destr" = "1" ] && echo "  ⚠ module $mod is DESTRUCTIVE (stops nodes or wipes data); run solo and 'make wait' after." >&2
+    return 0
+}
 
 # ─── Monitoring Health Helper ─────────────────────────────────────
 check_monitoring_ready() {
@@ -365,7 +458,7 @@ check_monitoring_ready() {
 }
 
 # ─── Pre-flight Check ────────────────────────────────────────────
-if [ "$DRY_RUN" = false ]; then
+if [ "$DRY_RUN" = false ] && [ "$LIST_MODE" = false ]; then
     log_info "Pre-flight checks..."
 
     # 1. Verify compose command works
@@ -10519,6 +10612,15 @@ CLEOF' 2>/dev/null || true
 }
 
 # ══════════════════════════════════════════════════════════════════
+# Direct-jump: --list (print the scenario catalog, optionally --tag-filtered) and exit.
+# Works with no cluster — it only reads scripts/scenario_catalog.json.
+# ══════════════════════════════════════════════════════════════════
+if [ "$LIST_MODE" = true ]; then
+    trap - INT TERM EXIT   # pure catalog read — no cluster touched, skip the cleanup trap
+    scenario_list; exit $?
+fi
+
+# ══════════════════════════════════════════════════════════════════
 # Score Mode: Run all modules in dry-run and report pass/fail
 # ══════════════════════════════════════════════════════════════════
 if [ "$SCORE_MODE" = true ]; then
@@ -10583,7 +10685,19 @@ fi
 # ══════════════════════════════════════════════════════════════════
 # Main Execution Loop
 # ══════════════════════════════════════════════════════════════════
+if [ -n "$TAG_FILTER" ]; then
+    # Direct-jump: run every module carrying a tag (e.g. --tag security), preflighting each.
+    _tag_mods=$(scenario_tag_mods "$TAG_FILTER" || true)
+    if [ -z "$_tag_mods" ]; then echo "no scenarios match tag '$TAG_FILTER' (try --list)"; exit 1; fi
+    echo -e "${C_BOLD}Scenario tag '${TAG_FILTER}' → modules:${C_RESET} ${_tag_mods}"
+    for i in $_tag_mods; do
+        preflight "$i" || { echo "  → aborting tag run at module $i (prerequisite unmet — see fix above)"; exit 1; }
+        run_module "$i"
+    done
+    exit 0
+fi
 if [ -n "$SELECTED_MODULE" ]; then
+    preflight "$SELECTED_MODULE" || exit 1
     run_module "$SELECTED_MODULE"
 else
     DEMO_START_TIME=$(date +%s)
