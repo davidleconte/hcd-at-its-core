@@ -883,6 +883,34 @@ def test_llm_sh_honors_arena_provider_override():
             os.remove(promptf)
 
 
+def test_llm_sh_anthropic_is_recognized_and_key_gated():
+    """`anthropic` (Claude Opus 4.8, high effort) is a first-class vendor: a RECOGNIZED provider that,
+    with no ANTHROPIC_API_KEY, exits 2 (the key-gated abstain path the panel relies on) — NOT exit 1
+    'unknown provider'. Hermetic by construction: HOME is redirected to an empty dir so llm.sh's
+    `source ~/.secrets.env` finds nothing, and ANTHROPIC_API_KEY is blanked — no real egress regardless
+    of host env. Discriminating: FAILS against a pre-change llm.sh, where 'anthropic' falls through to
+    the unknown-provider branch (exit 1)."""
+    llm = os.path.join(REPO, "audit_arena/bin/llm.sh")
+    import shutil
+    import tempfile
+    promptf = os.path.join(SDIR, "_p_anthropic.md")
+    fakehome = tempfile.mkdtemp(prefix="arena_nohome_")
+    try:
+        open(promptf, "w").write("test")
+        # HOME→empty dir defeats `source ~/.secrets.env` (which carries the real key); blank the var too.
+        env = dict(os.environ, HOME=fakehome, ARENA_MODE_B="1",
+                   ARENA_PROVIDER="anthropic", ANTHROPIC_API_KEY="")
+        r = subprocess.run(["bash", llm, "judge", promptf], cwd=REPO, capture_output=True, text=True, env=env)
+        out = (r.stdout + r.stderr).lower()
+        assert r.returncode == 2, f"anthropic with no key must exit 2 (abstain), got {r.returncode}: {out}"
+        assert "anthropic_api_key" in out, f"expected key-gated message naming the missing key: {out}"
+        assert "unknown provider" not in out, f"anthropic not recognized as a provider: {out}"
+    finally:
+        if os.path.exists(promptf):
+            os.remove(promptf)
+        shutil.rmtree(fakehome, ignore_errors=True)
+
+
 def test_panel_score_floored_at_zero():
     """A negative advisory self_score is clamped to the rubric floor (0), not rendered as a grade — and
     it is a rubric clamp, not an Oracle ceiling (no binding failure occurred)."""

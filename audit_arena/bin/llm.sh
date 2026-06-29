@@ -7,8 +7,10 @@
 # Config (env, with defaults; put keys in ~/.secrets.env):
 #   ARENA_DEFENDER_PROVIDER  default: glm     (needs ZAI_API_KEY)
 #   ARENA_JUDGE_PROVIDER     default: gemini  (needs GEMINI_API_KEY)
-#   Providers: glm (z.ai) | gemini (google) | openai (OpenAI-compatible; needs
-#              OPENAI_API_KEY and optional OPENAI_BASE_URL + OPENAI_MODEL)
+#   Providers: glm (z.ai) | gemini (google) | anthropic (Claude Messages API; needs
+#              ANTHROPIC_API_KEY; model claude-opus-4-8 at "high" reasoning effort) |
+#              openai (OpenAI-compatible; needs OPENAI_API_KEY and optional
+#              OPENAI_BASE_URL + OPENAI_MODEL)
 set -euo pipefail
 # shellcheck source=/dev/null
 source ~/.secrets.env 2>/dev/null || true
@@ -74,6 +76,29 @@ req = urllib.request.Request(url, data=body, headers={"Content-Type": "applicati
 with urllib.request.urlopen(req, timeout=600) as r:
     d = json.load(r)
 print("".join(p.get("text", "") for p in d["candidates"][0]["content"]["parts"]))
+PY
+    ;;
+  anthropic)
+    need ANTHROPIC_API_KEY
+    python3 - "$ANTHROPIC_API_KEY" "$PROMPT_FILE" <<'PY'
+import sys, json, urllib.request
+key, pf = sys.argv[1], sys.argv[2]
+# Claude Messages API. "high" reasoning effort = output_config.effort:"high" (the GA
+# control; budget_tokens is REMOVED on Opus 4.8 and 400s). Adaptive thinking keeps the
+# chain-of-thought in thinking blocks (which we skip) so the visible text stays clean
+# JSON — Opus 4.8 with thinking off can leak reasoning into the response. max_tokens is
+# generous so high-effort thinking does not crowd out the JSON verdict.
+body = json.dumps({"model": "claude-opus-4-8", "max_tokens": 32000,
+    "thinking": {"type": "adaptive"}, "output_config": {"effort": "high"},
+    "messages": [{"role": "user", "content": open(pf, encoding="utf-8").read()}]}).encode()
+req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
+    headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+             "content-type": "application/json"})
+with urllib.request.urlopen(req, timeout=600) as r:
+    d = json.load(r)
+# Concatenate only text blocks; thinking blocks (type "thinking") are skipped.
+print("".join(b.get("text", "") for b in d.get("content", [])
+              if b.get("type") == "text").strip())
 PY
     ;;
   openai)
