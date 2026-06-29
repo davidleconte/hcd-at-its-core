@@ -7,19 +7,22 @@ COMPOSE_SECURE := $(COMPOSE) -f docker-compose.yml -f docker-compose.secure.yml
 EXPECTED_NODES ?= 6
 # Conda + uv hybrid dev env (host tooling). Override with: make env ENV_NAME=foo
 ENV_NAME ?= hcd-at-its-core
-# Interpreter for arena.py: prefer the project conda env (it has pyyaml — see `make env`); fall back
-# to python3 (CI's setup-python 3.11 has pyyaml). A bare system python3 (e.g. macOS /usr/bin/python3
-# 3.9, no pyyaml) would silently fail the Oracle battery. `conda` is usually a shell function, not a
-# PATH binary in make's non-interactive shell, so we probe the standard install locations directly
-# (and an active $CONDA_PREFIX) rather than calling conda. Override with: make audit ARENA_PY=/path.
+# Interpreter for arena.py: prefer the project conda env (it has pyyaml + pytest — see `make env`);
+# fall back to python3 (CI's setup-python 3.11 has both). A bare system python3 (e.g. macOS
+# /usr/bin/python3 3.9, no pyyaml) would silently fail the Oracle battery. `conda` is usually a shell
+# function, not a PATH binary in make's non-interactive shell, so we probe the standard install
+# locations directly (and an active $CONDA_PREFIX) rather than calling conda. Override: ARENA_PY=/path.
+# NOTE: each candidate is guarded with :-/nonexistent — an UNSET var must NOT collapse to "/bin/python"
+# (which exists on CI ubuntu and even imports yaml, yet lacks pytest → the Oracle's pytest check fails).
+# The capability probe requires BOTH yaml and pytest, so the chosen interpreter can run the FULL battery.
 ARENA_PY := $(shell for p in \
-	"$$CONDA_PREFIX/bin/python" \
-	"$${CONDA_EXE%/bin/conda}/envs/$(ENV_NAME)/bin/python" \
+	"$${CONDA_PREFIX:-/nonexistent}/bin/python" \
+	"$${CONDA_EXE:+$${CONDA_EXE%/bin/conda}/envs/$(ENV_NAME)/bin/python}" \
 	"$$HOME/miniforge3/envs/$(ENV_NAME)/bin/python" \
 	"$$HOME/miniconda3/envs/$(ENV_NAME)/bin/python" \
 	"$$HOME/mambaforge/envs/$(ENV_NAME)/bin/python" \
 	"$$HOME/anaconda3/envs/$(ENV_NAME)/bin/python" ; do \
-	  if [ -x "$$p" ] && "$$p" -c 'import yaml' >/dev/null 2>&1; then echo "$$p"; exit 0; fi ; \
+	  if [ -n "$$p" ] && [ -x "$$p" ] && "$$p" -c 'import yaml, pytest' >/dev/null 2>&1; then echo "$$p"; exit 0; fi ; \
 	done ; echo python3)
 
 # HCD 2.0 release artifacts. Single source of truth — bump these on a version change.
