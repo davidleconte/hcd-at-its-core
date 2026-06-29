@@ -1734,7 +1734,7 @@ def vendor_panel(role, rnd="1"):
     and the panel is read by NO gate. This turns inter-vendor divergence into a routine signal. See
     DESIGN_v2_roadmap.md T2."""
     role = role.lower()
-    roster = [v.strip() for v in os.environ.get("ARENA_PANEL", "glm,gemini,zai").split(",") if v.strip()]
+    roster = [v.strip() for v in os.environ.get("ARENA_PANEL", "glm,gemini,anthropic").split(",") if v.strip()]
     results = []
     for vendor in roster:
         status, payload = _mode_b_call(role, rnd, provider=vendor)

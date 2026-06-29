@@ -146,7 +146,7 @@ Carried verbatim from the panel — the anti-patterns to refuse while importing 
 2. Feeding LLM "faiblesses" into the charter loop **without** the `charter_gap` + `confirmed` gating that
    `harden()` already enforces — re-injection stays evidence-gated; never raw LLM free-text into the
    forbidden-patterns list.
-3. **Any** path where vendor-panel agreement (both vendors 9.5+) is allowed to stand in for a live Oracle
+3. **Any** path where vendor-panel agreement (all N vendors 9.5+) is allowed to stand in for a live Oracle
    run.
 
 ---

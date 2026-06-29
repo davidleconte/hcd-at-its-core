@@ -38,7 +38,7 @@ disposition is present, the reconciler reconciles on Oracle state alone.
 2. Feeding LLM "weaknesses" into the self-hardening charter loop **without** the `charter_gap` + `confirmed`
    gating that `harden()` already enforces — re-injection stays evidence-gated; never raw LLM free-text into
    the forbidden-patterns list.
-3. **Any** path where vendor-panel agreement (e.g. both vendors 9.5+) is allowed to stand in for a live
+3. **Any** path where vendor-panel agreement (e.g. all vendors 9.5+) is allowed to stand in for a live
    Oracle run.
 
 ## Relationship to the gate

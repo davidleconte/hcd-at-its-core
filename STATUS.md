@@ -93,7 +93,7 @@ python3 audit_arena/bin/arena.py invariants 1   # -> 7/7 PASS live
 2. **Another tribunal round** — `make audit-tribunal` prints the recipe; round 3 was near-dry, so a
    round 4 mostly tests for true mechanical convergence (two consecutive empty rounds).
 3. **More cross-vendor Mode B** — `ARENA_MODE_B=1 make audit-mode-b ROLE=defender ROUND=N`
-   (egress-gated; sends repo excerpts to z.ai/Google — deliberate opt-in).
+   (egress-gated; sends repo excerpts to z.ai/Google/Anthropic — deliberate opt-in).
 4. **Stop** — this is a legitimate finish line.
 
 ## Operating notes

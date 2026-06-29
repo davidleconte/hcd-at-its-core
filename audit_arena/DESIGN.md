@@ -74,7 +74,7 @@ that passes review by inspection and fails in practice. The arena turns "trust m
    Judge       SRE/committer/sec   ─┘  verdicts  │            ├─►  Manifest    git SHA + tool versions + hash
                                        grades     │            ├─►  Gate        blocks push on any FAIL
    Driver A: Claude subagents (this session)      │            └─►  Render      courtroom.html (live dashboard)
-   Driver B: bin/llm.sh → glm/gemini/openai       │
+   Driver B: llm.sh → glm/gemini/anthropic/openai │
                                                    ▼
                                    state/*.json  (per-round artefacts)  →  courtroom.html
 ```
@@ -178,7 +178,7 @@ any layer moves one root. Cross-checked against `invariants_rN.json` by a self-t
   run this way used **opus / sonnet / fable** for Prosecutor / Defender / Judge → *model diversity*,
   the best anti-collusion available without external keys.
 - **Mode B (opt-in):** `bin/llm.sh` routes a role to an **external** family (GLM / Gemini /
-  OpenAI-compatible). `arena.py mode-b <role> <round>` assembles the prompt from the charter + that
+  Claude / OpenAI-compatible). `arena.py mode-b <role> <round>` assembles the prompt from the charter + that
   round's state, calls the provider, extracts + validates the JSON, writes the same artefact Mode A
   would. **Two safety gates:** an *egress opt-in* (`ARENA_MODE_B=1` per run) and *key-gating* (exits
   2 if no key) — either gate ⇒ fall back to Mode A. *Vendor diversity*, not just model diversity.
@@ -399,7 +399,7 @@ The arena is engineered to refuse to flatter itself, and the docs say exactly wh
 audit_arena/
 ├── bin/
 │   ├── arena.py            # the deterministic plumbing (all subcommands)
-│   ├── llm.sh              # Mode B provider adapter (glm/gemini/openai; egress+key gated)
+│   ├── llm.sh              # Mode B provider adapter (glm/gemini/anthropic/openai; egress+key gated)
 │   └── pre-merge-hook.sh   # git pre-push gate + courtroom auto-refresh
 ├── prompts/                # role charters: _preamble, prosecutor, defender, judge, oracle, proposer,
 │                           #   redteam_fix, forge_proposer, forge_redteam (hardened charter in _preamble.md)
