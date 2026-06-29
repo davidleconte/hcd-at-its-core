@@ -87,6 +87,49 @@ make gen-certs && make up-secure && make secure-bootstrap   # secure profile, 6�
 python3 audit_arena/bin/arena.py invariants 1   # -> 7/7 PASS live
 ```
 
+## Live re-test (2026-06-29) — open profile, two more live-only bugs found + fixed
+
+Re-booted the open profile on colima (6× UN, C* **5.0.7** + Java **17.0.19**) and ran a curated
+non-destructive module sweep (~30 modules across all 11 parts) plus the invariants. Two **genuine,
+reproducible** demo bugs surfaced that the 94/94 offline scorecard and all audit rounds passed over —
+the same "offline-green ≠ live-green" lesson as the 2026-06-28 bring-up. Both fixed and re-verified live:
+
+1. **Module 83** (CQL aggregation) — the multi-line `cqlsh -e` INSERT block had a **trailing blank
+   line after the final `;`**, which the Cassandra 5.0 cqlsh parses as an empty statement
+   (`SyntaxException: no viable alternative at input ';'`). The C* 4.0 (HCD 1.2.3) cqlsh tolerated it.
+   Fix: closed the heredoc tight (`…19);\""`). Only **one** such site in the 10.6k-line script (the
+   other 16 multi-line `cqlsh -e` blocks already close tight). Verified: module 83 → rc=0 live.
+2. **Module 69** (Materialized Views) — `CREATE MATERIALIZED VIEW` was rejected: *"Materialized views
+   are disabled. Enable in cassandra.yaml."* MVs are an experimental C5.0 feature, off by default, and
+   `materialized_views_enabled` was absent from `config/cassandra.yaml.template`. Fix: added
+   `materialized_views_enabled: true` (mirroring the existing `dynamic_data_masking_enabled` precedent)
+   + a disabled-by-default note in the module. Rebuilt the image (template is baked, not mounted),
+   re-verified: `CREATE MATERIALIZED VIEW` → rc=0, module 69 → rc=0 live.
+
+Not bugs (reconfirmed): modules **2 / 30** fail only the `TRACING ON` + `LOCAL_QUORUM` trace-fetch —
+the known `system_traces` SimpleStrategy/RF=1 multi-DC limitation (the secure profile's
+`secure-bootstrap` fixes it; the open profile does not bootstrap it). Modules 29/72 are slow-not-broken.
+
+Tooling note (FIXED): `arena.py invariants` used to report **HCD-I3 as a false FAIL** on this Mac
+because the invariant `offline_cmd`s shelled out to bare `python3`, which resolves to `/usr/bin/python3`
+(system 3.9, no pyyaml). `arena.py` now rewrites the `python3` token to `sys.executable` (the
+interpreter running it), and the Makefile / `pre-merge-hook.sh` resolve the project conda env directly
+(probing the standard install dirs — `conda` is a shell function, not a PATH binary in a non-interactive
+shell). Result: I3/I4 are deterministic regardless of PATH. (I1 still needs the secure profile for the
+RBAC `GRANT`; the DDM half works on the open profile, so the open-profile live run is **6/7**.)
+
+### macOS portability gotchas (bash 3.2 + LibreSSL) — 2026-06-29
+
+Two test failures that are **green on Linux CI but fail on macOS** (env-specific, not code regressions —
+both fixed; root-caused with the workstation README: macOS Tahoe 26.4.1 = LibreSSL, system shell = bash 3.2):
+- **`llm.sh`** silently exited 1 instead of the key-gated exit 2 when `~/.secrets.env` is absent.
+  Cause: macOS bash **3.2**'s `.`/`source` builtin *aborts a non-interactive shell* if it can't open the
+  file (POSIX special-builtin rule) — `2>/dev/null || true` can't catch it; bash 4+/CI just returns 1.
+  Fix: `[ -f ~/.secrets.env ] && { source … || true; }` so the abort path is never reached.
+- **`test_secure_profile.py`** SAN check used `openssl x509 -ext subjectAltName`, an OpenSSL-3 flag
+  **LibreSSL 3.3.6 rejects** ("unknown option -ext"). The cert is correct; the test now uses the
+  portable `-text` form. (`gen-certs.sh` itself was already LibreSSL-portable.)
+
 ## Open options (pick up here)
 
 1. **Live bring-up** — _highest value_, gated on the tarball (above).

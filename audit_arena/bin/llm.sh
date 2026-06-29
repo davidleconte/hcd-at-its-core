@@ -13,7 +13,11 @@
 #              OPENAI_BASE_URL + OPENAI_MODEL)
 set -euo pipefail
 # shellcheck source=/dev/null
-source ~/.secrets.env 2>/dev/null || true
+# Guard with -f: macOS ships bash 3.2, whose `.`/`source` ABORTS a non-interactive shell when the
+# file can't be opened (POSIX special-builtin behavior) — `2>/dev/null || true` can't catch it, so a
+# missing ~/.secrets.env would silently kill the script (exit 1) before the key-gate. bash 4+/CI just
+# returns 1. Only source when the file exists, so the abort path is never reached.
+[ -f ~/.secrets.env ] && { source ~/.secrets.env 2>/dev/null || true; }
 
 ROLE="${1:?usage: llm.sh <defender|judge> <prompt_file>}"
 PROMPT_FILE="${2:?missing prompt file}"
