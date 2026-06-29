@@ -31,14 +31,14 @@ def test_gen_certs_produces_ca_and_san_certs(tmp_path):
     # node cert carries DNS hostname + container IP in its SAN
     node_san = subprocess.run(
         ["openssl", "x509", "-in", str(tmp_path / "hcd-node1.crt"),
-         "-noout", "-ext", "subjectAltName"],
+         "-noout", "-text"],  # -text (not -ext): LibreSSL on macOS has no `x509 -ext`; -text is portable
         capture_output=True, text=True,
     ).stdout
     assert "DNS:hcd-node1" in node_san and "172.28.0.2" in node_san
     # client cert carries the spiffe identity used by ADD IDENTITY
     cli_san = subprocess.run(
         ["openssl", "x509", "-in", str(tmp_path / "analyst.crt"),
-         "-noout", "-ext", "subjectAltName"],
+         "-noout", "-text"],  # -text (not -ext): LibreSSL on macOS has no `x509 -ext`; -text is portable
         capture_output=True, text=True,
     ).stdout
     assert "spiffe://hcd/role/analyst" in cli_san

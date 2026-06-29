@@ -9,14 +9,22 @@ cd "$ROOT" || exit 1
 fail=0
 say() { printf '  %-44s %s\n' "$1" "$2"; }
 
-# Prefer the project's Python 3.11 (conda env hcd-at-its-core) so the LOCAL gate matches CI's
-# 3.11 — system python3 here is often newer and accepts code that fails on 3.11. Falls back to
-# python3 if the env is absent.
+# Prefer the project's Python 3.11 (conda env hcd-at-its-core) so the LOCAL gate matches CI's 3.11
+# AND so it has pyyaml — a bare system python3 (macOS /usr/bin/python3 3.9) lacks it and false-FAILs
+# the dup-key check below. `conda` is usually a shell function, not a PATH binary in this hook's
+# non-interactive shell, so probe the standard install locations directly. Falls back to python3
+# (CI's setup-python 3.11 has pyyaml).
 PY=python3
-if command -v conda >/dev/null 2>&1; then
-  _envpy="$(conda info --base 2>/dev/null)/envs/hcd-at-its-core/bin/python"
-  [ -x "$_envpy" ] && PY="$_envpy"
-fi
+_cprefix="${CONDA_PREFIX:-}"; _cexe="${CONDA_EXE:-}"   # :- defaults: this script runs under `set -u`
+for _envpy in \
+  "${_cprefix:-/nonexistent}/bin/python" \
+  "${_cexe%/bin/conda}/envs/hcd-at-its-core/bin/python" \
+  "$HOME/miniforge3/envs/hcd-at-its-core/bin/python" \
+  "$HOME/miniconda3/envs/hcd-at-its-core/bin/python" \
+  "$HOME/mambaforge/envs/hcd-at-its-core/bin/python" \
+  "$HOME/anaconda3/envs/hcd-at-its-core/bin/python"; do
+  if [ -x "$_envpy" ] && "$_envpy" -c 'import yaml' >/dev/null 2>&1; then PY="$_envpy"; break; fi
+done
 
 echo "── HCD arena pre-merge gate ($("$PY" --version 2>&1)) ────"
 

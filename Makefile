@@ -7,6 +7,20 @@ COMPOSE_SECURE := $(COMPOSE) -f docker-compose.yml -f docker-compose.secure.yml
 EXPECTED_NODES ?= 6
 # Conda + uv hybrid dev env (host tooling). Override with: make env ENV_NAME=foo
 ENV_NAME ?= hcd-at-its-core
+# Interpreter for arena.py: prefer the project conda env (it has pyyaml — see `make env`); fall back
+# to python3 (CI's setup-python 3.11 has pyyaml). A bare system python3 (e.g. macOS /usr/bin/python3
+# 3.9, no pyyaml) would silently fail the Oracle battery. `conda` is usually a shell function, not a
+# PATH binary in make's non-interactive shell, so we probe the standard install locations directly
+# (and an active $CONDA_PREFIX) rather than calling conda. Override with: make audit ARENA_PY=/path.
+ARENA_PY := $(shell for p in \
+	"$$CONDA_PREFIX/bin/python" \
+	"$${CONDA_EXE%/bin/conda}/envs/$(ENV_NAME)/bin/python" \
+	"$$HOME/miniforge3/envs/$(ENV_NAME)/bin/python" \
+	"$$HOME/miniconda3/envs/$(ENV_NAME)/bin/python" \
+	"$$HOME/mambaforge/envs/$(ENV_NAME)/bin/python" \
+	"$$HOME/anaconda3/envs/$(ENV_NAME)/bin/python" ; do \
+	  if [ -x "$$p" ] && "$$p" -c 'import yaml' >/dev/null 2>&1; then echo "$$p"; exit 0; fi ; \
+	done ; echo python3)
 
 # HCD 2.0 release artifacts. Single source of truth — bump these on a version change.
 HCD_VERSION ?= 2.0.6
@@ -216,19 +230,19 @@ clean: ## Remove dangling images and build cache
 
 # ─── Adversarial audit arena ────────────────────────────────────────────────────
 audit: ## Run the deterministic audit (Oracle + invariants + manifest) and render courtroom.html
-	python3 audit_arena/bin/arena.py contract   # validate the Definition-of-Done spine (semver + content_sha256 integrity)
-	python3 audit_arena/bin/arena.py repomap
+	$(ARENA_PY) audit_arena/bin/arena.py contract   # validate the Definition-of-Done spine (semver + content_sha256 integrity)
+	$(ARENA_PY) audit_arena/bin/arena.py repomap
 	# no round arg -> arena defaults to the LATEST round, the same one render/gate display, so the
 	# dashboard's provenance never lags behind the tribunal's current round.
-	python3 audit_arena/bin/arena.py oracle
-	python3 audit_arena/bin/arena.py invariants
-	python3 audit_arena/bin/arena.py lineage     # F3: per-finding provenance (runs each oracle_cmd ONCE; render consumes this)
-	python3 audit_arena/bin/arena.py manifest
-	python3 audit_arena/bin/arena.py panel-aggregate  # T1: advisory judge score with the Oracle ceiling re-derived in code
-	python3 audit_arena/bin/arena.py reconcile   # honesty reconciler: emit reconciliation.json, exit 2 if grades wire a numeric score
-	python3 audit_arena/bin/arena.py render
+	$(ARENA_PY) audit_arena/bin/arena.py oracle
+	$(ARENA_PY) audit_arena/bin/arena.py invariants
+	$(ARENA_PY) audit_arena/bin/arena.py lineage     # F3: per-finding provenance (runs each oracle_cmd ONCE; render consumes this)
+	$(ARENA_PY) audit_arena/bin/arena.py manifest
+	$(ARENA_PY) audit_arena/bin/arena.py panel-aggregate  # T1: advisory judge score with the Oracle ceiling re-derived in code
+	$(ARENA_PY) audit_arena/bin/arena.py reconcile   # honesty reconciler: emit reconciliation.json, exit 2 if grades wire a numeric score
+	$(ARENA_PY) audit_arena/bin/arena.py render
 	@echo "Open: audit_arena/courtroom.html"
-	python3 audit_arena/bin/arena.py gate   # exit 1 on any FAILing oracle check / invariant (CI blocks)
+	$(ARENA_PY) audit_arena/bin/arena.py gate   # exit 1 on any FAILing oracle check / invariant (CI blocks)
 
 audit-tribunal: ## Show how to run the LLM tribunal rounds (Mode A subagents / Mode B external)
 	@echo "Tribunal (per round R):"
@@ -242,22 +256,22 @@ audit-tribunal: ## Show how to run the LLM tribunal rounds (Mode A subagents / M
 	@echo "  7. python3 audit_arena/bin/arena.py converge && render"
 
 audit-mode-b: ## Drive a tribunal role with an EXTERNAL family (egress-gated): make audit-mode-b ROLE=defender ROUND=2
-	ARENA_MODE_B=1 python3 audit_arena/bin/arena.py mode-b $(ROLE) $(ROUND)
+	ARENA_MODE_B=1 $(ARENA_PY) audit_arena/bin/arena.py mode-b $(ROLE) $(ROUND)
 
 audit-vendor-panel: ## Multi-vendor advisory panel for a role (egress-gated): make audit-vendor-panel ROLE=judge ROUND=3 PANEL=glm,gemini,anthropic
-	ARENA_MODE_B=1 ARENA_PANEL=$(PANEL) python3 audit_arena/bin/arena.py vendor-panel $(ROLE) $(ROUND)
+	ARENA_MODE_B=1 ARENA_PANEL=$(PANEL) $(ARENA_PY) audit_arena/bin/arena.py vendor-panel $(ROLE) $(ROUND)
 
 verify-fix: ## Verify a fix patch in an ISOLATED worktree (never touches your tree): make verify-fix FIX=p.diff [BASE=b.diff]
-	python3 audit_arena/bin/arena.py verify-fix $(FIX) $(BASE)
+	$(ARENA_PY) audit_arena/bin/arena.py verify-fix $(FIX) $(BASE)
 
 forge: ## Generative forge battle for a contract (Oracle-adjudicated): make forge ID=example-version-pin CAND=cand.diff
-	python3 audit_arena/bin/arena.py forge-contract $(ID)
+	$(ARENA_PY) audit_arena/bin/arena.py forge-contract $(ID)
 	@echo "Tribunal (per round R): Proposer (prompts/forge_proposer.md) -> cand.diff; Red-team (forge_redteam.md);"
 	@echo "  then: arena.py forge-verify $(ID) cand.diff > v.json && forge-record $(ID) cand.diff v.json R && forge-converge $(ID)"
-	python3 audit_arena/bin/arena.py forge-verify $(ID) $(CAND)
+	$(ARENA_PY) audit_arena/bin/arena.py forge-verify $(ID) $(CAND)
 
 audit-harden: ## Self-harden the prosecutor charter from confirmed charter_gap lessons (deliberate)
-	python3 audit_arena/bin/arena.py harden
+	$(ARENA_PY) audit_arena/bin/arena.py harden
 	@echo "Review the AUTO-HARDENED block in audit_arena/prompts/_preamble.md (git diff) and commit it."
 
 audit-install-hook: ## Install the deterministic pre-merge gate (git pre-push)

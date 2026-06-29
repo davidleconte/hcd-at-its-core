@@ -86,6 +86,11 @@ audit_logging_options:
 # Disabled by default in Cassandra 5.0; enabled here so Module 85 can attach masks.
 dynamic_data_masking_enabled: true
 
+# Materialized views are an experimental Cassandra feature, disabled by default in
+# Cassandra 5.0. Enabled here so Module 69 can demonstrate server-side denormalization;
+# in production weigh the known write-amplification / view-consistency caveats first.
+materialized_views_enabled: true
+
 # Guardrails - Module 28
 # Protect the database from common anti-patterns
 tables_warn_threshold: 150

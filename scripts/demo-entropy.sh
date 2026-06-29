@@ -8134,6 +8134,11 @@ run_module() {
             echo "of a base table, sorted by different columns. Writes to the base"
             echo "table automatically propagate to the view."
             echo ""
+            echo -e "${C_DIM}  Note: MVs are an experimental Cassandra 5.0 feature, disabled by"
+            echo -e "  default. This cluster sets materialized_views_enabled: true in"
+            echo -e "  cassandra.yaml so this module can create one. Weigh the write-"
+            echo -e "  amplification / view-consistency caveats before enabling in prod.${C_RESET}"
+            echo ""
 
             # ─── MV Concept ─────────────────────────────────────────
             echo -e "${C_WHITE}--- How Materialized Views Work ---${C_RESET}"
@@ -10034,8 +10039,7 @@ CLEOF' 2>/dev/null || true
                 INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('us-east', '2025-02', 'widget', 2100.00, 42);
                 INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('us-east', '2025-01', 'gadget', 800.00, 16);
                 INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('eu-west', '2025-01', 'widget', 1200.00, 24);
-                INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('eu-west', '2025-02', 'gadget', 950.00, 19);
-            \""
+                INSERT INTO rf_prod.sales (region, month, product, revenue, quantity) VALUES ('eu-west', '2025-02', 'gadget', 950.00, 19);\""
 
             separator
             echo -e "${C_WHITE}--- Built-in Aggregates ---${C_RESET}"

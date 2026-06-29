@@ -2,17 +2,17 @@
   "D1 Part 11 DDM CQL executes (no error)": {
     "detail": "ok",
     "status": "PASS",
-    "ts": "2026-06-28T18:11:44"
+    "ts": "2026-06-29T11:17:47"
   },
   "D1 release == Cassandra 5.0 + Java 17": {
-    "detail": "release_version reported: 5.0.7.0-ea50e91ba01f",
+    "detail": "  release_version reported: 5.0.7.0-ea50e91ba01f",
     "status": "PASS",
-    "ts": "2026-06-28T18:11:33"
+    "ts": "2026-06-29T11:17:34"
   },
   "D1 secure cluster forms (6x UN)": {
     "detail": "UN nodes: 6",
     "status": "PASS",
-    "ts": "2026-06-28T18:11:32"
+    "ts": "2026-06-29T11:17:33"
   },
   "HCD-I1": {
     "detail": "executed on live cluster",
@@ -22,6 +22,6 @@
   "HCD-I2": {
     "detail": "executed on live cluster",
     "status": "PASS",
-    "ts": "2026-06-28T18:11:16"
+    "ts": "2026-06-29T11:18:01"
   }
 }

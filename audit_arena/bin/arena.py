@@ -34,6 +34,7 @@ import html
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -181,7 +182,23 @@ def excerpts(findings_json):
 
 
 # ─── ORACLE: deterministic ground-truth battery (the HCD differentiator) ──────────
+# Several contract battery commands shell out to `python3 -c "import yaml..."` (HCD-I3's dup-key
+# check, HCD-I4's module-count check, the pytest oracle check). A bare `python3` resolves via PATH —
+# on macOS that's /usr/bin/python3 (3.9, no pyyaml), so HCD-I3 reported a FALSE FAIL even though the
+# config has zero duplicate keys. Rewrite the `python3` interpreter token to the interpreter actually
+# running arena.py (sys.executable) so the result is deterministic regardless of which python3 is
+# first on PATH — provided arena.py itself runs under a pyyaml-capable interpreter (the project's
+# conda env; the Makefile and pre-merge-hook resolve to it, falling back to python3 for CI). The
+# lookbehind keeps a real path like /usr/bin/python3 intact; only the bare command token is rewritten.
+_PY_TOKEN = re.compile(r"(?<![\w./-])python3(?=\s)")
+
+
+def _pybin(cmd):
+    return _PY_TOKEN.sub(shlex.quote(sys.executable), cmd) if isinstance(cmd, str) else cmd
+
+
 def _run(cmd, cwd=ROOT, timeout=300):
+    cmd = _pybin(cmd)
     try:
         r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                            timeout=timeout, shell=isinstance(cmd, str))
@@ -844,10 +861,10 @@ def _battery_in(cwd):
     script-syntax+lint+scorecard, so no parallel battery is duplicated here) plus the pytest suite (the
     one D4 offline check that is not an HCD-I* invariant). Live invariants with no cluster fall to
     DEFERRED, never FAIL, so an offline candidate is judged only on what is offline-decidable here."""
-    pt = subprocess.run("python3 -m pytest tests/ -q 2>&1", cwd=cwd, shell=True,
+    pt = subprocess.run(f"{shlex.quote(sys.executable)} -m pytest tests/ -q 2>&1", cwd=cwd, shell=True,
                         capture_output=True, text=True, timeout=300)
     checks = {"pytest": "PASS" if pt.returncode == 0 else "FAIL"}  # exit code, not substring
-    r = subprocess.run(["python3", "audit_arena/bin/arena.py", "invariants", "0"],
+    r = subprocess.run([sys.executable, "audit_arena/bin/arena.py", "invariants", "0"],
                        cwd=cwd, capture_output=True, text=True)
     try:
         inv = json.loads(r.stdout)
