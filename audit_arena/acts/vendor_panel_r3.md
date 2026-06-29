@@ -77,24 +77,38 @@ now forms and the Part-11 CQL runs."* It **dropped every R1 CRITICAL** that Gemi
 contrast, repeated the two-vendor failure mode verbatim — present-tense re-litigation of R1-01/03/04/08
 (*"cannot form," "would fail live"*) — reaching **BLOCK** in defiance of the `oracle=FIXED` markers.
 
-### The honest caveat — even the best model still diverged at the margin
-Opus 4.8 said **conditional-ship, not ship**. It surfaced six **R2/R3** findings (observability +
-test/CI hygiene) as *surviving* — every one of which the brief also annotates `oracle=FIXED` and the Oracle
-reconciles GREEN. Its lead concern (**R2-01**) is a specific, line-cited, falsifiable claim: four Prometheus
-alerts (`HCDDroppedMessages`, `HCDCompactionBacklog`, `HCDHigh{Read,Write}Latency`) reference CamelCase
-metric names while `jmx-exporter.yml` sets `lowercaseOutputName: true`, so — it argues — those alerts never
-fire, with the Grafana dashboard already querying the lowercased names as the in-repo "smoking gun." That is
-**either** a real surviving observability gap the Oracle's R2 check does not *discriminate* (a candidate
-non-discriminating-check finding worth a follow-up), **or** Opus being over-cautious on an already-fixed
-item. It is not resolved here — and that ambiguity is precisely why it is recorded as advisory, not promoted.
+### The honest caveat — RESOLVED: Opus's "surviving" findings are phantom
+Opus 4.8 said **conditional-ship, not ship**, on the strength of six **R2/R3** findings it called *surviving*
+— each of which the brief annotates `oracle=FIXED`. Those findings were verified against the current tree
+(HEAD `833473c`) and **do not survive.** Its lead concern, **R2-01**, claimed four alerts reference *CamelCase*
+metric names (`cassandra_dropped_Dropped`, `…_PendingTasks`, `…Latency_99thPercentile`) that
+`lowercaseOutputName:true` never emits. In fact `config/alerts.yml` already uses the **lowercased** names —
+`cassandra_dropped_dropped` (`alerts.yml:29`), `cassandra_compaction_pendingtasks` (`:39`),
+`cassandra_client_request_latency_99thpercentile` (`:71`, `:81`) — which **match** the jmx-exporter output
+(`lowercaseOutputName: true`, `config/jmx-exporter.yml:4`, whose rules emit `cassandra_dropped_$2`,
+`cassandra_compaction_$1`, `cassandra_client_request_$2_$3`) **and** the Grafana dashboard
+(`hcd-cluster.json:185,168,24`). The CamelCase strings Opus cited **do not exist anywhere in the tree**; its
+"smoking gun" (dashboard uses lowercase) actually proves *consistency*, not a mismatch. **R2-03** is likewise
+already fixed — `alerts.yml:61` uses `cassandra_hints_hints_created` (matching the dashboard), with an
+explanatory comment at `:57–59`, not the `cassandra_hints_TotalHintsInProgress` Opus alleged.
+
+So `oracle=FIXED` on R2-01/R2-03 is **correct**, and the Oracle's R2 checks **are discriminating**. Opus 4.8
+(high) committed the **same error as Gemini, one tier down**: it honored the adjudication on the R1
+deal-breakers but then re-litigated the already-fixed R2 items **in present tense** ("these 4 alerts silently
+never fire"), anchoring on the alarming finding *descriptions* — which narrate the pre-fix state — instead of
+the current code. Its `conditional-ship` rests on **phantom** findings.
+
+> **Correction, owned:** an earlier draft of this section floated R2-01 as a possible *non-discriminating
+> Oracle check* worth crediting to Opus. The investigation refutes that — the Oracle was right on every tier;
+> the model was not. Recording the over-credit so it stays in the audit trail.
 
 ### The sharpened lesson
-The two-vendor run showed *consensus ≠ truth*. The three-vendor run shows the complement: **vendor
-disagreement is itself the signal, and the deterministic Oracle is what resolves it.** The strongest model
-read the adjudication best — and *still* diverged from ground truth at the margin (conditional-ship vs the
-Oracle's GREEN/converged). Had any vendor verdict gated merges, the panel would have been **split** (1 block,
-1 conditional, 1 abstain) on a tree the Oracle proves is fixed. The binding verdict stays the **Oracle's**;
-the panel is advisory and read by no gate. No LLM verdict — not even Opus 4.8 at high effort — can be the gate.
+The two-vendor run showed *consensus ≠ truth*. The three-vendor run shows the complement, and more strongly:
+**no LLM verdict reproduced ground truth on every tier — not even Opus 4.8 at high effort.** Gemini missed
+R1 *and* R2; Opus got R1 right but missed R2; GLM abstained. The deterministic Oracle was correct on **both**
+tiers. Vendor *disagreement* is the signal; the Oracle is what resolves it. Had any vendor verdict gated
+merges, the panel would have been **split** (1 block, 1 conditional-on-phantoms, 1 abstain) on a tree the
+Oracle proves is fixed. The binding verdict stays the **Oracle's**; the panel is advisory and read by no gate.
 
 *Provenance: `vendor_panel_r3_judge.json` regenerated 2026-06-29T08:55:44 over the same brief
 `state/judge_brief_r3.md`; roster `glm,gemini,anthropic`, 2/3 participated; code at HEAD `833473c`
