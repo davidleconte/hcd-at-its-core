@@ -155,3 +155,49 @@ def test_prometheus_config_valid_yaml():
         data = yaml.safe_load(f)
     assert "scrape_configs" in data, "prometheus.yml must have scrape_configs"
     assert "rule_files" in data, "prometheus.yml must reference rule_files"
+
+
+# ─── Scenario navigator (direct-jump) ─────────────────────────────
+def _read_total_modules():
+    src = open("scripts/demo-entropy.sh").read()
+    return int(re.search(r"readonly TOTAL_MODULES=(\d+)", src).group(1))
+
+
+def test_scenario_catalog_consistent_with_script():
+    """scripts/scenario_catalog.json is the single source of truth — it must cover exactly the
+    modules the demo defines (every `header N`), with the required navigator fields."""
+    cat = json.load(open("scripts/scenario_catalog.json"))
+    total = _read_total_modules()
+    mods = sorted(e["mod"] for e in cat)
+    assert mods == list(range(total)), f"catalog must list modules 0..{total - 1}"
+    headers = sorted(int(m) for m in re.findall(
+        r'^\s*header\s+(\d+)\s+"', open("scripts/demo-entropy.sh").read(), re.M))
+    assert set(headers) == set(mods), "catalog mods and script `header N` modules must match exactly"
+    required = {"mod", "title", "part", "dim", "profile", "destructive", "external_deps", "tags"}
+    for e in cat:
+        assert required <= set(e), f"module {e.get('mod')} missing fields: {required - set(e)}"
+        assert e["profile"] in ("open", "secure")
+
+
+def test_demo_list_runs_offline():
+    """`--list` reads only the catalog — it must work with no cluster and print every module."""
+    r = subprocess.run(["bash", "scripts/demo-entropy.sh", "--list"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    data_rows = [ln for ln in r.stdout.splitlines() if re.match(r"\s*\d+\s+[A-M]\s", ln)]
+    assert len(data_rows) == _read_total_modules()
+
+
+def test_demo_tag_filter_dora():
+    """`--list --tag dora` resolves to exactly the DORA ransomware series (73–79)."""
+    r = subprocess.run(["bash", "scripts/demo-entropy.sh", "--list", "--tag", "dora"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    mods = sorted(int(m.group(1)) for m in re.finditer(r"^\s*(\d+)\s+I\s", r.stdout, re.M))
+    assert mods == list(range(73, 80)), mods
+
+
+def test_demo_unknown_tag_fails():
+    """An unknown tag exits non-zero (so a typo doesn't silently run nothing)."""
+    r = subprocess.run(["bash", "scripts/demo-entropy.sh", "--tag", "nonsense"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0
