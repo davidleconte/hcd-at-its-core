@@ -2,4 +2,4 @@
 # it on the host un-skips the driver-demo tests (otherwise they skip gracefully). Kept
 # separate from requirements-dev.txt because it ships native wheels — `make env` installs
 # it best-effort so a wheel miss never breaks environment setup.
-cassandra-driver==3.29.2
+cassandra-driver==3.30.0
